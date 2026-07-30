@@ -27,6 +27,12 @@ import type {
   WorkspaceRulesRequest,
 } from './commands';
 import type {
+  ContextConversationRequest,
+  ConversationContextItem,
+  DeleteConversationContextRequest,
+  SaveConversationContextRequest,
+} from './context';
+import type {
   Conversation,
   ConversationDetail,
   ConversationIdRequest,
@@ -123,6 +129,11 @@ export interface DesktopApi {
     listRules(input: WorkspaceRulesRequest): Promise<ReadonlyArray<PermissionRule>>;
     deleteRule(input: DeletePermissionRuleRequest): Promise<{ readonly deleted: boolean }>;
     setNetworkAccess(input: SetNetworkAccessRequest): Promise<ReadonlyArray<PermissionRule>>;
+  };
+  readonly context: {
+    list(input: ContextConversationRequest): Promise<ReadonlyArray<ConversationContextItem>>;
+    save(input: SaveConversationContextRequest): Promise<ConversationContextItem>;
+    delete(input: DeleteConversationContextRequest): Promise<{ readonly deleted: boolean }>;
   };
   readonly terminal: {
     create(input: CreateTerminalRequest): Promise<TerminalSessionInfo>;

@@ -224,6 +224,24 @@ const databaseMigrations = [
     CREATE INDEX permission_rules_workspace_kind_idx
       ON permission_rules(workspace_id, kind);
   `,
+  `
+    CREATE TABLE context_items (
+      id TEXT PRIMARY KEY NOT NULL,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      token_estimate INTEGER NOT NULL,
+      priority INTEGER NOT NULL,
+      source_key TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX context_items_conversation_priority_idx
+      ON context_items(conversation_id, priority, created_at);
+    CREATE UNIQUE INDEX context_items_conversation_source_idx
+      ON context_items(conversation_id, source_key);
+  `,
 ] as const;
 
 function migrateDatabase(client: DatabaseSync): void {

@@ -8,6 +8,10 @@ import {
   commandExecutionListSchema,
   commandExecutionSchema,
   commandIdRequestSchema,
+  contextChannels,
+  contextConversationRequestSchema,
+  conversationContextItemSchema,
+  conversationContextListSchema,
   changeContentsRequestSchema,
   changeContentsSchema,
   changesChannels,
@@ -26,6 +30,8 @@ import {
   decideCommandRequestSchema,
   deletePermissionRuleRequestSchema,
   deletePermissionRuleResponseSchema,
+  deleteConversationContextRequestSchema,
+  deleteConversationContextResponseSchema,
   editChangeProposalRequestSchema,
   fileChangedEventSchema,
   fileEntryListSchema,
@@ -60,6 +66,7 @@ import {
   renameConversationRequestSchema,
   searchFilesRequestSchema,
   saveProviderRequestSchema,
+  saveConversationContextRequestSchema,
   setNetworkAccessRequestSchema,
   startChatRequestSchema,
   startChatResponseSchema,
@@ -305,6 +312,23 @@ const desktopApi: DesktopApi = {
       const request = setNetworkAccessRequestSchema.parse(input);
       const response: unknown = await ipcRenderer.invoke(commandChannels.setNetworkAccess, request);
       return permissionRuleListSchema.parse(response);
+    },
+  },
+  context: {
+    async list(input) {
+      const request = contextConversationRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(contextChannels.list, request);
+      return conversationContextListSchema.parse(response);
+    },
+    async save(input) {
+      const request = saveConversationContextRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(contextChannels.save, request);
+      return conversationContextItemSchema.parse(response);
+    },
+    async delete(input) {
+      const request = deleteConversationContextRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(contextChannels.delete, request);
+      return deleteConversationContextResponseSchema.parse(response);
     },
   },
   terminal: {

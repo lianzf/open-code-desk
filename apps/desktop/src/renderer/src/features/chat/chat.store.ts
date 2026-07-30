@@ -32,6 +32,9 @@ export interface ContextStats {
   readonly usedTokens: number;
   readonly droppedMessages: number;
   readonly summarizedMessages: number;
+  readonly selectedContextItems: number;
+  readonly droppedContextItems: number;
+  readonly truncatedContextItems: number;
 }
 
 export interface ChatState {

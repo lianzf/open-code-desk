@@ -61,6 +61,9 @@ export function handleStreamEvent(
         usedTokens: event.usedTokens,
         droppedMessages: event.droppedMessages,
         summarizedMessages: event.summarizedMessages,
+        selectedContextItems: event.selectedContextItems,
+        droppedContextItems: event.droppedContextItems,
+        truncatedContextItems: event.truncatedContextItems,
       },
     });
   } else if (event.type === 'assistant_message_start') {

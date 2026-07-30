@@ -140,6 +140,13 @@ export interface ContextItem {
   readonly priority: number;
 }
 
+export interface ConversationContextItem extends ContextItem {
+  readonly conversationId: string;
+  readonly sourceKey?: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
 export type FileChangeOperation = 'create' | 'update' | 'delete' | 'rename';
 
 export type FileChangeStatus =

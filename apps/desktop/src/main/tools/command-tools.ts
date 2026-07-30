@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 import type { AgentTool, ToolExecutionContext } from '@open-code-desk/tool-core';
 
-import type { CommandService, CommandToolOutput } from '../commands/command.service';
+import type { CommandToolOutput } from '../commands/command-lifecycle';
+import type { CommandService } from '../commands/command.service';
 
 const commandInputSchema = z
   .object({

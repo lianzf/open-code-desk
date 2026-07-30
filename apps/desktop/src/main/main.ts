@@ -14,6 +14,8 @@ import { FileChangeTransactionService } from './changes/file-change-transaction.
 import { CommandRepository } from './commands/command.repository';
 import { CommandService } from './commands/command.service';
 import { PermissionRuleRepository } from './commands/permission-rule.repository';
+import { ContextItemRepository } from './context/context-item.repository';
+import { ContextItemService } from './context/context-item.service';
 import { ConversationRepository } from './conversations/conversation.repository';
 import { ConversationService } from './conversations/conversation.service';
 import { createAppDatabase, type AppDatabase } from './database/database';
@@ -26,6 +28,7 @@ import { registerHealthIpc, unregisterHealthIpc } from './ipc/health.ipc';
 import { ChatIpcController, registerChatIpc, unregisterChatIpc } from './ipc/chat.ipc';
 import { registerChangesIpc, unregisterChangesIpc } from './ipc/changes.ipc';
 import { registerCommandsIpc, unregisterCommandsIpc } from './ipc/commands.ipc';
+import { registerContextIpc, unregisterContextIpc } from './ipc/context.ipc';
 import { registerConversationsIpc, unregisterConversationsIpc } from './ipc/conversations.ipc';
 import { registerProvidersIpc, unregisterProvidersIpc } from './ipc/providers.ipc';
 import { registerWorkspaceIpc, unregisterWorkspaceIpc } from './ipc/workspace.ipc';
@@ -86,6 +89,7 @@ app.whenReady().then(async () => {
     providerRegistry,
   );
   const conversationRepository = new ConversationRepository(database);
+  const contextItemRepository = new ContextItemRepository(database);
   const agentTaskRepository = new AgentTaskRepository(database);
   const toolCallRepository = new ToolCallRepository(database);
   const commandRepository = new CommandRepository(database);
@@ -131,6 +135,7 @@ app.whenReady().then(async () => {
     changeService,
     new ProposalAwarePermissionPolicy(),
     commandService,
+    contextItemRepository,
   );
   chatIpcController = new ChatIpcController(agentService);
 
@@ -145,6 +150,10 @@ app.whenReady().then(async () => {
   registerGitIpc(trustedRendererOptions, gitService);
   registerProvidersIpc(trustedRendererOptions, providerService);
   registerConversationsIpc(trustedRendererOptions, conversationService);
+  registerContextIpc(
+    trustedRendererOptions,
+    new ContextItemService(contextItemRepository, conversationRepository),
+  );
   registerChangesIpc(trustedRendererOptions, changeService, changeTransactions);
   registerCommandsIpc(trustedRendererOptions, commandService);
   registerTerminalIpc(trustedRendererOptions, terminalService);
@@ -165,6 +174,7 @@ app.on('before-quit', () => {
     chatIpcController = null;
   }
   unregisterConversationsIpc();
+  unregisterContextIpc();
   unregisterChangesIpc();
   unregisterCommandsIpc();
   unregisterTerminalIpc();

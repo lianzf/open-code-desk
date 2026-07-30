@@ -28,6 +28,9 @@ export type AgentStreamEvent =
       readonly usedTokens: number;
       readonly droppedMessages: number;
       readonly summarizedMessages: number;
+      readonly selectedContextItems: number;
+      readonly droppedContextItems: number;
+      readonly truncatedContextItems: number;
     }
   | {
       readonly type: 'assistant_message_start';

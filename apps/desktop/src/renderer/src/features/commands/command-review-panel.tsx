@@ -182,7 +182,7 @@ export function CommandReviewPanel() {
         <summary className="cursor-pointer text-[10px] text-zinc-500">命令权限规则</summary>
         <div className="mt-2 space-y-2">
           <label className="flex items-center justify-between gap-3 text-[10px] text-zinc-400">
-            允许 Agent 提议网络命令
+            允许白名单网络命令自动执行
             <input
               type="checkbox"
               checked={networkAllowed}

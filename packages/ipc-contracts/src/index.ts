@@ -1,6 +1,7 @@
 export * from './chat';
 export * from './changes';
 export * from './commands';
+export * from './context';
 export * from './conversations';
 export * from './desktop-api';
 export * from './git';

@@ -94,6 +94,9 @@ export const chatStreamPayloadSchema = z.discriminatedUnion('type', [
       usedTokens: z.number().int().nonnegative(),
       droppedMessages: z.number().int().nonnegative(),
       summarizedMessages: z.number().int().nonnegative(),
+      selectedContextItems: z.number().int().nonnegative(),
+      droppedContextItems: z.number().int().nonnegative(),
+      truncatedContextItems: z.number().int().nonnegative(),
     })
     .strict(),
   z

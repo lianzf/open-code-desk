@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ProviderRegistry } from '@open-code-desk/provider-core';
 
 import { ConversationRepository } from '../conversations/conversation.repository';
+import { ContextItemRepository } from '../context/context-item.repository';
 import { createAppDatabase } from '../database/database';
 import { WorkspaceFileService } from '../filesystem/workspace-file.service';
 import { OpenAICompatibleProvider } from '../providers/openai-compatible/openai-compatible.provider';
@@ -131,12 +132,26 @@ describe('AgentService', () => {
     });
     const tasks = new AgentTaskRepository(database);
     const toolCalls = new ToolCallRepository(database);
+    const contextItems = new ContextItemRepository(database);
+    contextItems.save({
+      conversationId: conversation.id,
+      type: 'text',
+      title: 'Selected fixture context',
+      content: 'UNIQUE_SELECTED_CONTEXT_MARKER',
+      tokenEstimate: 8,
+      priority: 100,
+      sourceKey: 'fixture:selected',
+    });
     const agent = new AgentService(
       providers,
       conversations,
       tasks,
       createReadOnlyToolRegistry(new WorkspaceFileService(workspaceService)),
       toolCalls,
+      undefined,
+      undefined,
+      undefined,
+      contextItems,
     );
     const events: AgentStreamEvent[] = [];
 
@@ -170,6 +185,7 @@ describe('AgentService', () => {
       { toolName: 'read_file', status: 'completed' },
     ]);
     expect(JSON.stringify(observedBodies[0])).toContain('"name":"read_file"');
+    expect(JSON.stringify(observedBodies[0])).toContain('UNIQUE_SELECTED_CONTEXT_MARKER');
     expect(JSON.stringify(observedBodies[1])).toContain('Unique Agent Fixture');
     expect(JSON.stringify(observedBodies[1])).toContain('"tool_call_id":"model-call-1"');
     database.close();

@@ -1,4 +1,4 @@
-import { blob, index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { blob, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const workspaces = sqliteTable(
   'workspaces',
@@ -146,6 +146,32 @@ export const toolCalls = sqliteTable(
   (table) => [
     index('tool_calls_task_created_idx').on(table.taskId, table.createdAt),
     index('tool_calls_conversation_created_idx').on(table.conversationId, table.createdAt),
+  ],
+);
+
+export const contextItems = sqliteTable(
+  'context_items',
+  {
+    id: text('id').primaryKey(),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(),
+    title: text('title').notNull(),
+    content: text('content').notNull(),
+    tokenEstimate: integer('token_estimate').notNull(),
+    priority: integer('priority').notNull(),
+    sourceKey: text('source_key'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('context_items_conversation_priority_idx').on(
+      table.conversationId,
+      table.priority,
+      table.createdAt,
+    ),
+    uniqueIndex('context_items_conversation_source_idx').on(table.conversationId, table.sourceKey),
   ],
 );
 

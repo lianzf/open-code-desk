@@ -1,5 +1,6 @@
-import { ChevronRight, FileCode2, Folder, FolderOpen, LockKeyhole } from 'lucide-react';
+import { ChevronRight, FileCode2, Folder, FolderOpen, LockKeyhole, Paperclip } from 'lucide-react';
 
+import { useConversationContextStore } from '@/features/context/context.store';
 import { cn } from '@/lib/utils';
 import { useEditorStore } from '@/features/editor/editor.store';
 import { useWorkspaceStore } from './workspace.store';
@@ -13,6 +14,8 @@ interface TreeLevelProps {
 function TreeLevel({ depth, directory, workspaceId }: TreeLevelProps) {
   const { directories, expandedDirectories, toggleDirectory } = useWorkspaceStore();
   const openFile = useEditorStore((state) => state.openFile);
+  const saveDirectory = useConversationContextStore((state) => state.saveDirectory);
+  const contextConversationId = useConversationContextStore((state) => state.conversationId);
   const entries = directories[directory] ?? [];
 
   return (
@@ -25,46 +28,63 @@ function TreeLevel({ depth, directory, workspaceId }: TreeLevelProps) {
             role="treeitem"
             aria-expanded={entry.kind === 'directory' ? expanded : undefined}
           >
-            <button
-              className={cn(
-                'flex h-7 w-full items-center gap-1.5 truncate rounded px-1.5 text-left text-xs hover:bg-zinc-800',
-                entry.restricted ? 'cursor-not-allowed text-zinc-600' : 'text-zinc-300',
-              )}
-              style={{ paddingLeft: `${depth * 12 + 6}px` }}
-              disabled={entry.restricted}
-              title={entry.restricted ? `${entry.relativePath}（受保护）` : entry.relativePath}
-              onClick={() => {
-                if (entry.kind === 'directory') {
-                  void toggleDirectory(entry.relativePath);
-                } else {
-                  void openFile(workspaceId, entry.relativePath);
-                }
-              }}
-              data-testid={`tree-entry-${entry.relativePath}`}
-            >
-              {entry.kind === 'directory' ? (
-                <>
-                  <ChevronRight
-                    className={cn('size-3 shrink-0 transition-transform', expanded && 'rotate-90')}
-                    aria-hidden="true"
-                  />
-                  {expanded ? (
-                    <FolderOpen className="size-3.5 shrink-0 text-cyan-400" aria-hidden="true" />
-                  ) : (
-                    <Folder className="size-3.5 shrink-0 text-cyan-400" aria-hidden="true" />
-                  )}
-                </>
-              ) : (
-                <>
-                  <span className="w-3 shrink-0" />
-                  <FileCode2 className="size-3.5 shrink-0 text-zinc-500" aria-hidden="true" />
-                </>
-              )}
-              <span className="truncate">{entry.name}</span>
-              {entry.restricted ? (
-                <LockKeyhole className="ml-auto size-3 shrink-0" aria-hidden="true" />
+            <div className="group flex items-center">
+              <button
+                className={cn(
+                  'flex h-7 min-w-0 flex-1 items-center gap-1.5 truncate rounded px-1.5 text-left text-xs hover:bg-zinc-800',
+                  entry.restricted ? 'cursor-not-allowed text-zinc-600' : 'text-zinc-300',
+                )}
+                style={{ paddingLeft: `${depth * 12 + 6}px` }}
+                disabled={entry.restricted}
+                title={entry.restricted ? `${entry.relativePath}（受保护）` : entry.relativePath}
+                onClick={() => {
+                  if (entry.kind === 'directory') {
+                    void toggleDirectory(entry.relativePath);
+                  } else {
+                    void openFile(workspaceId, entry.relativePath);
+                  }
+                }}
+                data-testid={`tree-entry-${entry.relativePath}`}
+              >
+                {entry.kind === 'directory' ? (
+                  <>
+                    <ChevronRight
+                      className={cn(
+                        'size-3 shrink-0 transition-transform',
+                        expanded && 'rotate-90',
+                      )}
+                      aria-hidden="true"
+                    />
+                    {expanded ? (
+                      <FolderOpen className="size-3.5 shrink-0 text-cyan-400" aria-hidden="true" />
+                    ) : (
+                      <Folder className="size-3.5 shrink-0 text-cyan-400" aria-hidden="true" />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span className="w-3 shrink-0" />
+                    <FileCode2 className="size-3.5 shrink-0 text-zinc-500" aria-hidden="true" />
+                  </>
+                )}
+                <span className="truncate">{entry.name}</span>
+                {entry.restricted ? (
+                  <LockKeyhole className="ml-auto size-3 shrink-0" aria-hidden="true" />
+                ) : null}
+              </button>
+              {entry.kind === 'directory' &&
+              !entry.restricted &&
+              contextConversationId !== undefined ? (
+                <button
+                  className="mr-1 hidden rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-cyan-300 group-hover:block focus:block"
+                  onClick={() => void saveDirectory(workspaceId, entry.relativePath)}
+                  title={`将目录结构 ${entry.relativePath} 加入 AI 上下文`}
+                  aria-label={`添加目录上下文 ${entry.relativePath}`}
+                >
+                  <Paperclip className="size-3" />
+                </button>
               ) : null}
-            </button>
+            </div>
             {entry.kind === 'directory' && expanded ? (
               <TreeLevel
                 directory={entry.relativePath}

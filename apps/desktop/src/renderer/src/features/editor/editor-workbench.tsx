@@ -1,7 +1,9 @@
 import Editor from '@monaco-editor/react';
-import { FileCode2, LoaderCircle, Save, X } from 'lucide-react';
+import { FileCode2, LoaderCircle, Paperclip, Save, TextSelect, X } from 'lucide-react';
+import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { useConversationContextStore } from '@/features/context/context.store';
 import { cn } from '@/lib/utils';
 import { useEditorStore } from './editor.store';
 import './monaco-environment';
@@ -10,6 +12,14 @@ export function EditorWorkbench() {
   const { activePath, closeFile, loading, saveActive, saving, setActive, tabs, updateContent } =
     useEditorStore();
   const activeTab = tabs.find((tab) => tab.relativePath === activePath);
+  const contextConversationId = useConversationContextStore((state) => state.conversationId);
+  const saveContext = useConversationContextStore((state) => state.save);
+  const [selectedCode, setSelectedCode] = useState<{
+    readonly path: string;
+    readonly content: string;
+    readonly title: string;
+    readonly sourceKey: string;
+  }>();
 
   if (loading && activeTab === undefined) {
     return (
@@ -61,6 +71,52 @@ export function EditorWorkbench() {
           <Button
             size="sm"
             variant="ghost"
+            disabled={activeTab === undefined || contextConversationId === undefined}
+            onClick={() => {
+              if (activeTab !== undefined) {
+                void saveContext({
+                  type: 'file',
+                  title: activeTab.relativePath,
+                  content: activeTab.content,
+                  priority: 90,
+                  sourceKey: `file:${activeTab.relativePath}`,
+                });
+              }
+            }}
+            title="将当前文件加入 AI 上下文"
+            data-testid="add-current-file-context"
+          >
+            <Paperclip className="size-3.5" />
+            当前文件
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={
+              activeTab === undefined ||
+              contextConversationId === undefined ||
+              selectedCode?.path !== activeTab.relativePath
+            }
+            onClick={() => {
+              if (selectedCode !== undefined) {
+                void saveContext({
+                  type: 'selection',
+                  title: selectedCode.title,
+                  content: selectedCode.content,
+                  priority: 100,
+                  sourceKey: selectedCode.sourceKey,
+                });
+              }
+            }}
+            title="将选中代码加入 AI 上下文"
+            data-testid="add-selection-context"
+          >
+            <TextSelect className="size-3.5" />
+            选中代码
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
             disabled={
               activeTab === undefined || activeTab.content === activeTab.savedContent || saving
             }
@@ -96,8 +152,22 @@ export function EditorWorkbench() {
           theme="vs-dark"
           onChange={(value) => updateContent(value ?? '')}
           onMount={(editor, monaco) => {
+            setSelectedCode(undefined);
             editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
               void saveActive();
+            });
+            editor.onDidChangeCursorSelection(({ selection }) => {
+              const content = editor.getModel()?.getValueInRange(selection) ?? '';
+              if (content === '') {
+                setSelectedCode(undefined);
+                return;
+              }
+              setSelectedCode({
+                path: activeTab.relativePath,
+                content,
+                title: `${activeTab.relativePath}:${selection.startLineNumber}-${selection.endLineNumber}`,
+                sourceKey: `selection:${activeTab.relativePath}:${selection.startLineNumber}:${selection.startColumn}:${selection.endLineNumber}:${selection.endColumn}`,
+              });
             });
           }}
           options={{

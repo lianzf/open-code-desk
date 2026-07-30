@@ -13,7 +13,7 @@ import type { FileChangeService } from '../changes/file-change.service';
 const filePathSchema = z.string().trim().min(1).max(2_000);
 const contentSchema = z.string().max(2_000_000);
 
-const proposalToolNames = new Set([
+const guardedToolNames = new Set([
   'create_file',
   'update_file',
   'delete_file',
@@ -152,7 +152,7 @@ export class ProposalAwarePermissionPolicy implements PermissionPolicy {
     }
     if (
       (tool.permissionLevel === 'write' || tool.permissionLevel === 'execute') &&
-      proposalToolNames.has(tool.name)
+      guardedToolNames.has(tool.name)
     ) {
       return {
         outcome: 'allow',

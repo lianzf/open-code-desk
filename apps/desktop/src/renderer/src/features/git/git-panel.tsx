@@ -1,6 +1,7 @@
-import { FileCode2, GitBranch, RefreshCw, X } from 'lucide-react';
+import { FileCode2, GitBranch, Paperclip, RefreshCw, X } from 'lucide-react';
 import { useEffect } from 'react';
 
+import { useConversationContextStore } from '@/features/context/context.store';
 import { useGitStore } from './git.store';
 
 interface GitPanelProps {
@@ -31,6 +32,8 @@ function statusLabel(file: {
 
 export function GitPanel({ workspaceId, onClose }: GitPanelProps) {
   const git = useGitStore();
+  const contextConversationId = useConversationContextStore((state) => state.conversationId);
+  const saveContext = useConversationContextStore((state) => state.save);
   const initialize = git.initialize;
 
   useEffect(() => {
@@ -40,7 +43,10 @@ export function GitPanel({ workspaceId, onClose }: GitPanelProps) {
   const status = git.status;
 
   return (
-    <section className="flex h-60 min-h-0 shrink-0 flex-col border-t border-zinc-800 bg-zinc-950">
+    <section
+      className="flex h-60 min-h-0 shrink-0 flex-col border-t border-zinc-800 bg-zinc-950"
+      data-testid="git-panel"
+    >
       <header className="flex h-8 shrink-0 items-center gap-2 border-b border-zinc-800 px-3 text-[11px]">
         <GitBranch className="size-3.5 text-cyan-500" />
         <span className="font-medium text-zinc-300">Git</span>
@@ -58,6 +64,32 @@ export function GitPanel({ workspaceId, onClose }: GitPanelProps) {
           </>
         ) : null}
         <div className="ml-auto flex items-center gap-1">
+          <button
+            className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-cyan-300 disabled:opacity-40"
+            onClick={() => {
+              const diff = git.diff;
+              if (diff !== undefined && diff.content !== '') {
+                const scope = diff.path ?? '全部变更';
+                void saveContext({
+                  type: 'git_diff',
+                  title: `${diff.staged ? '暂存区' : '工作区'} Diff · ${scope}`,
+                  content: diff.content,
+                  priority: 80,
+                  sourceKey: `git-diff:${diff.staged ? 'staged' : 'worktree'}:${diff.path ?? '*'}`,
+                });
+              }
+            }}
+            disabled={
+              contextConversationId === undefined ||
+              git.diff === undefined ||
+              git.diff.content === ''
+            }
+            aria-label="将当前 Git Diff 加入上下文"
+            title="将当前 Git Diff 加入 AI 上下文"
+            data-testid="add-git-diff-context"
+          >
+            <Paperclip className="size-3.5" />
+          </button>
           <button
             className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
             onClick={() => void git.refresh()}

@@ -18,6 +18,8 @@ import { ChangeReviewSummary } from '@/features/changes/change-review-panel';
 import { useChangeReviewStore } from '@/features/changes/change-review.store';
 import { CommandReviewPanel } from '@/features/commands/command-review-panel';
 import { useCommandStore } from '@/features/commands/command.store';
+import { ContextTray } from '@/features/context/context-tray';
+import { useConversationContextStore } from '@/features/context/context.store';
 import { useProviderStore } from '@/features/providers/provider.store';
 import { useWorkspaceStore } from '@/features/workspace/workspace.store';
 import { useChatStore } from './chat.store';
@@ -47,6 +49,7 @@ export function ChatPanel() {
   const provider = useProviderStore();
   const initializeChanges = useChangeReviewStore((state) => state.initialize);
   const initializeCommands = useCommandStore((state) => state.initialize);
+  const initializeContext = useConversationContextStore((state) => state.initialize);
 
   useEffect(() => bindStream(), [bindStream]);
 
@@ -60,8 +63,15 @@ export function ChatPanel() {
     if (chat.activeConversationId !== undefined && currentWorkspace !== null) {
       void initializeChanges(chat.activeConversationId);
       void initializeCommands(chat.activeConversationId, currentWorkspace.id);
+      void initializeContext(chat.activeConversationId);
     }
-  }, [chat.activeConversationId, currentWorkspace, initializeChanges, initializeCommands]);
+  }, [
+    chat.activeConversationId,
+    currentWorkspace,
+    initializeChanges,
+    initializeCommands,
+    initializeContext,
+  ]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -311,6 +321,12 @@ export function ChatPanel() {
             {chat.contextStats.summarizedMessages > 0
               ? ` · 已摘要 ${chat.contextStats.summarizedMessages} 条历史消息`
               : ''}
+            {chat.contextStats.selectedContextItems > 0
+              ? ` · 已使用 ${chat.contextStats.selectedContextItems} 项附件`
+              : ''}
+            {chat.contextStats.droppedContextItems > 0
+              ? ` · 裁减 ${chat.contextStats.droppedContextItems} 项`
+              : ''}
           </p>
         ) : null}
         {chat.errorMessage !== undefined ? (
@@ -318,6 +334,7 @@ export function ChatPanel() {
             {chat.errorMessage}
           </p>
         ) : null}
+        <ContextTray />
         <div className="rounded-xl border border-zinc-700 bg-zinc-900 focus-within:border-cyan-700">
           <textarea
             className="max-h-40 min-h-20 w-full resize-none bg-transparent p-3 text-sm text-zinc-200 outline-none placeholder:text-zinc-600"

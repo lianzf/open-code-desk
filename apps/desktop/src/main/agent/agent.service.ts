@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { AgentStateMachine } from '@open-code-desk/application';
-import type { AppError, ConversationMessage, MessageToolCall } from '@open-code-desk/domain';
+import type { ConversationMessage, MessageToolCall } from '@open-code-desk/domain';
 import type { ChatStreamEvent, ChatToolCall } from '@open-code-desk/provider-core';
 import {
   DefaultPermissionPolicy,
@@ -12,83 +12,25 @@ import {
 } from '@open-code-desk/tool-core';
 
 import type { ConversationRepository } from '../conversations/conversation.repository';
+import type { ContextItemRepository } from '../context/context-item.repository';
 import type { FileChangeService } from '../changes/file-change.service';
-import type { CommandLifecycleEvent, CommandService } from '../commands/command.service';
-import { normalizeProviderError, toPublicAppError } from '../providers/core/provider-error';
+import type { CommandLifecycleEvent } from '../commands/command-lifecycle';
+import type { CommandService } from '../commands/command.service';
 import type { ProviderService } from '../providers/provider.service';
 import type { AgentTaskRepository } from './agent-task.repository';
+import {
+  maximumAgentRounds,
+  maximumToolCalls,
+  parseToolArguments,
+  previewOf,
+  rejectedToolErrorCodes,
+  stringifyToolResult,
+  unexpectedError,
+  type AccumulatedResponse,
+} from './agent-run-support';
 import type { AgentEventListener, AgentRunInput } from './agent.types';
 import { ConversationContextBuilder } from './conversation-context';
 import type { ToolCallRepository } from './tool-call.repository';
-
-const maximumAgentRounds = 8;
-const maximumToolCalls = 20;
-const maximumToolResultCharacters = 100_000;
-const rejectedToolErrorCodes = new Set([
-  'TOOL_NOT_FOUND',
-  'TOOL_INPUT_INVALID',
-  'TOOL_PERMISSION_DENIED',
-  'TOOL_APPROVAL_REQUIRED',
-]);
-
-interface AccumulatedResponse {
-  content: string;
-  reasoning: string;
-  readonly toolCalls: Map<string, { name: string; arguments: string }>;
-}
-
-function stringifyToolResult(result: ToolResult<unknown>): string {
-  let serialized: string;
-  try {
-    serialized = JSON.stringify(result);
-  } catch {
-    serialized = JSON.stringify({
-      ok: false,
-      error: {
-        code: 'TOOL_RESULT_SERIALIZATION_FAILED',
-        message: 'The tool result could not be serialized.',
-        retryable: false,
-      },
-    });
-  }
-  if (serialized.length <= maximumToolResultCharacters) {
-    return serialized;
-  }
-  return JSON.stringify({
-    ok: false,
-    error: {
-      code: 'TOOL_RESULT_TOO_LARGE',
-      message: 'The tool result exceeded the Agent context safety limit. Narrow the request.',
-      retryable: true,
-    },
-  });
-}
-
-function previewOf(result: ToolResult<unknown>): string {
-  return stringifyToolResult(result).slice(0, 2_000);
-}
-
-function parseToolArguments(argumentsText: string): unknown {
-  if (argumentsText.trim() === '') {
-    return {};
-  }
-  return JSON.parse(argumentsText) as unknown;
-}
-
-function unexpectedError(error: unknown): AppError {
-  if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
-    return { code: 'CANCELLED', message: 'The Agent task was cancelled.', retryable: true };
-  }
-  const normalized = normalizeProviderError(error);
-  if (normalized.code !== 'PROVIDER_UNAVAILABLE' || error === normalized) {
-    return toPublicAppError(normalized);
-  }
-  return {
-    code: 'UNKNOWN_ERROR',
-    message: error instanceof Error ? error.message : 'The Agent task failed unexpectedly.',
-    retryable: true,
-  };
-}
 
 export class AgentService {
   readonly #dispatcher: ToolDispatcher;
@@ -103,6 +45,7 @@ export class AgentService {
     private readonly changes?: FileChangeService,
     permissionPolicy: PermissionPolicy = new DefaultPermissionPolicy(),
     private readonly commands?: CommandService,
+    private readonly contextItems?: ContextItemRepository,
   ) {
     this.#dispatcher = new ToolDispatcher(tools, permissionPolicy, toolCalls);
   }
@@ -158,6 +101,7 @@ export class AgentService {
           history,
           profile.contextWindow,
           profile.maxOutputTokens,
+          this.contextItems?.list(input.conversationId) ?? [],
         );
         emit({
           type: 'context_built',
@@ -165,6 +109,9 @@ export class AgentService {
           usedTokens: context.usedTokens,
           droppedMessages: context.droppedMessages,
           summarizedMessages: context.summarizedMessages,
+          selectedContextItems: context.selectedContextItems,
+          droppedContextItems: context.droppedContextItems,
+          truncatedContextItems: context.truncatedContextItems,
         });
 
         activeAssistantMessage = this.conversations.addMessage({

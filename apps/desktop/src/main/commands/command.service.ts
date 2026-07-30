@@ -1,7 +1,7 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { realpath, stat } from 'node:fs/promises';
 
-import type { AppError, CommandExecution, PermissionRuleKind } from '@open-code-desk/domain';
+import type { CommandExecution, PermissionRuleKind } from '@open-code-desk/domain';
 import type { ToolExecutionContext } from '@open-code-desk/tool-core';
 
 import { isPathInside, normalizeRelativePath, toPlatformPath } from '../filesystem/path-policy';
@@ -12,83 +12,23 @@ import {
   executableRuleValue,
   matchesExecutableRule,
 } from './command-risk-policy';
+import { StructuredCommandRunner, type CommandRunResult } from './command-runner';
 import {
-  StructuredCommandRunner,
-  type CommandOutputChunk,
-  type CommandRunResult,
-} from './command-runner';
+  commandDigest,
+  toToolOutput,
+  type ApprovalOutcome,
+  type CommandDecision,
+  type CommandLifecycleEvent,
+  type CommandListener,
+  type CommandToolInput,
+  type CommandToolOutput,
+} from './command-lifecycle';
 import type { PermissionRuleRepository } from './permission-rule.repository';
-
-export interface CommandToolInput {
-  readonly executable: string;
-  readonly args: ReadonlyArray<string>;
-  readonly cwd?: string | undefined;
-  readonly timeoutMs: number;
-}
-
-export interface CommandToolOutput {
-  readonly commandId: string;
-  readonly status: CommandExecution['status'];
-  readonly exitCode?: number;
-  readonly terminationSignal?: string;
-  readonly output: string;
-  readonly error?: AppError;
-}
-
-export type CommandLifecycleEvent =
-  | {
-      readonly type: 'command_proposed' | 'command_status';
-      readonly command: CommandExecution;
-    }
-  | {
-      readonly type: 'command_output';
-      readonly commandId: string;
-      readonly taskId: string;
-      readonly stream: CommandOutputChunk['stream'];
-      readonly chunk: string;
-    };
-
-export interface CommandDecision {
-  readonly commandId: string;
-  readonly expectedApprovalDigest: string;
-  readonly decision: 'approve' | 'reject';
-  readonly rememberExecutable: boolean;
-}
-
-type ApprovalOutcome = 'approved' | 'rejected' | 'cancelled';
-type CommandListener = (event: CommandLifecycleEvent) => void;
 
 interface PendingApproval {
   readonly resolve: (outcome: ApprovalOutcome) => void;
   readonly signal: AbortSignal;
   readonly abortListener: () => void;
-}
-
-function commandDigest(input: {
-  readonly id: string;
-  readonly workspaceId: string;
-  readonly conversationId: string;
-  readonly taskId: string;
-  readonly modelToolCallId: string;
-  readonly executable: string;
-  readonly args: ReadonlyArray<string>;
-  readonly cwd: string;
-  readonly timeoutMs: number;
-}): string {
-  return createHash('sha256').update(JSON.stringify(input)).digest('hex');
-}
-
-function toToolOutput(command: CommandExecution): CommandToolOutput {
-  return {
-    commandId: command.id,
-    status: command.status,
-    ...(command.exitCode === undefined ? {} : { exitCode: command.exitCode }),
-    ...(command.terminationSignal === undefined
-      ? {}
-      : { terminationSignal: command.terminationSignal }),
-    output: command.outputTail,
-    ...(command.error === undefined ? {} : { error: command.error }),
-  };
 }
 
 export class CommandService {
