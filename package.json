@@ -30,7 +30,8 @@
     "build": "pnpm -r --if-present build",
     "package:dir": "pnpm --filter @open-code-desk/desktop package:dir",
     "package:win": "pnpm --filter @open-code-desk/desktop package:win",
-    "package:mac": "pnpm --filter @open-code-desk/desktop package:mac"
+    "package:mac": "pnpm --filter @open-code-desk/desktop package:mac",
+    "package:linux": "pnpm --filter @open-code-desk/desktop package:linux"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

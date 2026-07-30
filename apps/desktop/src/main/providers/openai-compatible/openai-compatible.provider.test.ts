@@ -93,7 +93,7 @@ describe('OpenAICompatibleProvider', () => {
   it('lists models and validates a real HTTP connection', async () => {
     const provider = new OpenAICompatibleProvider();
 
-    await expect(provider.listModels(config(), context())).resolves.toEqual([
+    await expect(provider.listModels(config(), context())).resolves.toMatchObject([
       { id: 'fixture-model', name: 'fixture-model', ownedBy: 'fixture' },
     ]);
     await expect(provider.validateConfig(config(), context())).resolves.toEqual({

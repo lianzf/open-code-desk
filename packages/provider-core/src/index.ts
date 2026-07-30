@@ -42,6 +42,7 @@ export interface ModelInfo {
   readonly id: string;
   readonly name: string;
   readonly ownedBy?: string;
+  readonly capabilities?: ModelCapabilities;
 }
 
 export type ChatMessageRole = 'system' | 'user' | 'assistant' | 'tool';

@@ -142,6 +142,7 @@ export class AgentService {
                 inputSchema: tool.inputSchema,
               }))
             : undefined,
+          profile.maxOutputTokens,
         );
         for await (const event of stream) {
           this.consumeProviderEvent(event, activeAssistantMessage.id, response, emit);

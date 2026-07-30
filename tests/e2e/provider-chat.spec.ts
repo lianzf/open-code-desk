@@ -124,6 +124,17 @@ test('runs a real read-tool Agent loop and restores the conversation after resta
     let window = await application.firstWindow();
 
     await window.getByTestId('open-provider-settings').click();
+    const providerKind = window.getByTestId('provider-kind');
+    await expect(providerKind.locator('option')).toHaveCount(10);
+    await providerKind.selectOption('anthropic');
+    await expect(window.getByTestId('provider-base-url')).toHaveValue(
+      'https://api.anthropic.com/v1',
+    );
+    await providerKind.selectOption('gemini');
+    await expect(window.getByTestId('provider-base-url')).toHaveValue(
+      'https://generativelanguage.googleapis.com/v1beta',
+    );
+    await providerKind.selectOption('openai-compatible');
     await window.getByTestId('provider-name').fill('E2E Provider');
     await window.getByTestId('provider-base-url').fill(fixture.baseUrl);
     await window.getByTestId('provider-api-key').fill(secretSentinel);

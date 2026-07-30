@@ -33,9 +33,9 @@ import { registerConversationsIpc, unregisterConversationsIpc } from './ipc/conv
 import { registerProvidersIpc, unregisterProvidersIpc } from './ipc/providers.ipc';
 import { registerWorkspaceIpc, unregisterWorkspaceIpc } from './ipc/workspace.ipc';
 import { registerTerminalIpc, unregisterTerminalIpc } from './ipc/terminal.ipc';
-import { OpenAICompatibleProvider } from './providers/openai-compatible/openai-compatible.provider';
 import { ProviderConfigRepository } from './providers/provider-config.repository';
 import { ProviderService } from './providers/provider.service';
+import { registerModelProviders } from './providers/register-model-providers';
 import { SecretRepository } from './security/secret.repository';
 import { ElectronSafeStorageCryptography, SecureSecretStore } from './security/secret-store';
 import { ProposalAwarePermissionPolicy } from './tools/file-proposal-tools';
@@ -78,7 +78,7 @@ app.whenReady().then(async () => {
   terminalService = new TerminalSessionService(workspaceService);
   workspaceWatcher = new WorkspaceWatchService();
   const providerRegistry = new ProviderRegistry();
-  providerRegistry.register(new OpenAICompatibleProvider());
+  registerModelProviders(providerRegistry);
   const secretStore = new SecureSecretStore(
     new SecretRepository(database),
     new ElectronSafeStorageCryptography(),

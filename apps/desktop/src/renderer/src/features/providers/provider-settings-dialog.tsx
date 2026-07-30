@@ -1,5 +1,6 @@
 import { CheckCircle2, LoaderCircle, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import type { ProviderKind } from '@open-code-desk/ipc-contracts';
 
 import { Button } from '@/components/ui/button';
 import { OpenAICompatibleForm } from './openai-compatible-form';
@@ -22,6 +23,7 @@ export function ProviderSettingsDialog() {
     testResult,
   } = useProviderStore();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [creatingKind, setCreatingKind] = useState<ProviderKind>('openai-compatible');
 
   useEffect(() => {
     if (settingsOpen) {
@@ -35,6 +37,8 @@ export function ProviderSettingsDialog() {
 
   const editing = configurations.find((configuration) => configuration.id === editingId) ?? null;
   const availableKinds = descriptors.filter((descriptor) => descriptor.available);
+  const activeKind = editing?.kind ?? creatingKind;
+  const activeDescriptor = descriptors.find((descriptor) => descriptor.kind === activeKind);
 
   return (
     <div
@@ -85,10 +89,12 @@ export function ProviderSettingsDialog() {
           <header className="flex h-14 shrink-0 items-center border-b border-zinc-800 px-5">
             <div>
               <h2 className="text-sm font-semibold text-zinc-100">
-                {editing === null ? '新增 OpenAI Compatible' : editing.displayName}
+                {editing === null
+                  ? `新增 ${activeDescriptor?.name ?? activeKind}`
+                  : editing.displayName}
               </h2>
               <p className="mt-0.5 text-[11px] text-zinc-600">
-                Provider Adapter：OpenAI Compatible
+                Provider Adapter：{activeDescriptor?.name ?? activeKind}
               </p>
             </div>
             <button
@@ -101,10 +107,28 @@ export function ProviderSettingsDialog() {
           </header>
 
           <div className="min-h-0 flex-1 overflow-auto p-5">
+            {editing === null ? (
+              <label className="mb-5 block space-y-1.5 text-xs text-zinc-400">
+                <span>模型服务商</span>
+                <select
+                  className="h-9 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-500"
+                  value={creatingKind}
+                  onChange={(event) => setCreatingKind(event.target.value as ProviderKind)}
+                  data-testid="provider-kind"
+                >
+                  {availableKinds.map((descriptor) => (
+                    <option key={descriptor.kind} value={descriptor.kind}>
+                      {descriptor.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <OpenAICompatibleForm
-              key={editing?.id ?? 'new'}
+              key={editing?.id ?? `new-${creatingKind}`}
               configuration={editing}
               loading={loading}
+              providerKind={activeKind}
               onSave={async (input) => {
                 const saved = await save(input);
                 setEditingId(saved.id);
@@ -177,14 +201,26 @@ export function ProviderSettingsDialog() {
                 <p className="text-xs font-medium text-zinc-300">
                   服务返回 {models[editing.id]?.length ?? 0} 个模型
                 </p>
-                <div className="mt-2 flex max-h-28 flex-wrap gap-1 overflow-auto">
+                <div className="mt-2 max-h-40 space-y-1 overflow-auto">
                   {models[editing.id]?.map((model) => (
-                    <span
+                    <div
                       key={model.id}
-                      className="rounded bg-zinc-800 px-2 py-1 text-[11px] text-zinc-400"
+                      className="rounded bg-zinc-800 px-2 py-1.5 text-[11px] text-zinc-400"
                     >
-                      {model.id}
-                    </span>
+                      <span className="block truncate text-zinc-300">{model.id}</span>
+                      {model.capabilities === undefined ? null : (
+                        <span className="mt-1 flex flex-wrap gap-1 text-[10px] text-zinc-500">
+                          {model.capabilities.streaming ? <span>流式</span> : null}
+                          {model.capabilities.toolCalling ? <span>工具</span> : null}
+                          {model.capabilities.vision ? <span>视觉</span> : null}
+                          {model.capabilities.reasoning ? <span>推理</span> : null}
+                          {model.capabilities.structuredOutput ? <span>结构化输出</span> : null}
+                          {model.capabilities.contextWindow === undefined ? null : (
+                            <span>{model.capabilities.contextWindow.toLocaleString()} tokens</span>
+                          )}
+                        </span>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>

@@ -199,6 +199,7 @@ export class ProviderService {
   }
 
   public async save(input: SaveProviderRequest): Promise<PublicProviderConfig> {
+    this.registry.get(input.kind);
     const providerId = input.id ?? randomUUID();
     const existing = this.repository.findById(providerId);
     const existingPayload = await this.readSecretPayload(existing);
@@ -296,6 +297,7 @@ export class ProviderService {
     requestId: string,
     signal: AbortSignal,
     tools?: ReadonlyArray<ChatToolDefinition>,
+    maxOutputTokens?: number,
   ): Promise<AsyncIterable<ChatStreamEvent>> {
     const runtime = await this.getRuntime(providerId, requestId, signal);
     return runtime.adapter.streamChat(
@@ -304,6 +306,7 @@ export class ProviderService {
         model: model ?? runtime.config.defaultModel,
         messages,
         ...(tools === undefined ? {} : { tools }),
+        ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
       },
       runtime.context,
     );
