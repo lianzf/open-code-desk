@@ -221,3 +221,63 @@ test('manages workspace paths and performs cancellable source-text search', asyn
     await rm(userDataDirectory, { recursive: true, force: true });
   }
 });
+
+test('persists read approvals, blocked paths, and explicit external directory grants', async () => {
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-e2e-permissions-'));
+  const externalDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-e2e-external-'));
+  const userDataDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-e2e-user-'));
+  await writeFile(join(projectDirectory, 'README.md'), '# Permission fixture\n', 'utf8');
+  let application: ElectronApplication | undefined;
+
+  try {
+    application = await launchDesktop(userDataDirectory);
+    await application.evaluate(
+      ({ dialog }, selectedDirectories) => {
+        const pending = [...selectedDirectories];
+        Object.defineProperty(dialog, 'showOpenDialog', {
+          configurable: true,
+          value: async () => {
+            const selected = pending.shift();
+            return selected === undefined
+              ? { canceled: true, filePaths: [] }
+              : { canceled: false, filePaths: [selected] };
+          },
+        });
+      },
+      [projectDirectory, externalDirectory],
+    );
+    let window = await application.firstWindow();
+    await window.getByTestId('open-project').click();
+    await expect(window.getByTestId('workspace-page')).toBeVisible();
+    await window.getByText('工作区权限规则', { exact: true }).click();
+
+    const autoAllow = window.getByTestId('auto-allow-read-tools');
+    await expect(autoAllow).toBeChecked();
+    await autoAllow.uncheck();
+    const blockedPath = window.getByLabel('禁止访问的相对路径');
+    await blockedPath.fill('private');
+    await blockedPath.locator('..').getByRole('button', { name: '添加' }).click();
+    await expect(window.getByText('private', { exact: true })).toBeVisible();
+
+    await window.getByRole('button', { name: '选择目录' }).click();
+    await expect(window.getByText(externalDirectory, { exact: true })).toBeVisible();
+
+    await application.close();
+    application = undefined;
+    application = await launchDesktop(userDataDirectory);
+    window = await application.firstWindow();
+    await window.getByText(projectDirectory, { exact: true }).click();
+    await expect(window.getByTestId('workspace-page')).toBeVisible();
+    await window.getByText('工作区权限规则', { exact: true }).click();
+    await expect(window.getByTestId('auto-allow-read-tools')).not.toBeChecked();
+    await expect(window.getByText('private', { exact: true })).toBeVisible();
+    await expect(window.getByText(externalDirectory, { exact: true })).toBeVisible();
+  } finally {
+    if (application !== undefined) {
+      await application.close();
+    }
+    await rm(projectDirectory, { recursive: true, force: true });
+    await rm(externalDirectory, { recursive: true, force: true });
+    await rm(userDataDirectory, { recursive: true, force: true });
+  }
+});

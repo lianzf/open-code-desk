@@ -80,7 +80,14 @@ export const permissionRuleSchema = z
   .object({
     id: z.string().uuid(),
     workspaceId: z.string().uuid(),
-    kind: z.enum(['allow_executable', 'deny_executable', 'allow_network_commands']),
+    kind: z.enum([
+      'allow_executable',
+      'deny_executable',
+      'allow_network_commands',
+      'require_read_approval',
+      'blocked_path',
+      'external_directory',
+    ]),
     value: z.string().max(8_000),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),

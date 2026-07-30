@@ -91,6 +91,21 @@ export interface PermissionPolicy {
   decide(tool: AgentTool, context: ToolExecutionContext): PermissionDecision;
 }
 
+export type PermissionApprovalOutcome = 'approved' | 'rejected' | 'cancelled';
+
+/**
+ * Bridges a policy decision to a durable, user-driven approval surface.
+ * Implementations must bind the approval to the validated input and call ID.
+ */
+export interface PermissionApprover {
+  request(
+    tool: AgentTool,
+    input: unknown,
+    context: ToolExecutionContext,
+    reason: string,
+  ): Promise<PermissionApprovalOutcome>;
+}
+
 export class DefaultPermissionPolicy implements PermissionPolicy {
   public decide(tool: AgentTool): PermissionDecision {
     if (tool.permissionLevel === 'read') {
@@ -117,6 +132,7 @@ export class ToolDispatcher {
     private readonly registry: ToolRegistry,
     private readonly permissionPolicy: PermissionPolicy,
     private readonly observer: ToolExecutionObserver,
+    private readonly approver?: PermissionApprover,
   ) {}
 
   public async execute(
@@ -151,15 +167,41 @@ export class ToolDispatcher {
     }
 
     const decision = this.permissionPolicy.decide(tool, context);
-    if (decision.outcome !== 'allow') {
+    if (decision.outcome === 'deny') {
       return {
         ok: false,
         error: {
-          code: decision.outcome === 'deny' ? 'TOOL_PERMISSION_DENIED' : 'TOOL_APPROVAL_REQUIRED',
+          code: 'TOOL_PERMISSION_DENIED',
           message: decision.reason,
-          retryable: decision.outcome === 'require_approval',
+          retryable: false,
         },
       };
+    }
+    if (decision.outcome === 'require_approval') {
+      if (this.approver === undefined) {
+        return {
+          ok: false,
+          error: {
+            code: 'TOOL_APPROVAL_REQUIRED',
+            message: decision.reason,
+            retryable: true,
+          },
+        };
+      }
+      const outcome = await this.approver.request(tool, parsed.data, context, decision.reason);
+      if (outcome !== 'approved') {
+        return {
+          ok: false,
+          error: {
+            code: outcome === 'cancelled' ? 'CANCELLED' : 'TOOL_APPROVAL_REJECTED',
+            message:
+              outcome === 'cancelled'
+                ? 'Tool approval was cancelled.'
+                : 'The user rejected the tool request.',
+            retryable: true,
+          },
+        };
+      }
     }
 
     await this.observer.started(tool, parsed.data, context);

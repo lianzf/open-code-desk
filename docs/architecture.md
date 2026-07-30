@@ -393,6 +393,16 @@ export interface PermissionDecision {
 审批绑定规范化参数摘要，防止 UI 展示内容与实际执行内容不一致。未知 Tool 名称、额外参数或过期
 审批都必须失败。工具注册表拒绝重复名称。
 
+当前实现使用 `tool_calls.status = pending` 作为可持久化的通用工具审批记录。审批摘要由 call ID、
+task ID、conversation ID、Tool 名称、权限等级和经过 Zod 校验的输入共同计算；Renderer 只能回传
+call ID、决策和期望摘要。`ToolApprovalService` 仅在活动 Agent 任务中解析该决策，批准后
+`ToolDispatcher` 才调用工具，拒绝/取消则形成结构化 ToolResult 并继续 Agent 循环。应用重启会把
+遗留 `pending/running` ToolCall 标记为取消。
+
+权限规则按工作区持久化：`require_read_approval` 控制工作区只读工具是否逐次批准，
+`blocked_path` 阻止指定相对路径及其子路径，`external_directory` 只能由系统目录选择器建立。
+外部目录工具始终逐次审批，不继承普通只读工具的自动允许设置。
+
 ### 7.3 Agent、上下文与文件变更
 
 ```ts

@@ -155,6 +155,18 @@ export const chatStreamPayloadSchema = z.discriminatedUnion('type', [
     .strict(),
   z
     .object({
+      type: z.literal('tool_approval_requested'),
+      callId: z.string().uuid(),
+      modelCallId: z.string().max(500),
+      name: z.string().min(1).max(500),
+      permissionLevel: z.enum(['read', 'write', 'execute', 'dangerous']),
+      input: z.unknown(),
+      approvalDigest: z.string().length(64),
+      reason: z.string().min(1).max(4_000),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal('change_set_ready'),
       taskId: z.string().uuid(),
       conversationId: z.string().uuid(),

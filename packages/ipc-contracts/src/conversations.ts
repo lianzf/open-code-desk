@@ -108,6 +108,7 @@ export const toolCallRecordSchema = z
     permissionLevel: z.enum(['read', 'write', 'execute', 'dangerous']),
     input: z.unknown(),
     status: z.enum(['pending', 'running', 'completed', 'failed', 'cancelled', 'rejected']),
+    approvalDigest: z.string().length(64).optional(),
     output: z.unknown().optional(),
     error: z
       .object({

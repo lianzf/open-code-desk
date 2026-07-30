@@ -1,8 +1,9 @@
-import { isAbsolute, relative, resolve, sep, win32 } from 'node:path';
+import { basename, isAbsolute, relative, resolve, sep, win32 } from 'node:path';
 
 const sensitiveFileNames = new Set(['id_dsa', 'id_ecdsa', 'id_ed25519', 'id_rsa', 'known_hosts']);
 
 const sensitiveDirectoryNames = new Set(['.aws', '.azure', '.gnupg', '.ssh', 'browser data']);
+const additionalSensitiveDirectoryNames = new Set(['.docker', '.kube', 'login data', 'user data']);
 
 export const ignoredDirectoryNames = new Set([
   '.git',
@@ -75,7 +76,11 @@ export function isSensitiveRelativePath(relativePath: string): boolean {
 
   const segments = normalized.split('/');
   return segments.some((segment) => {
-    if (sensitiveDirectoryNames.has(segment) || sensitiveFileNames.has(segment)) {
+    if (
+      sensitiveDirectoryNames.has(segment) ||
+      additionalSensitiveDirectoryNames.has(segment) ||
+      sensitiveFileNames.has(segment)
+    ) {
       return true;
     }
 
@@ -86,6 +91,41 @@ export function isSensitiveRelativePath(relativePath: string): boolean {
       segment.endsWith('.pfx')
     );
   });
+}
+
+export function isSensitiveAbsolutePath(absolutePath: string): boolean {
+  const normalized = resolve(absolutePath).replaceAll('\\', '/').toLocaleLowerCase('en-US');
+  const withoutRoot = normalized.replace(/^[a-z]:\//, '').replace(/^\/+/, '');
+  if (withoutRoot !== '' && isSensitiveRelativePath(withoutRoot)) {
+    return true;
+  }
+  return [
+    '/google/chrome/user data',
+    '/microsoft/edge/user data',
+    '/mozilla/firefox/profiles',
+    '/library/application support/google/chrome',
+    '/library/application support/microsoft edge',
+  ].some((pattern) => normalized.includes(pattern));
+}
+
+export function isProtectedSystemPath(absolutePath: string): boolean {
+  if (process.platform === 'win32') {
+    const systemRoot = process.env.SystemRoot;
+    const programData = process.env.ProgramData;
+    return [systemRoot, programData]
+      .filter((value): value is string => value !== undefined && value !== '')
+      .some((root) => isPathInside(root, absolutePath));
+  }
+  if (process.platform === 'darwin') {
+    return ['/System', '/private/etc', '/private/var/db'].some((root) =>
+      isPathInside(root, absolutePath),
+    );
+  }
+  return ['/etc', '/proc', '/sys', '/dev', '/run'].some((root) => isPathInside(root, absolutePath));
+}
+
+export function safeExternalDirectoryLabel(absolutePath: string): string {
+  return basename(resolve(absolutePath)) || resolve(absolutePath);
 }
 
 export function isIgnoredDirectoryName(name: string): boolean {

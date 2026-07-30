@@ -8,6 +8,7 @@ import { ProviderRegistry } from '@open-code-desk/provider-core';
 import { AgentService } from './agent/agent.service';
 import { AgentTaskRepository } from './agent/agent-task.repository';
 import { ToolCallRepository } from './agent/tool-call.repository';
+import { ToolApprovalService } from './agent/tool-approval.service';
 import { AuditLogService, redactAuditText } from './audit/audit-log.service';
 import { ChangeArtifactStore } from './changes/artifact-store';
 import { ChangePathResolver } from './changes/change-path-resolver';
@@ -39,6 +40,7 @@ import { registerContextIpc, unregisterContextIpc } from './ipc/context.ipc';
 import { registerConversationsIpc, unregisterConversationsIpc } from './ipc/conversations.ipc';
 import { registerCrashReportsIpc, unregisterCrashReportsIpc } from './ipc/crash-reports.ipc';
 import { registerProvidersIpc, unregisterProvidersIpc } from './ipc/providers.ipc';
+import { registerPermissionsIpc, unregisterPermissionsIpc } from './ipc/permissions.ipc';
 import { registerSettingsIpc, unregisterSettingsIpc } from './ipc/settings.ipc';
 import { registerWorkspaceIpc, unregisterWorkspaceIpc } from './ipc/workspace.ipc';
 import { registerTerminalIpc, unregisterTerminalIpc } from './ipc/terminal.ipc';
@@ -59,6 +61,9 @@ import { WorkspaceRepository } from './workspace/workspace.repository';
 import { WorkspaceService } from './workspace/workspace.service';
 import { TerminalSessionService } from './terminal/terminal-session.service';
 import { UpdateService } from './updates/update.service';
+import { WorkspacePermissionService } from './permissions/workspace-permission.service';
+import { WorkspacePathPolicy } from './permissions/workspace-path-policy';
+import { ExternalDirectoryService } from './permissions/external-directory.service';
 
 const rendererHtmlPath = join(__dirname, '../renderer/index.html');
 const devServerUrl = process.env.ELECTRON_RENDERER_URL;
@@ -67,6 +72,7 @@ let database: AppDatabase | null = null;
 let workspaceWatcher: WorkspaceWatchService | null = null;
 let chatIpcController: ChatIpcController | null = null;
 let commandService: CommandService | null = null;
+let toolApprovalService: ToolApprovalService | null = null;
 let terminalService: TerminalSessionService | null = null;
 let crashReportService: CrashReportService | null = null;
 let updateService: UpdateService | null = null;
@@ -150,7 +156,10 @@ void app
       workspaceRepository,
       new ElectronDirectoryPicker(),
     );
-    const fileService = new WorkspaceFileService(workspaceService, auditLog);
+    const permissionRules = new PermissionRuleRepository(database);
+    const workspacePathPolicy = new WorkspacePathPolicy(permissionRules);
+    const fileService = new WorkspaceFileService(workspaceService, auditLog, workspacePathPolicy);
+    const externalDirectories = new ExternalDirectoryService(permissionRules, workspaceService);
     const gitService = new GitService(workspaceService);
     terminalService = new TerminalSessionService(workspaceService);
     workspaceWatcher = new WorkspaceWatchService();
@@ -188,13 +197,15 @@ void app
     const contextItemRepository = new ContextItemRepository(database);
     const agentTaskRepository = new AgentTaskRepository(database);
     const toolCallRepository = new ToolCallRepository(database, auditLog);
+    toolCallRepository.recoverInterrupted();
+    toolApprovalService = new ToolApprovalService(toolCallRepository);
     const commandRepository = new CommandRepository(database);
     const changeRepository = new FileChangeRepository(database);
     const changeArtifacts = new ChangeArtifactStore(
       join(app.getPath('userData'), 'change-artifacts'),
     );
     await changeArtifacts.initialize();
-    const changePaths = new ChangePathResolver(workspaceService);
+    const changePaths = new ChangePathResolver(workspaceService, workspacePathPolicy);
     const changeService = new FileChangeService(
       changeRepository,
       changeArtifacts,
@@ -215,7 +226,7 @@ void app
     agentTaskRepository.recoverInterrupted();
     commandService = new CommandService(
       commandRepository,
-      new PermissionRuleRepository(database),
+      permissionRules,
       workspaceService,
       undefined,
       auditLog,
@@ -230,13 +241,20 @@ void app
       providerService,
       conversationRepository,
       agentTaskRepository,
-      createAgentToolRegistry(fileService, changeService, commandService, gitService),
+      createAgentToolRegistry(
+        fileService,
+        changeService,
+        commandService,
+        gitService,
+        externalDirectories,
+      ),
       toolCallRepository,
       changeService,
-      new ProposalAwarePermissionPolicy(),
+      new ProposalAwarePermissionPolicy(permissionRules),
       commandService,
       contextItemRepository,
       new ProjectRulesService(fileService),
+      toolApprovalService,
     );
     chatIpcController = new ChatIpcController(agentService);
 
@@ -268,6 +286,16 @@ void app
     );
     registerChangesIpc(trustedRendererOptions, changeService, changeTransactions);
     registerCommandsIpc(trustedRendererOptions, commandService);
+    registerPermissionsIpc(
+      trustedRendererOptions,
+      new WorkspacePermissionService(
+        permissionRules,
+        workspaceService,
+        auditLog,
+        new ElectronDirectoryPicker(),
+      ),
+      toolApprovalService,
+    );
     registerTerminalIpc(trustedRendererOptions, terminalService);
     registerChatIpc(trustedRendererOptions, chatIpcController);
 
@@ -313,6 +341,7 @@ app.on('before-quit', () => {
   unregisterContextIpc();
   unregisterChangesIpc();
   unregisterCommandsIpc();
+  unregisterPermissionsIpc();
   unregisterTerminalIpc();
   unregisterProvidersIpc();
   unregisterSettingsIpc();
@@ -324,6 +353,8 @@ app.on('before-quit', () => {
   workspaceWatcher = null;
   commandService?.close();
   commandService = null;
+  toolApprovalService?.close();
+  toolApprovalService = null;
   terminalService?.closeAll();
   terminalService = null;
   crashReportService = null;

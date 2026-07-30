@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   applyChangeSetRequestSchema,
+  addBlockedPathRequestSchema,
   auditChannels,
   auditEventListSchema,
   cancelChatRequestSchema,
@@ -37,6 +38,7 @@ import {
   deleteProviderResponseSchema,
   deletePathRequestSchema,
   decideCommandRequestSchema,
+  decideToolApprovalRequestSchema,
   deletePermissionRuleRequestSchema,
   deletePermissionRuleResponseSchema,
   deleteConversationContextRequestSchema,
@@ -50,6 +52,7 @@ import {
   filesChannels,
   healthRequestSchema,
   healthResponseSchema,
+  grantExternalDirectoryRequestSchema,
   gitChannels,
   gitDiffRequestSchema,
   gitDiffSchema,
@@ -65,6 +68,7 @@ import {
   modelInfoListSchema,
   movePathRequestSchema,
   nullableWorkspaceInfoSchema,
+  nullablePermissionRuleSchema,
   openRecentWorkspaceRequestSchema,
   providerChannels,
   providerConfigListSchema,
@@ -73,6 +77,8 @@ import {
   providerIdRequestSchema,
   permissionRuleListSchema,
   permissionRuleSchema,
+  permissionActionResponseSchema,
+  permissionChannels,
   pickConversationImageResponseSchema,
   readFileRequestSchema,
   readFileResponseSchema,
@@ -91,6 +97,7 @@ import {
   updateChannels,
   updateStatusSchema,
   setNetworkAccessRequestSchema,
+  setReadAutoAllowRequestSchema,
   upsertExecutableRuleRequestSchema,
   installUpdateResponseSchema,
   startChatRequestSchema,
@@ -407,6 +414,47 @@ const desktopApi: DesktopApi = {
         request,
       );
       return permissionRuleSchema.parse(response);
+    },
+  },
+  permissions: {
+    async addBlockedPath(input) {
+      const request = addBlockedPathRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(
+        permissionChannels.addBlockedPath,
+        request,
+      );
+      return permissionRuleSchema.parse(response);
+    },
+    async decideTool(input) {
+      const request = decideToolApprovalRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(permissionChannels.decideTool, request);
+      return permissionActionResponseSchema.parse(response);
+    },
+    async deleteRule(input) {
+      const request = deletePermissionRuleRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(permissionChannels.deleteRule, request);
+      return deletePermissionRuleResponseSchema.parse(response);
+    },
+    async grantExternalDirectory(input) {
+      const request = grantExternalDirectoryRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(
+        permissionChannels.grantExternalDirectory,
+        request,
+      );
+      return nullablePermissionRuleSchema.parse(response);
+    },
+    async listRules(input) {
+      const request = workspaceRulesRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(permissionChannels.listRules, request);
+      return permissionRuleListSchema.parse(response);
+    },
+    async setReadAutoAllow(input) {
+      const request = setReadAutoAllowRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(
+        permissionChannels.setReadAutoAllow,
+        request,
+      );
+      return permissionRuleListSchema.parse(response);
     },
   },
   context: {

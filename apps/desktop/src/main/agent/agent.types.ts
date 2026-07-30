@@ -77,6 +77,16 @@ export type AgentStreamEvent =
       }>;
     }
   | {
+      readonly type: 'tool_approval_requested';
+      readonly callId: string;
+      readonly modelCallId: string;
+      readonly name: string;
+      readonly permissionLevel: 'read' | 'write' | 'execute' | 'dangerous';
+      readonly input: unknown;
+      readonly approvalDigest: string;
+      readonly reason: string;
+    }
+  | {
       readonly type: 'change_set_ready';
       readonly taskId: string;
       readonly conversationId: string;

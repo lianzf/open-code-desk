@@ -23,6 +23,7 @@ import type {
 
 import type { WorkspaceService } from '../workspace/workspace.service';
 import type { AuditLogService } from '../audit/audit-log.service';
+import type { WorkspacePathPolicy } from '../permissions/workspace-path-policy';
 import {
   isIgnoredDirectoryName,
   isPathInside,
@@ -117,6 +118,7 @@ export class WorkspaceFileService {
   public constructor(
     private readonly workspaces: WorkspaceService,
     private readonly audit?: AuditLogService,
+    private readonly pathPolicy?: WorkspacePathPolicy,
   ) {}
 
   public async listDirectory(
@@ -125,6 +127,7 @@ export class WorkspaceFileService {
   ): Promise<ReadonlyArray<FileEntry>> {
     const workspace = await this.workspaces.getById(workspaceId);
     const relativePath = normalizeRelativePath(requestedRelativePath);
+    this.pathPolicy?.assertAllowed(workspaceId, relativePath);
 
     if (isSensitiveRelativePath(relativePath)) {
       throw new Error('该目录受敏感路径策略保护。');
@@ -146,7 +149,9 @@ export class WorkspaceFileService {
           const entryRelativePath = joinRelative(relativePath, entry.name);
           const entryPath = toPlatformPath(workspace.rootPath, entryRelativePath);
           const symbolicLink = entry.isSymbolicLink();
-          let restricted = isSensitiveRelativePath(entryRelativePath);
+          let restricted =
+            isSensitiveRelativePath(entryRelativePath) ||
+            this.pathPolicy?.isBlocked(workspaceId, entryRelativePath) === true;
           let kind: FileEntry['kind'] = entry.isDirectory() ? 'directory' : 'file';
 
           if (symbolicLink) {
@@ -185,6 +190,7 @@ export class WorkspaceFileService {
   ): Promise<ReadFileResponse> {
     const workspace = await this.workspaces.getById(workspaceId);
     const relativePath = this.assertReadableRelativePath(requestedRelativePath);
+    this.pathPolicy?.assertAllowed(workspaceId, relativePath);
     const filePath = toPlatformPath(workspace.rootPath, relativePath);
     await this.assertExistingPathInside(workspace.rootPath, filePath);
     const fileStat = await stat(filePath);
@@ -218,6 +224,7 @@ export class WorkspaceFileService {
   ): Promise<WriteFileResponse> {
     const workspace = await this.workspaces.getById(workspaceId);
     const relativePath = this.assertReadableRelativePath(requestedRelativePath);
+    this.pathPolicy?.assertAllowed(workspaceId, relativePath);
     const filePath = toPlatformPath(workspace.rootPath, relativePath);
     const linkStat = await lstat(filePath);
 
@@ -278,6 +285,7 @@ export class WorkspaceFileService {
   ): Promise<FileMutationResponse> {
     const workspace = await this.workspaces.getById(workspaceId);
     const relativePath = this.assertMutableRelativePath(requestedRelativePath);
+    this.pathPolicy?.assertAllowed(workspaceId, relativePath);
     const filePath = toPlatformPath(workspace.rootPath, relativePath);
     await this.assertWritableParentInside(workspace.rootPath, filePath);
     const encodedContent = Buffer.from(content, 'utf8');
@@ -307,6 +315,7 @@ export class WorkspaceFileService {
   ): Promise<FileMutationResponse> {
     const workspace = await this.workspaces.getById(workspaceId);
     const relativePath = this.assertMutableRelativePath(requestedRelativePath);
+    this.pathPolicy?.assertAllowed(workspaceId, relativePath);
     const directoryPath = toPlatformPath(workspace.rootPath, relativePath);
     await this.assertWritableParentInside(workspace.rootPath, directoryPath);
     await mkdir(directoryPath);
@@ -322,6 +331,8 @@ export class WorkspaceFileService {
     const workspace = await this.workspaces.getById(workspaceId);
     const sourcePath = this.assertMutableRelativePath(requestedSourcePath);
     const destinationPath = this.assertMutableRelativePath(requestedDestinationPath);
+    this.pathPolicy?.assertAllowed(workspaceId, sourcePath);
+    this.pathPolicy?.assertAllowed(workspaceId, destinationPath);
     if (sourcePath === destinationPath) {
       throw new Error('源路径和目标路径不能相同。');
     }
@@ -361,6 +372,7 @@ export class WorkspaceFileService {
   ): Promise<FileMutationResponse> {
     const workspace = await this.workspaces.getById(workspaceId);
     const relativePath = this.assertMutableRelativePath(requestedRelativePath);
+    this.pathPolicy?.assertAllowed(workspaceId, relativePath);
     const absolutePath = toPlatformPath(workspace.rootPath, relativePath);
     await this.assertExistingPathInside(workspace.rootPath, absolutePath);
     const pathStat = await lstat(absolutePath);

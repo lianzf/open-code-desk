@@ -121,6 +121,26 @@ export function handleStreamEvent(
             : state.toolActivity.map((tool) => (tool.id === next.id ? next : tool)),
       };
     });
+  } else if (event.type === 'tool_approval_requested') {
+    set((state) => {
+      const existing = state.toolActivity.find((tool) => tool.id === event.callId);
+      const next: DisplayToolActivity = {
+        id: event.callId,
+        name: event.name,
+        status: 'pending',
+        input: event.input,
+        permissionLevel: event.permissionLevel,
+        approvalDigest: event.approvalDigest,
+        approvalReason: event.reason,
+      };
+      return {
+        agentStatus: 'waiting_for_approval',
+        toolActivity:
+          existing === undefined
+            ? [...state.toolActivity, next]
+            : state.toolActivity.map((tool) => (tool.id === next.id ? next : tool)),
+      };
+    });
   } else if (event.type === 'change_set_ready') {
     set({ activeRequestId: undefined, agentStatus: 'waiting_for_approval' });
     void useChangeReviewStore.getState().notifyReady(event.changeSetId);

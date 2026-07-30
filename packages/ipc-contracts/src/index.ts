@@ -8,6 +8,7 @@ export * from './crash-reports';
 export * from './desktop-api';
 export * from './git';
 export * from './health';
+export * from './permissions';
 export * from './providers';
 export * from './settings';
 export * from './terminal';

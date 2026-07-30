@@ -18,11 +18,14 @@ interface CommandState {
   ): Promise<void>;
   cancel(commandId: string): Promise<void>;
   setNetworkAccess(allowed: boolean): Promise<void>;
+  setReadAutoAllow(allowed: boolean): Promise<void>;
   addExecutableRule(
     kind: 'allow_executable' | 'deny_executable',
     executable: string,
     cwd: string,
   ): Promise<void>;
+  addBlockedPath(relativePath: string): Promise<void>;
+  grantExternalDirectory(): Promise<void>;
   deleteRule(ruleId: string): Promise<void>;
 }
 
@@ -83,7 +86,7 @@ export const useCommandStore = create<CommandState>((set, get) => ({
     try {
       const [commands, rules] = await Promise.all([
         window.openCodeDesk.commands.listForConversation({ conversationId }),
-        window.openCodeDesk.commands.listRules({ workspaceId }),
+        window.openCodeDesk.permissions.listRules({ workspaceId }),
       ]);
       if (get().conversationId === conversationId) {
         set({ commands, rules });
@@ -172,6 +175,22 @@ export const useCommandStore = create<CommandState>((set, get) => ({
     }
   },
 
+  async setReadAutoAllow(allowed) {
+    const workspaceId = get().workspaceId;
+    if (workspaceId === undefined) {
+      return;
+    }
+    try {
+      const rules = await window.openCodeDesk.permissions.setReadAutoAllow({
+        workspaceId,
+        allowed,
+      });
+      set({ rules, errorMessage: undefined });
+    } catch (error) {
+      set({ errorMessage: readableError(error) });
+    }
+  },
+
   async addExecutableRule(kind, executable, cwd) {
     const workspaceId = get().workspaceId;
     if (workspaceId === undefined || executable.trim() === '') {
@@ -193,13 +212,52 @@ export const useCommandStore = create<CommandState>((set, get) => ({
     }
   },
 
+  async addBlockedPath(relativePath) {
+    const workspaceId = get().workspaceId;
+    if (workspaceId === undefined || relativePath.trim() === '') {
+      return;
+    }
+    try {
+      const saved = await window.openCodeDesk.permissions.addBlockedPath({
+        workspaceId,
+        relativePath,
+      });
+      set((state) => ({
+        rules: [...state.rules.filter((rule) => rule.id !== saved.id), saved],
+        errorMessage: undefined,
+      }));
+    } catch (error) {
+      set({ errorMessage: readableError(error) });
+    }
+  },
+
+  async grantExternalDirectory() {
+    const workspaceId = get().workspaceId;
+    if (workspaceId === undefined) {
+      return;
+    }
+    try {
+      const saved = await window.openCodeDesk.permissions.grantExternalDirectory({
+        workspaceId,
+      });
+      if (saved !== null) {
+        set((state) => ({
+          rules: [...state.rules.filter((rule) => rule.id !== saved.id), saved],
+          errorMessage: undefined,
+        }));
+      }
+    } catch (error) {
+      set({ errorMessage: readableError(error) });
+    }
+  },
+
   async deleteRule(ruleId) {
     const workspaceId = get().workspaceId;
     if (workspaceId === undefined) {
       return;
     }
     try {
-      await window.openCodeDesk.commands.deleteRule({ workspaceId, ruleId });
+      await window.openCodeDesk.permissions.deleteRule({ workspaceId, ruleId });
       set((state) => ({
         rules: state.rules.filter((rule) => rule.id !== ruleId),
         errorMessage: undefined,

@@ -88,6 +88,12 @@ import type {
 } from './terminal';
 import type { UpdateStatus } from './updates';
 import type { GitDiff, GitDiffRequest, GitStatus, GitStatusRequest } from './git';
+import type {
+  AddBlockedPathRequest,
+  DecideToolApprovalRequest,
+  GrantExternalDirectoryRequest,
+  SetReadAutoAllowRequest,
+} from './permissions';
 
 export interface DesktopApi {
   readonly audit: {
@@ -164,6 +170,14 @@ export interface DesktopApi {
     deleteRule(input: DeletePermissionRuleRequest): Promise<{ readonly deleted: boolean }>;
     setNetworkAccess(input: SetNetworkAccessRequest): Promise<ReadonlyArray<PermissionRule>>;
     upsertExecutableRule(input: UpsertExecutableRuleRequest): Promise<PermissionRule>;
+  };
+  readonly permissions: {
+    addBlockedPath(input: AddBlockedPathRequest): Promise<PermissionRule>;
+    decideTool(input: DecideToolApprovalRequest): Promise<{ readonly accepted: boolean }>;
+    deleteRule(input: DeletePermissionRuleRequest): Promise<{ readonly deleted: boolean }>;
+    grantExternalDirectory(input: GrantExternalDirectoryRequest): Promise<PermissionRule | null>;
+    listRules(input: WorkspaceRulesRequest): Promise<ReadonlyArray<PermissionRule>>;
+    setReadAutoAllow(input: SetReadAutoAllowRequest): Promise<ReadonlyArray<PermissionRule>>;
   };
   readonly context: {
     list(input: ContextConversationRequest): Promise<ReadonlyArray<ConversationContextItem>>;

@@ -1,4 +1,7 @@
 import { Wrench } from 'lucide-react';
+import { useState } from 'react';
+
+import { Button } from '@/components/ui/button';
 
 import type { DisplayToolActivity } from './chat.store';
 
@@ -20,6 +23,28 @@ function serializeInput(input: unknown): string {
 }
 
 export function ToolActivityItem({ activity }: { readonly activity: DisplayToolActivity }) {
+  const [deciding, setDeciding] = useState(false);
+  const [decisionError, setDecisionError] = useState<string>();
+
+  const decide = async (decision: 'approve' | 'reject') => {
+    if (activity.approvalDigest === undefined) {
+      return;
+    }
+    setDeciding(true);
+    setDecisionError(undefined);
+    try {
+      await window.openCodeDesk.permissions.decideTool({
+        callId: activity.id,
+        expectedApprovalDigest: activity.approvalDigest,
+        decision,
+      });
+    } catch (error) {
+      setDecisionError(error instanceof Error ? error.message : '工具审批失败。');
+    } finally {
+      setDeciding(false);
+    }
+  };
+
   return (
     <div
       className="rounded border border-zinc-800 bg-zinc-950/70 px-2 py-1.5"
@@ -50,6 +75,32 @@ export function ToolActivityItem({ activity }: { readonly activity: DisplayToolA
       ) : null}
       {activity.errorMessage !== undefined ? (
         <p className="mt-1 text-[10px] text-red-400">{activity.errorMessage}</p>
+      ) : null}
+      {activity.status === 'pending' && activity.approvalDigest !== undefined ? (
+        <div className="mt-2 rounded border border-amber-900/60 bg-amber-950/20 p-2">
+          <p className="text-[10px] leading-4 text-amber-200">
+            {activity.approvalReason ?? '该工具调用需要你的明确批准。'}
+          </p>
+          <p className="mt-1 text-[10px] text-zinc-500">
+            权限：{activity.permissionLevel ?? 'read'}
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" onClick={() => void decide('approve')} disabled={deciding}>
+              批准
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void decide('reject')}
+              disabled={deciding}
+            >
+              拒绝
+            </Button>
+          </div>
+          {decisionError === undefined ? null : (
+            <p className="mt-1 text-[10px] text-red-400">{decisionError}</p>
+          )}
+        </div>
       ) : null}
     </div>
   );

@@ -33,6 +33,7 @@ import {
 import type { AgentEventListener, AgentRunInput } from './agent.types';
 import { ConversationContextBuilder } from './conversation-context';
 import type { ToolCallRepository } from './tool-call.repository';
+import type { ToolApprovalService } from './tool-approval.service';
 
 export class AgentService {
   readonly #dispatcher: ToolDispatcher;
@@ -49,8 +50,9 @@ export class AgentService {
     private readonly commands?: CommandService,
     private readonly contextItems?: ContextItemRepository,
     private readonly projectRules?: ProjectRulesService,
+    private readonly approvals?: ToolApprovalService,
   ) {
-    this.#dispatcher = new ToolDispatcher(tools, permissionPolicy, toolCalls);
+    this.#dispatcher = new ToolDispatcher(tools, permissionPolicy, toolCalls, approvals);
   }
 
   public async run(
@@ -80,6 +82,38 @@ export class AgentService {
     };
     const unsubscribeCommands = this.commands?.subscribe(task.id, (event) => {
       this.consumeCommandEvent(event, machine, transition, emit);
+    });
+    const unsubscribeApprovals = this.approvals?.subscribe(task.id, (event) => {
+      if (event.type === 'tool_approval_requested') {
+        if (machine.status !== 'waiting_for_approval') {
+          transition('waiting_for_approval', `等待用户批准工具 ${event.call.toolName}`);
+        }
+        if (event.call.approvalDigest === undefined) {
+          throw new Error('Pending tool approval is missing its integrity digest.');
+        }
+        emit({
+          type: 'tool_approval_requested',
+          callId: event.call.id,
+          modelCallId: event.modelCallId,
+          name: event.call.toolName,
+          permissionLevel: event.call.permissionLevel,
+          input: event.call.input,
+          approvalDigest: event.call.approvalDigest,
+          reason: event.reason,
+        });
+        return;
+      }
+      if (event.outcome === 'approved' && machine.status !== 'executing_tool') {
+        transition('executing_tool', `执行已批准的工具 ${event.call.toolName}`);
+        emit({
+          type: 'tool_status',
+          callId: event.call.id,
+          modelCallId: event.modelCallId,
+          name: event.call.toolName,
+          status: 'running',
+          input: event.call.input,
+        });
+      }
     });
 
     try {
@@ -228,6 +262,7 @@ export class AgentService {
       emit({ type: 'error', taskId: task.id, error: appError });
     } finally {
       unsubscribeCommands?.();
+      unsubscribeApprovals?.();
     }
   }
 
@@ -362,7 +397,8 @@ export class AgentService {
         ? 'completed'
         : result.error.code === 'CANCELLED'
           ? 'cancelled'
-          : rejectedToolErrorCodes.has(result.error.code)
+          : rejectedToolErrorCodes.has(result.error.code) ||
+              result.error.code === 'TOOL_APPROVAL_REJECTED'
             ? 'rejected'
             : 'failed',
       ...(result.ok ? { outputPreview: previewOf(result) } : { error: result.error }),

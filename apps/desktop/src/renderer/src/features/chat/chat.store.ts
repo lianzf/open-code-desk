@@ -29,6 +29,9 @@ export interface DisplayToolActivity {
   readonly input?: unknown;
   readonly outputPreview?: string;
   readonly errorMessage?: string;
+  readonly permissionLevel?: ToolCallRecord['permissionLevel'];
+  readonly approvalDigest?: string;
+  readonly approvalReason?: string;
 }
 
 export interface ContextStats {
@@ -100,6 +103,8 @@ function toToolActivity(toolCall: ToolCallRecord): DisplayToolActivity {
     input: toolCall.input,
     ...(outputPreview === undefined ? {} : { outputPreview }),
     ...(toolCall.error === undefined ? {} : { errorMessage: toolCall.error.message }),
+    permissionLevel: toolCall.permissionLevel,
+    ...(toolCall.approvalDigest === undefined ? {} : { approvalDigest: toolCall.approvalDigest }),
   };
 }
 

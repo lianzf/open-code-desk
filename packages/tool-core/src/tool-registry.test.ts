@@ -5,6 +5,7 @@ import {
   DefaultPermissionPolicy,
   ToolDispatcher,
   ToolRegistry,
+  type PermissionApprovalOutcome,
   type ToolExecutionObserver,
 } from './index';
 
@@ -57,5 +58,51 @@ describe('ToolRegistry and ToolDispatcher', () => {
       ok: true,
       value: { path: 'README.md' },
     });
+  });
+
+  it('waits for explicit approval before running a policy-gated tool', async () => {
+    const registry = new ToolRegistry();
+    const execute = vi.fn(tool.execute);
+    registry.register({ ...tool, execute });
+    let approval: PermissionApprovalOutcome = 'approved';
+    const request = vi.fn(async (): Promise<PermissionApprovalOutcome> => approval);
+    const dispatcher = new ToolDispatcher(
+      registry,
+      {
+        decide: () => ({
+          outcome: 'require_approval',
+          reason: 'Read approval is enabled.',
+        }),
+      },
+      observer,
+      { request },
+    );
+    const context = {
+      workspaceId: crypto.randomUUID(),
+      conversationId: crypto.randomUUID(),
+      taskId: crypto.randomUUID(),
+      callId: crypto.randomUUID(),
+      signal: new AbortController().signal,
+    };
+
+    await expect(
+      dispatcher.execute('read_file', { path: 'README.md' }, context),
+    ).resolves.toMatchObject({ ok: true });
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'read_file' }),
+      { path: 'README.md' },
+      context,
+      'Read approval is enabled.',
+    );
+    expect(execute).toHaveBeenCalledOnce();
+
+    approval = 'rejected';
+    await expect(
+      dispatcher.execute('read_file', { path: 'secret.txt' }, context),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'TOOL_APPROVAL_REJECTED' },
+    });
+    expect(execute).toHaveBeenCalledOnce();
   });
 });

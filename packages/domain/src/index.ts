@@ -127,6 +127,7 @@ export interface ToolCallRecord {
   readonly permissionLevel: 'read' | 'write' | 'execute' | 'dangerous';
   readonly input: unknown;
   readonly status: ToolCallStatus;
+  readonly approvalDigest?: string;
   readonly output?: unknown;
   readonly error?: Readonly<{
     code: string;
@@ -262,7 +263,13 @@ export interface CommandExecution {
   readonly completedAt?: string;
 }
 
-export type PermissionRuleKind = 'allow_executable' | 'deny_executable' | 'allow_network_commands';
+export type PermissionRuleKind =
+  | 'allow_executable'
+  | 'deny_executable'
+  | 'allow_network_commands'
+  | 'require_read_approval'
+  | 'blocked_path'
+  | 'external_directory';
 
 export interface PermissionRule {
   readonly id: string;
