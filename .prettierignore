@@ -1,0 +1,11 @@
+node_modules
+.node_modules-backup-*
+.desktop-node-modules-backup-*
+.pnpm-stale-cache
+dist
+out
+release
+coverage
+test-results
+playwright-report
+pnpm-lock.yaml

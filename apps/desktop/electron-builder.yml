@@ -1,0 +1,39 @@
+appId: dev.opencode.desk
+productName: OpenCode Desk
+asar: true
+npmRebuild: false
+asarUnpack:
+  - node_modules/node-pty/**/*
+electronDist: node_modules/electron/dist
+
+directories:
+  output: ../../release
+
+files:
+  - out/**/*
+  - package.json
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+mac:
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  target:
+    - dmg
+    - zip
+
+linux:
+  category: Development
+  target:
+    - AppImage

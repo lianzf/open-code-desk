@@ -1,0 +1,268 @@
+import { blob, index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+
+export const workspaces = sqliteTable(
+  'workspaces',
+  {
+    id: text('id').primaryKey(),
+    canonicalPath: text('canonical_path').notNull().unique(),
+    displayName: text('display_name').notNull(),
+    lastOpenedAt: text('last_opened_at').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [index('workspaces_last_opened_at_idx').on(table.lastOpenedAt)],
+);
+
+export const providerConfigs = sqliteTable(
+  'provider_configs',
+  {
+    id: text('id').primaryKey(),
+    kind: text('kind').notNull(),
+    displayName: text('display_name').notNull(),
+    baseUrl: text('base_url').notNull(),
+    defaultModel: text('default_model').notNull(),
+    fastModel: text('fast_model'),
+    reasoningModel: text('reasoning_model'),
+    contextWindow: integer('context_window').notNull(),
+    toolCalling: integer('tool_calling', { mode: 'boolean' }).notNull(),
+    vision: integer('vision', { mode: 'boolean' }).notNull(),
+    streaming: integer('streaming', { mode: 'boolean' }).notNull(),
+    customHeaders: text('custom_headers', { mode: 'json' })
+      .$type<Readonly<Record<string, string>>>()
+      .notNull(),
+    sensitiveHeaderNames: text('sensitive_header_names', { mode: 'json' })
+      .$type<ReadonlyArray<string>>()
+      .notNull(),
+    hasApiKey: integer('has_api_key', { mode: 'boolean' }).notNull(),
+    secretRef: text('secret_ref'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('provider_configs_kind_idx').on(table.kind),
+    index('provider_configs_updated_at_idx').on(table.updatedAt),
+  ],
+);
+
+export const secureSecrets = sqliteTable('secure_secrets', {
+  ref: text('ref').primaryKey(),
+  encryptedValue: blob('encrypted_value', { mode: 'buffer' }).notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+export const conversations = sqliteTable(
+  'conversations',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    providerConfigId: text('provider_config_id').references(() => providerConfigs.id, {
+      onDelete: 'set null',
+    }),
+    modelId: text('model_id'),
+    status: text('status').notNull(),
+    deletedAt: text('deleted_at'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('conversations_workspace_updated_idx').on(table.workspaceId, table.updatedAt),
+    index('conversations_deleted_at_idx').on(table.deletedAt),
+  ],
+);
+
+export const messages = sqliteTable(
+  'messages',
+  {
+    id: text('id').primaryKey(),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    content: text('content').notNull(),
+    reasoning: text('reasoning').notNull(),
+    toolCallId: text('tool_call_id'),
+    toolCalls: text('tool_calls', { mode: 'json' })
+      .$type<
+        ReadonlyArray<{ readonly id: string; readonly name: string; readonly arguments: string }>
+      >()
+      .notNull(),
+    sequence: integer('sequence').notNull(),
+    modelId: text('model_id'),
+    status: text('status').notNull(),
+    error: text('error', { mode: 'json' }).$type<Readonly<Record<string, unknown>>>(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [index('messages_conversation_sequence_idx').on(table.conversationId, table.sequence)],
+);
+
+export const agentTasks = sqliteTable(
+  'agent_tasks',
+  {
+    id: text('id').primaryKey(),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    requestId: text('request_id').notNull().unique(),
+    status: text('status').notNull(),
+    attempt: integer('attempt').notNull(),
+    checkpoint: text('checkpoint', { mode: 'json' }).$type<Readonly<Record<string, unknown>>>(),
+    error: text('error', { mode: 'json' }).$type<Readonly<Record<string, unknown>>>(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    completedAt: text('completed_at'),
+  },
+  (table) => [
+    index('agent_tasks_conversation_updated_idx').on(table.conversationId, table.updatedAt),
+    index('agent_tasks_status_idx').on(table.status),
+  ],
+);
+
+export const toolCalls = sqliteTable(
+  'tool_calls',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => agentTasks.id, { onDelete: 'cascade' }),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    toolName: text('tool_name').notNull(),
+    permissionLevel: text('permission_level').notNull(),
+    input: text('input', { mode: 'json' }).$type<unknown>().notNull(),
+    status: text('status').notNull(),
+    output: text('output', { mode: 'json' }).$type<unknown>(),
+    error: text('error', { mode: 'json' }).$type<Readonly<Record<string, unknown>>>(),
+    startedAt: text('started_at'),
+    completedAt: text('completed_at'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('tool_calls_task_created_idx').on(table.taskId, table.createdAt),
+    index('tool_calls_conversation_created_idx').on(table.conversationId, table.createdAt),
+  ],
+);
+
+export const fileChangeSets = sqliteTable(
+  'file_change_sets',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => agentTasks.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    status: text('status').notNull(),
+    applyDigest: text('apply_digest'),
+    error: text('error'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    appliedAt: text('applied_at'),
+    rolledBackAt: text('rolled_back_at'),
+  },
+  (table) => [
+    index('file_change_sets_conversation_updated_idx').on(table.conversationId, table.updatedAt),
+    index('file_change_sets_task_idx').on(table.taskId),
+    index('file_change_sets_status_idx').on(table.status),
+  ],
+);
+
+export const fileChanges = sqliteTable(
+  'file_changes',
+  {
+    id: text('id').primaryKey(),
+    changeSetId: text('change_set_id')
+      .notNull()
+      .references(() => fileChangeSets.id, { onDelete: 'cascade' }),
+    sequence: integer('sequence').notNull(),
+    filePath: text('file_path').notNull(),
+    destinationPath: text('destination_path'),
+    operation: text('operation').notNull(),
+    originalArtifactRef: text('original_artifact_ref'),
+    proposedArtifactRef: text('proposed_artifact_ref'),
+    snapshotArtifactRef: text('snapshot_artifact_ref'),
+    baselineHash: text('baseline_hash'),
+    proposedHash: text('proposed_hash'),
+    appliedHash: text('applied_hash'),
+    diff: text('diff').notNull(),
+    reviewDigest: text('review_digest').notNull(),
+    status: text('status').notNull(),
+    error: text('error'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    appliedAt: text('applied_at'),
+    rolledBackAt: text('rolled_back_at'),
+  },
+  (table) => [
+    index('file_changes_set_sequence_idx').on(table.changeSetId, table.sequence),
+    index('file_changes_set_status_idx').on(table.changeSetId, table.status),
+  ],
+);
+
+export const commandExecutions = sqliteTable(
+  'command_executions',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => agentTasks.id, { onDelete: 'cascade' }),
+    modelToolCallId: text('model_tool_call_id').notNull(),
+    toolName: text('tool_name').notNull(),
+    executable: text('executable').notNull(),
+    args: text('args', { mode: 'json' }).$type<ReadonlyArray<string>>().notNull(),
+    cwd: text('cwd').notNull(),
+    timeoutMs: integer('timeout_ms').notNull(),
+    riskLevel: text('risk_level').notNull(),
+    riskReasons: text('risk_reasons', { mode: 'json' }).$type<ReadonlyArray<string>>().notNull(),
+    approvalDigest: text('approval_digest').notNull(),
+    status: text('status').notNull(),
+    autoApproved: integer('auto_approved', { mode: 'boolean' }).notNull(),
+    outputTail: text('output_tail').notNull(),
+    outputBytes: integer('output_bytes').notNull(),
+    exitCode: integer('exit_code'),
+    terminationSignal: text('termination_signal'),
+    error: text('error', { mode: 'json' }).$type<Readonly<Record<string, unknown>>>(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    approvedAt: text('approved_at'),
+    startedAt: text('started_at'),
+    completedAt: text('completed_at'),
+  },
+  (table) => [
+    index('command_executions_conversation_created_idx').on(table.conversationId, table.createdAt),
+    index('command_executions_task_created_idx').on(table.taskId, table.createdAt),
+    index('command_executions_status_idx').on(table.status),
+  ],
+);
+
+export const permissionRules = sqliteTable(
+  'permission_rules',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    value: text('value').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [index('permission_rules_workspace_kind_idx').on(table.workspaceId, table.kind)],
+);
