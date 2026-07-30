@@ -19,7 +19,9 @@ import { ConversationService } from './conversations/conversation.service';
 import { createAppDatabase, type AppDatabase } from './database/database';
 import { WorkspaceFileService } from './filesystem/workspace-file.service';
 import { WorkspaceWatchService } from './filesystem/workspace-watch.service';
+import { GitService } from './git/git.service';
 import { registerFilesIpc, unregisterFilesIpc } from './ipc/files.ipc';
+import { registerGitIpc, unregisterGitIpc } from './ipc/git.ipc';
 import { registerHealthIpc, unregisterHealthIpc } from './ipc/health.ipc';
 import { ChatIpcController, registerChatIpc, unregisterChatIpc } from './ipc/chat.ipc';
 import { registerChangesIpc, unregisterChangesIpc } from './ipc/changes.ipc';
@@ -69,6 +71,7 @@ app.whenReady().then(async () => {
   const workspaceRepository = new WorkspaceRepository(database);
   const workspaceService = new WorkspaceService(workspaceRepository, new ElectronDirectoryPicker());
   const fileService = new WorkspaceFileService(workspaceService);
+  const gitService = new GitService(workspaceService);
   terminalService = new TerminalSessionService(workspaceService);
   workspaceWatcher = new WorkspaceWatchService();
   const providerRegistry = new ProviderRegistry();
@@ -123,7 +126,7 @@ app.whenReady().then(async () => {
     providerService,
     conversationRepository,
     agentTaskRepository,
-    createAgentToolRegistry(fileService, changeService, commandService),
+    createAgentToolRegistry(fileService, changeService, commandService, gitService),
     toolCallRepository,
     changeService,
     new ProposalAwarePermissionPolicy(),
@@ -139,6 +142,7 @@ app.whenReady().then(async () => {
     workspaceWatcher?.start(workspace);
   });
   registerFilesIpc(trustedRendererOptions, fileService);
+  registerGitIpc(trustedRendererOptions, gitService);
   registerProvidersIpc(trustedRendererOptions, providerService);
   registerConversationsIpc(trustedRendererOptions, conversationService);
   registerChangesIpc(trustedRendererOptions, changeService, changeTransactions);
@@ -165,6 +169,7 @@ app.on('before-quit', () => {
   unregisterCommandsIpc();
   unregisterTerminalIpc();
   unregisterProvidersIpc();
+  unregisterGitIpc();
   unregisterFilesIpc();
   unregisterWorkspaceIpc();
   unregisterHealthIpc();

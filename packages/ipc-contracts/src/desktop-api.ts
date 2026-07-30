@@ -64,6 +64,7 @@ import type {
   TerminalSessionRequest,
   TerminalWriteRequest,
 } from './terminal';
+import type { GitDiff, GitDiffRequest, GitStatus, GitStatusRequest } from './git';
 
 export interface DesktopApi {
   readonly app: {
@@ -130,5 +131,9 @@ export interface DesktopApi {
     close(input: TerminalSessionRequest): Promise<{ readonly accepted: boolean }>;
     onData(listener: (event: TerminalDataEvent) => void): () => void;
     onExit(listener: (event: TerminalExitEvent) => void): () => void;
+  };
+  readonly git: {
+    status(input: GitStatusRequest): Promise<GitStatus>;
+    diff(input: GitDiffRequest): Promise<GitDiff>;
   };
 }

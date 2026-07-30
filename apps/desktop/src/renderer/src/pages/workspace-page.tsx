@@ -14,6 +14,7 @@ import { ChangeReviewDialog } from '@/features/changes/change-review-panel';
 import { EditorWorkbench } from '@/features/editor/editor-workbench';
 import { useEditorStore } from '@/features/editor/editor.store';
 import { useProviderStore } from '@/features/providers/provider.store';
+import { GitPanel } from '@/features/git/git-panel';
 import { TerminalPanel } from '@/features/terminal/terminal-panel';
 import { FileTree } from '@/features/workspace/file-tree';
 import { useWorkspaceStore } from '@/features/workspace/workspace.store';
@@ -151,6 +152,9 @@ export function WorkspacePage() {
           {bottomPanel === 'terminal' ? (
             <TerminalPanel workspaceId={current.id} onClose={() => setBottomPanel(null)} />
           ) : null}
+          {bottomPanel === 'git' ? (
+            <GitPanel workspaceId={current.id} onClose={() => setBottomPanel(null)} />
+          ) : null}
 
           <div className="flex h-8 shrink-0 items-center gap-2 border-t border-zinc-800 bg-zinc-950 px-2 text-[11px] text-zinc-500">
             <button
@@ -158,6 +162,7 @@ export function WorkspacePage() {
                 bottomPanel === 'git' ? 'bg-zinc-800 text-zinc-200' : ''
               }`}
               onClick={() => setBottomPanel((value) => (value === 'git' ? null : 'git'))}
+              data-testid="toggle-git"
             >
               <GitBranch className="size-3" />
               Git

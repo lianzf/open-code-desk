@@ -34,6 +34,11 @@ import {
   filesChannels,
   healthRequestSchema,
   healthResponseSchema,
+  gitChannels,
+  gitDiffRequestSchema,
+  gitDiffSchema,
+  gitStatusRequestSchema,
+  gitStatusSchema,
   ipcChannels,
   listDirectoryRequestSchema,
   listConversationsRequestSchema,
@@ -340,6 +345,18 @@ const desktopApi: DesktopApi = {
       return () => {
         ipcRenderer.removeListener(terminalChannels.exit, wrappedListener);
       };
+    },
+  },
+  git: {
+    async status(input) {
+      const request = gitStatusRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(gitChannels.status, request);
+      return gitStatusSchema.parse(response);
+    },
+    async diff(input) {
+      const request = gitDiffRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(gitChannels.diff, request);
+      return gitDiffSchema.parse(response);
     },
   },
 };

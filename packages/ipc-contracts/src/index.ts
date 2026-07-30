@@ -3,6 +3,7 @@ export * from './changes';
 export * from './commands';
 export * from './conversations';
 export * from './desktop-api';
+export * from './git';
 export * from './health';
 export * from './providers';
 export * from './terminal';
