@@ -98,3 +98,72 @@ test('opens, edits, saves, and restores a recent workspace', async () => {
     await rm(userDataDirectory, { recursive: true, force: true });
   }
 });
+
+test('manages workspace paths and performs cancellable source-text search', async () => {
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-e2e-files-'));
+  const userDataDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-e2e-user-'));
+  await writeFile(join(projectDirectory, 'README.md'), '# Project\n', 'utf8');
+
+  const application = await launchDesktop(userDataDirectory);
+  try {
+    await application.evaluate(({ dialog }, selectedDirectory) => {
+      Object.defineProperty(dialog, 'showOpenDialog', {
+        configurable: true,
+        value: async () => ({ canceled: false, filePaths: [selectedDirectory] }),
+      });
+    }, projectDirectory);
+    const window = await application.firstWindow();
+    await window.getByTestId('open-project').click();
+    await expect(window.getByTestId('workspace-page')).toBeVisible();
+
+    await window.evaluate(() => {
+      window.prompt = () => 'docs';
+    });
+    await window.getByTestId('create-directory').click();
+    await expect(window.getByTestId('tree-entry-docs')).toBeVisible();
+
+    await window.evaluate(() => {
+      window.prompt = () => 'docs/notes.md';
+    });
+    await window.getByTestId('create-file').click();
+    const monaco = window.locator('.monaco-editor').first();
+    await expect(monaco).toBeVisible();
+    await monaco.click();
+    await window.keyboard.type('A uniquely searchable phrase\n');
+    await window.keyboard.press('Control+S');
+    await expect
+      .poll(async () => readFile(join(projectDirectory, 'docs', 'notes.md'), 'utf8'))
+      .toContain('uniquely searchable');
+
+    await window.getByTestId('toggle-search-mode').click();
+    await window.getByTestId('file-search').fill('uniquely searchable');
+    await window.getByTestId('file-search').press('Enter');
+    await expect(window.getByText('docs/notes.md:1:3', { exact: true })).toBeVisible();
+
+    await window.getByTestId('file-search').fill('');
+    await window.getByTestId('file-search').press('Enter');
+    await window.getByTestId('tree-entry-docs').click();
+    await expect(window.getByTestId('tree-entry-docs/notes.md')).toBeVisible();
+    await window.getByTestId('tree-entry-docs/notes.md').hover();
+    await window.evaluate(() => {
+      window.prompt = () => 'notes-renamed.md';
+    });
+    await window.getByTestId('move-path-docs/notes.md').click();
+    await expect(window.getByTestId('tree-entry-notes-renamed.md')).toBeVisible();
+
+    await window.getByTestId('tree-entry-notes-renamed.md').hover();
+    await window.evaluate(() => {
+      window.confirm = () => true;
+    });
+    await window.getByTestId('delete-path-notes-renamed.md').click();
+    await expect(window.getByTestId('tree-entry-notes-renamed.md')).toHaveCount(0);
+
+    await window.getByTestId('tree-entry-docs').hover();
+    await window.getByTestId('delete-path-docs').click();
+    await expect(window.getByTestId('tree-entry-docs')).toHaveCount(0);
+  } finally {
+    await application.close();
+    await rm(projectDirectory, { recursive: true, force: true });
+    await rm(userDataDirectory, { recursive: true, force: true });
+  }
+});

@@ -1,35 +1,7 @@
-import { extname } from 'node:path';
-
 import { z } from 'zod';
 import type { AgentTool, ToolExecutionContext } from '@open-code-desk/tool-core';
 
 import type { WorkspaceFileService } from '../filesystem/workspace-file.service';
-
-const searchableExtensions = new Set([
-  '.c',
-  '.cpp',
-  '.css',
-  '.go',
-  '.h',
-  '.html',
-  '.java',
-  '.js',
-  '.json',
-  '.jsx',
-  '.md',
-  '.py',
-  '.rs',
-  '.scss',
-  '.sh',
-  '.sql',
-  '.toml',
-  '.ts',
-  '.tsx',
-  '.txt',
-  '.xml',
-  '.yaml',
-  '.yml',
-]);
 
 const searchTextInputSchema = z
   .object({
@@ -39,13 +11,6 @@ const searchTextInputSchema = z
     maxResults: z.number().int().min(1).max(200).default(50),
   })
   .strict();
-
-interface TextMatch {
-  readonly path: string;
-  readonly line: number;
-  readonly column: number;
-  readonly preview: string;
-}
 
 export class SearchTextTool implements AgentTool<z.infer<typeof searchTextInputSchema>, unknown> {
   public readonly name = 'search_text';
@@ -60,62 +25,14 @@ export class SearchTextTool implements AgentTool<z.infer<typeof searchTextInputS
     input: z.infer<typeof searchTextInputSchema>,
     context: ToolExecutionContext,
   ): Promise<unknown> {
-    const queue = [input.path];
-    const matches: TextMatch[] = [];
-    const needle = input.caseSensitive ? input.query : input.query.toLocaleLowerCase('en-US');
-    let visitedFiles = 0;
-
-    while (queue.length > 0 && matches.length < input.maxResults && visitedFiles < 2_000) {
-      context.signal.throwIfAborted();
-      const directory = queue.shift();
-      if (directory === undefined) {
-        break;
-      }
-      const entries = await this.files.listDirectory(context.workspaceId, directory);
-      for (const entry of entries) {
-        context.signal.throwIfAborted();
-        if (entry.restricted || entry.symbolicLink) {
-          continue;
-        }
-        if (entry.kind === 'directory') {
-          queue.push(entry.relativePath);
-          continue;
-        }
-        if (!searchableExtensions.has(extname(entry.name).toLocaleLowerCase('en-US'))) {
-          continue;
-        }
-        visitedFiles += 1;
-        try {
-          const file = await this.files.readFile(context.workspaceId, entry.relativePath);
-          const lines = file.content.split('\n');
-          for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-            const line = lines[lineIndex] ?? '';
-            const searchableLine = input.caseSensitive ? line : line.toLocaleLowerCase('en-US');
-            const column = searchableLine.indexOf(needle);
-            if (column !== -1) {
-              matches.push({
-                path: entry.relativePath,
-                line: lineIndex + 1,
-                column: column + 1,
-                preview: line.trim().slice(0, 500),
-              });
-              if (matches.length >= input.maxResults) {
-                break;
-              }
-            }
-          }
-        } catch {
-          // Binary, oversized, or concurrently removed files are safely skipped.
-        }
-      }
-    }
-
-    return {
-      query: input.query,
-      matches,
-      visitedFiles,
-      truncated: matches.length >= input.maxResults || visitedFiles >= 2_000,
-    };
+    return this.files.searchText(
+      context.workspaceId,
+      input.query,
+      input.path,
+      input.caseSensitive,
+      input.maxResults,
+      context.signal,
+    );
   }
 }
 

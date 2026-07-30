@@ -189,4 +189,31 @@ describe('GeminiProvider', () => {
       ],
     });
   });
+
+  it('maps image content to Gemini inlineData parts', () => {
+    expect(
+      geminiRequestBody({
+        model: 'gemini-fixture',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Inspect this image.' },
+              { type: 'image', mediaType: 'image/jpeg', data: 'aGVsbG8=' },
+            ],
+          },
+        ],
+      }),
+    ).toMatchObject({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: 'Inspect this image.' },
+            { inlineData: { mimeType: 'image/jpeg', data: 'aGVsbG8=' } },
+          ],
+        },
+      ],
+    });
+  });
 });

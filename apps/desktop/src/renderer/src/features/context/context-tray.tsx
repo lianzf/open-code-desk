@@ -1,4 +1,4 @@
-import { Paperclip, Plus, X } from 'lucide-react';
+import { ImagePlus, Paperclip, Plus, X } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ const typeLabels = {
   git_diff: 'Git Diff',
   terminal: '终端',
   diagnostic: '报错',
+  image: '图片',
   text: '文本',
   summary: '摘要',
 } as const;
@@ -48,6 +49,15 @@ export function ContextTray() {
         {context.loading ? <span className="text-cyan-600">同步中…</span> : null}
         <button
           className="ml-auto flex items-center gap-1 rounded px-1.5 py-1 hover:bg-zinc-800 hover:text-zinc-300"
+          onClick={() => void context.pickImage()}
+          disabled={context.conversationId === undefined || context.loading}
+          data-testid="add-image-context"
+        >
+          <ImagePlus className="size-3" />
+          图片
+        </button>
+        <button
+          className="flex items-center gap-1 rounded px-1.5 py-1 hover:bg-zinc-800 hover:text-zinc-300"
           onClick={() => setAddingText((value) => !value)}
           disabled={context.conversationId === undefined}
           data-testid="add-text-context"

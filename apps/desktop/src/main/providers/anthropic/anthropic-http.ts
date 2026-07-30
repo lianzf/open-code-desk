@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type {
+  ChatMessageContent,
   ChatMessage,
   ChatRequest,
   ProviderConfig,
@@ -114,6 +115,15 @@ interface AnthropicMessage {
   readonly content: ReadonlyArray<AnthropicContentBlock>;
 }
 
+function textContentOf(content: ChatMessageContent): string {
+  return typeof content === 'string'
+    ? content
+    : content
+        .filter((part) => part.type === 'text')
+        .map((part) => part.text)
+        .join('\n');
+}
+
 function parseToolInput(argumentsJson: string): Readonly<Record<string, unknown>> {
   let input: unknown;
   try {
@@ -144,14 +154,31 @@ function blocksForMessage(message: ChatMessage): ReadonlyArray<AnthropicContentB
       {
         type: 'tool_result',
         tool_use_id: message.toolCallId,
-        content: message.content,
+        content: textContentOf(message.content),
       },
     ];
   }
 
   const blocks: AnthropicContentBlock[] = [];
-  if (message.content !== '') {
-    blocks.push({ type: 'text', text: message.content });
+  const contentParts =
+    typeof message.content === 'string'
+      ? message.content === ''
+        ? []
+        : [{ type: 'text' as const, text: message.content }]
+      : message.content;
+  for (const part of contentParts) {
+    blocks.push(
+      part.type === 'text'
+        ? { type: 'text', text: part.text }
+        : {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: part.mediaType,
+              data: part.data,
+            },
+          },
+    );
   }
   for (const toolCall of message.toolCalls ?? []) {
     blocks.push({
@@ -208,7 +235,7 @@ export function anthropicRequestBody(
 ): Readonly<Record<string, unknown>> {
   const system = request.messages
     .filter((message) => message.role === 'system')
-    .map((message) => message.content)
+    .map((message) => textContentOf(message.content))
     .filter((content) => content !== '')
     .join('\n\n');
 

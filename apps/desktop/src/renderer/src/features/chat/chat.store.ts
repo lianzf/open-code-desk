@@ -53,6 +53,7 @@ export interface ChatState {
     | 'failed'
     | 'cancelled';
   readonly conversations: ReadonlyArray<Conversation>;
+  readonly conversationQuery: string;
   readonly contextStats: ContextStats | undefined;
   readonly errorMessage: string | undefined;
   readonly messages: ReadonlyArray<DisplayChatMessage>;
@@ -65,6 +66,7 @@ export interface ChatState {
   deleteActive(): Promise<void>;
   exportActive(): Promise<void>;
   regenerate(): Promise<void>;
+  searchConversations(query: string): Promise<void>;
   send(content: string): Promise<void>;
   stop(): Promise<void>;
 }
@@ -120,6 +122,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   activeConversationId: undefined,
   agentStatus: 'idle',
   conversations: [],
+  conversationQuery: '',
   contextStats: undefined,
   errorMessage: undefined,
   messages: [],
@@ -143,6 +146,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       activeRequestId: undefined,
       agentStatus: 'idle',
       conversations: [],
+      conversationQuery: '',
       messages: [],
       toolActivity: [],
       contextStats: undefined,
@@ -187,6 +191,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           : { providerConfigId: provider.providerId, modelId: provider.model }),
       });
       set((state) => ({ conversations: [conversation, ...state.conversations] }));
+      set({ conversationQuery: '' });
       await get().selectConversation(conversation.id);
     } catch (error) {
       set({ errorMessage: readableError(error) });
@@ -250,7 +255,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
         workspaceId,
         query: '',
       });
-      set({ conversations, activeConversationId: undefined, messages: [], toolActivity: [] });
+      set({
+        conversations,
+        conversationQuery: '',
+        activeConversationId: undefined,
+        messages: [],
+        toolActivity: [],
+      });
       const next = conversations[0];
       if (next === undefined) {
         await get().newConversation();
@@ -342,6 +353,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const lastUser = [...get().messages].reverse().find((message) => message.role === 'user');
     if (lastUser !== undefined) {
       await get().send(lastUser.content);
+    }
+  },
+
+  async searchConversations(query) {
+    const workspaceId = get().workspaceId;
+    if (workspaceId === undefined) {
+      return;
+    }
+    try {
+      const results = await window.openCodeDesk.conversations.list({ workspaceId, query });
+      const active = get().conversations.find(
+        (conversation) => conversation.id === get().activeConversationId,
+      );
+      const conversations =
+        active !== undefined && !results.some((conversation) => conversation.id === active.id)
+          ? [active, ...results]
+          : results;
+      set({ conversations, conversationQuery: query, errorMessage: undefined });
+    } catch (error) {
+      set({ errorMessage: readableError(error) });
     }
   },
 }));

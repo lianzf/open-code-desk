@@ -7,5 +7,6 @@ export * from './desktop-api';
 export * from './git';
 export * from './health';
 export * from './providers';
+export * from './settings';
 export * from './terminal';
 export * from './workspace';

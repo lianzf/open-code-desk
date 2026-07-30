@@ -16,6 +16,7 @@ import { createAppDatabase } from '../database/database';
 import { WorkspaceFileService } from '../filesystem/workspace-file.service';
 import { OpenAICompatibleProvider } from '../providers/openai-compatible/openai-compatible.provider';
 import { ProviderConfigRepository } from '../providers/provider-config.repository';
+import { ModelConfigRepository } from '../providers/model-config.repository';
 import { ProviderService } from '../providers/provider.service';
 import type { SecretStore } from '../security/secret-store';
 import { ProposalAwarePermissionPolicy } from '../tools/file-proposal-tools';
@@ -113,6 +114,7 @@ describe('Agent file proposal flow', () => {
     registry.register(new OpenAICompatibleProvider());
     const providers = new ProviderService(
       new ProviderConfigRepository(database),
+      new ModelConfigRepository(database),
       new MemorySecretStore(),
       registry,
     );

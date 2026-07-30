@@ -1,9 +1,13 @@
 import {
   ChevronRight,
+  Code2,
+  FilePlus2,
+  FolderPlus,
   GitBranch,
   RefreshCw,
   Search,
   Settings2,
+  Square,
   TerminalSquare,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -20,8 +24,21 @@ import { FileTree } from '@/features/workspace/file-tree';
 import { useWorkspaceStore } from '@/features/workspace/workspace.store';
 
 export function WorkspacePage() {
-  const { current, errorMessage, loading, refreshTree, search, searchQuery, searchResults } =
-    useWorkspaceStore();
+  const {
+    cancelSearch,
+    createDirectory,
+    createFile,
+    current,
+    errorMessage,
+    loading,
+    refreshTree,
+    search,
+    searchMode,
+    searchQuery,
+    searchResults,
+    setSearchMode,
+    textSearchResults,
+  } = useWorkspaceStore();
   const editor = useEditorStore();
   const resetEditor = useEditorStore((state) => state.reset);
   const handleEditorFileChange = useEditorStore((state) => state.handleFileChange);
@@ -102,11 +119,65 @@ export function WorkspacePage() {
                 className="h-7 min-w-0 flex-1 bg-transparent px-1.5 text-xs outline-none placeholder:text-zinc-600"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索文件名"
-                aria-label="搜索文件名"
+                placeholder={searchMode === 'files' ? '搜索文件名' : '搜索代码内容'}
+                aria-label={searchMode === 'files' ? '搜索文件名' : '搜索代码内容'}
                 data-testid="file-search"
               />
             </form>
+            <button
+              className={`rounded p-1.5 hover:bg-zinc-800 hover:text-zinc-200 ${
+                searchMode === 'content' ? 'text-cyan-300' : 'text-zinc-500'
+              }`}
+              onClick={() => setSearchMode(searchMode === 'files' ? 'content' : 'files')}
+              title={searchMode === 'files' ? '切换到代码内容搜索' : '切换到文件名搜索'}
+              aria-label={searchMode === 'files' ? '切换到代码内容搜索' : '切换到文件名搜索'}
+              data-testid="toggle-search-mode"
+            >
+              <Code2 className="size-3.5" aria-hidden="true" />
+            </button>
+            {loading && showSearchResults ? (
+              <button
+                className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                onClick={() => void cancelSearch()}
+                title="停止搜索"
+                aria-label="停止搜索"
+              >
+                <Square className="size-3.5" aria-hidden="true" />
+              </button>
+            ) : null}
+            <button
+              className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+              onClick={() => {
+                const relativePath = window.prompt('输入新文件的工作区相对路径')?.trim();
+                if (relativePath === undefined || relativePath === '') {
+                  return;
+                }
+                void createFile(relativePath).then((created) => {
+                  if (created) {
+                    void editor.openFile(current.id, relativePath);
+                  }
+                });
+              }}
+              title="新建文件"
+              aria-label="新建文件"
+              data-testid="create-file"
+            >
+              <FilePlus2 className="size-3.5" aria-hidden="true" />
+            </button>
+            <button
+              className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+              onClick={() => {
+                const relativePath = window.prompt('输入新目录的工作区相对路径')?.trim();
+                if (relativePath !== undefined && relativePath !== '') {
+                  void createDirectory(relativePath);
+                }
+              }}
+              title="新建目录"
+              aria-label="新建目录"
+              data-testid="create-directory"
+            >
+              <FolderPlus className="size-3.5" aria-hidden="true" />
+            </button>
             <button
               className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
               onClick={() => void refreshTree()}
@@ -119,6 +190,26 @@ export function WorkspacePage() {
           <div className="flex-1 overflow-auto p-1" data-testid="file-tree">
             {loading && showSearchResults ? (
               <p className="px-2 py-3 text-xs text-zinc-600">正在搜索…</p>
+            ) : showSearchResults && searchMode === 'content' ? (
+              textSearchResults.length === 0 ? (
+                <p className="px-2 py-3 text-xs text-zinc-600">没有匹配代码</p>
+              ) : (
+                textSearchResults.map((match) => (
+                  <button
+                    key={`${match.path}:${match.line}:${match.column}`}
+                    className="block w-full rounded px-2 py-1.5 text-left hover:bg-zinc-800"
+                    onClick={() => void editor.openFile(current.id, match.path)}
+                    title={match.preview}
+                  >
+                    <span className="block truncate text-xs text-cyan-300">
+                      {match.path}:{match.line}:{match.column}
+                    </span>
+                    <span className="block truncate text-[11px] text-zinc-500">
+                      {match.preview}
+                    </span>
+                  </button>
+                ))
+              )
             ) : showSearchResults ? (
               searchResults.length === 0 ? (
                 <p className="px-2 py-3 text-xs text-zinc-600">没有匹配文件</p>

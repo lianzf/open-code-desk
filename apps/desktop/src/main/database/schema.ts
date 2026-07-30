@@ -44,6 +44,32 @@ export const providerConfigs = sqliteTable(
   ],
 );
 
+export const modelConfigs = sqliteTable(
+  'model_configs',
+  {
+    id: text('id').primaryKey(),
+    providerConfigId: text('provider_config_id')
+      .notNull()
+      .references(() => providerConfigs.id, { onDelete: 'cascade' }),
+    modelId: text('model_id').notNull(),
+    displayName: text('display_name').notNull(),
+    ownedBy: text('owned_by'),
+    contextWindow: integer('context_window'),
+    maxOutputTokens: integer('max_output_tokens'),
+    streaming: integer('streaming', { mode: 'boolean' }),
+    toolCalling: integer('tool_calling', { mode: 'boolean' }),
+    vision: integer('vision', { mode: 'boolean' }),
+    reasoning: integer('reasoning', { mode: 'boolean' }),
+    structuredOutput: integer('structured_output', { mode: 'boolean' }),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('model_configs_provider_model_idx').on(table.providerConfigId, table.modelId),
+    index('model_configs_provider_updated_idx').on(table.providerConfigId, table.updatedAt),
+  ],
+);
+
 export const secureSecrets = sqliteTable('secure_secrets', {
   ref: text('ref').primaryKey(),
   encryptedValue: blob('encrypted_value', { mode: 'buffer' }).notNull(),
@@ -292,3 +318,9 @@ export const permissionRules = sqliteTable(
   },
   (table) => [index('permission_rules_workspace_kind_idx').on(table.workspaceId, table.kind)],
 );
+
+export const appSettings = sqliteTable('app_settings', {
+  key: text('key').primaryKey(),
+  value: text('value', { mode: 'json' }).$type<unknown>().notNull(),
+  updatedAt: text('updated_at').notNull(),
+});

@@ -133,6 +133,8 @@ export interface ContextItem {
     | 'terminal'
     | 'diagnostic'
     | 'text'
+    | 'image'
+    | 'rules'
     | 'summary';
   readonly title: string;
   readonly content: string;

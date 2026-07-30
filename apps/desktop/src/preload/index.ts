@@ -3,6 +3,8 @@ import {
   applyChangeSetRequestSchema,
   cancelChatRequestSchema,
   cancelChatResponseSchema,
+  cancelFileSearchRequestSchema,
+  cancelFileSearchResponseSchema,
   commandActionResponseSchema,
   commandChannels,
   commandExecutionListSchema,
@@ -24,9 +26,12 @@ import {
   conversationListSchema,
   conversationSchema,
   conversationsChannels,
+  createDirectoryRequestSchema,
+  createFileRequestSchema,
   createConversationRequestSchema,
   deleteProviderRequestSchema,
   deleteProviderResponseSchema,
+  deletePathRequestSchema,
   decideCommandRequestSchema,
   deletePermissionRuleRequestSchema,
   deletePermissionRuleResponseSchema,
@@ -35,6 +40,7 @@ import {
   editChangeProposalRequestSchema,
   fileChangedEventSchema,
   fileEntryListSchema,
+  fileMutationResponseSchema,
   fileChangeSetListSchema,
   fileChangeSetSchema,
   filesChannels,
@@ -51,6 +57,7 @@ import {
   listChangeSetsRequestSchema,
   listCommandsRequestSchema,
   modelInfoListSchema,
+  movePathRequestSchema,
   nullableWorkspaceInfoSchema,
   openRecentWorkspaceRequestSchema,
   providerChannels,
@@ -59,14 +66,20 @@ import {
   providerDescriptorListSchema,
   providerIdRequestSchema,
   permissionRuleListSchema,
+  pickConversationImageResponseSchema,
   readFileRequestSchema,
   readFileResponseSchema,
   reviewChangeRequestSchema,
   reviewManyChangesRequestSchema,
   renameConversationRequestSchema,
   searchFilesRequestSchema,
+  searchTextRequestSchema,
+  textSearchResponseSchema,
   saveProviderRequestSchema,
   saveConversationContextRequestSchema,
+  settingsChannels,
+  appSettingsSchema,
+  updateAppSettingsRequestSchema,
   setNetworkAccessRequestSchema,
   startChatRequestSchema,
   startChatResponseSchema,
@@ -127,10 +140,35 @@ const desktopApi: DesktopApi = {
         ipcRenderer.removeListener(filesChannels.changed, wrappedListener);
       };
     },
+    async cancelSearch(input) {
+      const request = cancelFileSearchRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(filesChannels.cancelSearch, request);
+      return cancelFileSearchResponseSchema.parse(response);
+    },
+    async createDirectory(input) {
+      const request = createDirectoryRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(filesChannels.createDirectory, request);
+      return fileMutationResponseSchema.parse(response);
+    },
+    async createFile(input) {
+      const request = createFileRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(filesChannels.createFile, request);
+      return fileMutationResponseSchema.parse(response);
+    },
+    async deletePath(input) {
+      const request = deletePathRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(filesChannels.deletePath, request);
+      return fileMutationResponseSchema.parse(response);
+    },
     async listDirectory(input) {
       const request = listDirectoryRequestSchema.parse(input);
       const response: unknown = await ipcRenderer.invoke(filesChannels.listDirectory, request);
       return fileEntryListSchema.parse(response);
+    },
+    async movePath(input) {
+      const request = movePathRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(filesChannels.movePath, request);
+      return fileMutationResponseSchema.parse(response);
     },
     async readFile(input) {
       const request = readFileRequestSchema.parse(input);
@@ -141,6 +179,11 @@ const desktopApi: DesktopApi = {
       const request = searchFilesRequestSchema.parse(input);
       const response: unknown = await ipcRenderer.invoke(filesChannels.searchFiles, request);
       return fileEntryListSchema.parse(response);
+    },
+    async searchText(input) {
+      const request = searchTextRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(filesChannels.searchText, request);
+      return textSearchResponseSchema.parse(response);
     },
     async writeFile(input) {
       const request = writeFileRequestSchema.parse(input);
@@ -176,6 +219,17 @@ const desktopApi: DesktopApi = {
       const request = providerIdRequestSchema.parse(input);
       const response: unknown = await ipcRenderer.invoke(providerChannels.listModels, request);
       return modelInfoListSchema.parse(response);
+    },
+  },
+  settings: {
+    async get() {
+      const response: unknown = await ipcRenderer.invoke(settingsChannels.get);
+      return appSettingsSchema.parse(response);
+    },
+    async update(input) {
+      const request = updateAppSettingsRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(settingsChannels.update, request);
+      return appSettingsSchema.parse(response);
     },
   },
   conversations: {
@@ -319,6 +373,11 @@ const desktopApi: DesktopApi = {
       const request = contextConversationRequestSchema.parse(input);
       const response: unknown = await ipcRenderer.invoke(contextChannels.list, request);
       return conversationContextListSchema.parse(response);
+    },
+    async pickImage(input) {
+      const request = contextConversationRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(contextChannels.pickImage, request);
+      return pickConversationImageResponseSchema.parse(response);
     },
     async save(input) {
       const request = saveConversationContextRequestSchema.parse(input);

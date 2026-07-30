@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  createFileRequestSchema,
+  deletePathRequestSchema,
   fileChangedEventSchema,
   listDirectoryRequestSchema,
   searchFilesRequestSchema,
+  searchTextRequestSchema,
   writeFileRequestSchema,
 } from './workspace';
 
@@ -46,6 +49,37 @@ describe('workspace IPC contracts', () => {
       workspaceId,
       relativePath: 'src/index.ts',
       event: 'changed',
+    });
+  });
+
+  it('requires explicit delete confirmation and validates cancellable text searches', () => {
+    expect(
+      createFileRequestSchema.parse({
+        workspaceId,
+        relativePath: 'src/new.ts',
+      }),
+    ).toEqual({
+      workspaceId,
+      relativePath: 'src/new.ts',
+      content: '',
+    });
+    expect(() =>
+      deletePathRequestSchema.parse({
+        workspaceId,
+        relativePath: 'src/new.ts',
+        confirmed: false,
+      }),
+    ).toThrow();
+    expect(
+      searchTextRequestSchema.parse({
+        requestId: '6f674acb-f7a0-46ee-9f23-d74933ba7618',
+        workspaceId,
+        query: 'needle',
+      }),
+    ).toMatchObject({
+      path: '',
+      caseSensitive: false,
+      limit: 100,
     });
   });
 });

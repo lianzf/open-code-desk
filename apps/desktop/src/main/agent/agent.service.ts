@@ -13,6 +13,7 @@ import {
 
 import type { ConversationRepository } from '../conversations/conversation.repository';
 import type { ContextItemRepository } from '../context/context-item.repository';
+import type { ProjectRulesService } from '../context/project-rules.service';
 import type { FileChangeService } from '../changes/file-change.service';
 import type { CommandLifecycleEvent } from '../commands/command-lifecycle';
 import type { CommandService } from '../commands/command.service';
@@ -46,6 +47,7 @@ export class AgentService {
     permissionPolicy: PermissionPolicy = new DefaultPermissionPolicy(),
     private readonly commands?: CommandService,
     private readonly contextItems?: ContextItemRepository,
+    private readonly projectRules?: ProjectRulesService,
   ) {
     this.#dispatcher = new ToolDispatcher(tools, permissionPolicy, toolCalls);
   }
@@ -91,6 +93,7 @@ export class AgentService {
         role: 'user',
         content: input.content,
       });
+      const projectRules = (await this.projectRules?.load(input.workspaceId, signal)) ?? [];
       transition('planning');
 
       let executedToolCalls = 0;
@@ -101,7 +104,8 @@ export class AgentService {
           history,
           profile.contextWindow,
           profile.maxOutputTokens,
-          this.contextItems?.list(input.conversationId) ?? [],
+          [...projectRules, ...(this.contextItems?.list(input.conversationId) ?? [])],
+          profile.vision,
         );
         emit({
           type: 'context_built',

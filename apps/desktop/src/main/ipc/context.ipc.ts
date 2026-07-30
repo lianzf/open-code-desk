@@ -6,6 +6,7 @@ import {
   conversationContextListSchema,
   deleteConversationContextRequestSchema,
   deleteConversationContextResponseSchema,
+  pickConversationImageResponseSchema,
   saveConversationContextRequestSchema,
 } from '@open-code-desk/ipc-contracts';
 
@@ -35,6 +36,12 @@ export function registerContextIpc(
         ...(input.sourceKey === undefined ? {} : { sourceKey: input.sourceKey }),
       }),
     );
+  });
+
+  ipcMain.handle(contextChannels.pickImage, async (event, untrustedInput: unknown) => {
+    assertTrustedIpcEvent(event, options);
+    const input = contextConversationRequestSchema.parse(untrustedInput);
+    return pickConversationImageResponseSchema.parse(await service.pickImage(input.conversationId));
   });
 
   ipcMain.handle(contextChannels.delete, (event, untrustedInput: unknown) => {

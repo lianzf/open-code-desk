@@ -1,4 +1,13 @@
-import { ChevronRight, FileCode2, Folder, FolderOpen, LockKeyhole, Paperclip } from 'lucide-react';
+import {
+  ChevronRight,
+  FileCode2,
+  Folder,
+  FolderOpen,
+  LockKeyhole,
+  Paperclip,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
 
 import { useConversationContextStore } from '@/features/context/context.store';
 import { cn } from '@/lib/utils';
@@ -12,8 +21,11 @@ interface TreeLevelProps {
 }
 
 function TreeLevel({ depth, directory, workspaceId }: TreeLevelProps) {
-  const { directories, expandedDirectories, toggleDirectory } = useWorkspaceStore();
+  const { deletePath, directories, expandedDirectories, movePath, toggleDirectory } =
+    useWorkspaceStore();
   const openFile = useEditorStore((state) => state.openFile);
+  const discardEditorPath = useEditorStore((state) => state.discardPath);
+  const editorTabs = useEditorStore((state) => state.tabs);
   const saveDirectory = useConversationContextStore((state) => state.saveDirectory);
   const contextConversationId = useConversationContextStore((state) => state.conversationId);
   const entries = directories[directory] ?? [];
@@ -83,6 +95,74 @@ function TreeLevel({ depth, directory, workspaceId }: TreeLevelProps) {
                 >
                   <Paperclip className="size-3" />
                 </button>
+              ) : null}
+              {!entry.restricted ? (
+                <>
+                  <button
+                    className="hidden rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-cyan-300 group-hover:block focus:block"
+                    onClick={() => {
+                      const destinationPath = window
+                        .prompt('输入新的工作区相对路径（可用于重命名或移动）', entry.relativePath)
+                        ?.trim();
+                      if (
+                        destinationPath === undefined ||
+                        destinationPath === '' ||
+                        destinationPath === entry.relativePath
+                      ) {
+                        return;
+                      }
+                      const hasDirtyTab = editorTabs.some(
+                        (tab) =>
+                          (tab.relativePath === entry.relativePath ||
+                            tab.relativePath.startsWith(`${entry.relativePath}/`)) &&
+                          tab.content !== tab.savedContent,
+                      );
+                      if (
+                        hasDirtyTab &&
+                        !window.confirm('此路径下存在未保存的编辑器内容。继续会关闭这些标签页。')
+                      ) {
+                        return;
+                      }
+                      void movePath(entry.relativePath, destinationPath).then((moved) => {
+                        if (moved) {
+                          discardEditorPath(entry.relativePath);
+                        }
+                      });
+                    }}
+                    title={`重命名或移动 ${entry.relativePath}`}
+                    aria-label={`重命名或移动 ${entry.relativePath}`}
+                    data-testid={`move-path-${entry.relativePath}`}
+                  >
+                    <Pencil className="size-3" />
+                  </button>
+                  <button
+                    className="mr-1 hidden rounded p-1 text-zinc-600 hover:bg-red-950 hover:text-red-300 group-hover:block focus:block"
+                    onClick={() => {
+                      const hasDirtyTab = editorTabs.some(
+                        (tab) =>
+                          (tab.relativePath === entry.relativePath ||
+                            tab.relativePath.startsWith(`${entry.relativePath}/`)) &&
+                          tab.content !== tab.savedContent,
+                      );
+                      const warning = hasDirtyTab
+                        ? `“${entry.relativePath}” 下存在未保存内容。删除将关闭对应标签页，确定继续吗？`
+                        : `确定删除“${entry.relativePath}”吗？非空目录不会被删除。`;
+                      if (!window.confirm(warning)) {
+                        return;
+                      }
+                      void deletePath(entry.relativePath).then((deleted) => {
+                        if (deleted) {
+                          discardEditorPath(entry.relativePath);
+                        }
+                      });
+                    }}
+                    title={`删除 ${entry.relativePath}`}
+                    aria-label={`删除 ${entry.relativePath}`}
+                    data-testid={`delete-path-${entry.relativePath}`}
+                  >
+                    <Trash2 className="size-3" />
+                  </button>
+                </>
               ) : null}
             </div>
             {entry.kind === 'directory' && expanded ? (

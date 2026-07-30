@@ -202,4 +202,41 @@ describe('AnthropicProvider', () => {
       ],
     });
   });
+
+  it('maps image content to Anthropic base64 image blocks', () => {
+    expect(
+      anthropicRequestBody(
+        {
+          model: 'claude-fixture',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Inspect this image.' },
+                { type: 'image', mediaType: 'image/webp', data: 'aGVsbG8=' },
+              ],
+            },
+          ],
+        },
+        false,
+      ),
+    ).toMatchObject({
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Inspect this image.' },
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/webp',
+                data: 'aGVsbG8=',
+              },
+            },
+          ],
+        },
+      ],
+    });
+  });
 });

@@ -22,6 +22,7 @@ interface EditorState {
   setActive(relativePath: string): void;
   updateContent(content: string): void;
   closeFile(relativePath: string): void;
+  discardPath(relativePath: string): void;
   saveActive(): Promise<void>;
   handleFileChange(workspaceId: string, relativePath: string): Promise<void>;
   clearError(): void;
@@ -108,6 +109,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         ? (tabs[Math.min(tabIndex, tabs.length - 1)]?.relativePath ?? null)
         : state.activePath;
     set({ tabs, activePath: nextActive });
+  },
+
+  discardPath(relativePath) {
+    const state = get();
+    const matchesPath = (path: string) =>
+      path === relativePath || path.startsWith(`${relativePath}/`);
+    const tabs = state.tabs.filter((tab) => !matchesPath(tab.relativePath));
+    set({
+      tabs,
+      activePath:
+        state.activePath !== null && matchesPath(state.activePath)
+          ? (tabs[0]?.relativePath ?? null)
+          : state.activePath,
+    });
   },
 
   async saveActive() {

@@ -60,7 +60,7 @@ describe('conversation context persistence', () => {
     expect(updated.content).toContain('version = 2');
     expect(updated.tokenEstimate).toBeGreaterThan(0);
     expect(service.list(conversation.id)).toHaveLength(2);
-    expect(database.client.prepare('PRAGMA user_version').get()).toEqual({ user_version: 4 });
+    expect(database.client.prepare('PRAGMA user_version').get()).toEqual({ user_version: 5 });
     database.close();
 
     const reopened = createAppDatabase(databasePath);
@@ -73,5 +73,30 @@ describe('conversation context persistence', () => {
     expect(reopenedRepository.delete(crypto.randomUUID(), pasted.id)).toBe(false);
     expect(reopenedRepository.list(conversation.id)).toHaveLength(1);
     reopened.close();
+  });
+
+  it('stores an explicitly selected image as bounded vision context', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'open-code-desk-image-context-'));
+    temporaryPaths.push(rootPath);
+    const database = createAppDatabase(join(rootPath, 'context.sqlite'));
+    const workspace = new WorkspaceRepository(database).upsert(rootPath);
+    const conversations = new ConversationRepository(database);
+    const conversation = conversations.create(workspace.id);
+    const service = new ContextItemService(new ContextItemRepository(database), conversations, {
+      pick: async () => ({
+        title: 'screenshot.png',
+        content: 'data:image/png;base64,aGVsbG8=',
+        sourceKey: 'image:sha256:fixture',
+      }),
+    });
+
+    await expect(service.pickImage(conversation.id)).resolves.toMatchObject({
+      type: 'image',
+      title: 'screenshot.png',
+      tokenEstimate: 1_000,
+      priority: 85,
+    });
+    expect(service.list(conversation.id)).toHaveLength(1);
+    database.close();
   });
 });

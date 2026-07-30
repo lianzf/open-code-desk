@@ -3,10 +3,23 @@ import { z } from 'zod';
 export const contextChannels = {
   delete: 'context:delete',
   list: 'context:list',
+  pickImage: 'context:pick-image',
   save: 'context:save',
 } as const;
 
 export const contextItemTypeSchema = z.enum([
+  'file',
+  'selection',
+  'directory',
+  'git_diff',
+  'terminal',
+  'diagnostic',
+  'image',
+  'text',
+  'summary',
+]);
+
+const saveableContextItemTypeSchema = z.enum([
   'file',
   'selection',
   'directory',
@@ -21,7 +34,7 @@ export const conversationContextItemSchema = z
   .object({
     id: z.string().uuid(),
     conversationId: z.string().uuid(),
-    type: contextItemTypeSchema,
+    type: saveableContextItemTypeSchema,
     title: z.string().min(1).max(300),
     content: z.string().max(500_000),
     tokenEstimate: z.number().int().positive(),
@@ -55,6 +68,7 @@ export const deleteConversationContextRequestSchema = z
   .strict();
 
 export const conversationContextListSchema = z.array(conversationContextItemSchema).max(1_000);
+export const pickConversationImageResponseSchema = conversationContextItemSchema.nullable();
 export const deleteConversationContextResponseSchema = z.object({ deleted: z.boolean() }).strict();
 
 export type ConversationContextItem = z.infer<typeof conversationContextItemSchema>;

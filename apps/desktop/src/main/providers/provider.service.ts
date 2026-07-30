@@ -33,6 +33,7 @@ import {
   type SaveStoredProviderConfig,
   type StoredProviderConfig,
 } from './provider-config.repository';
+import type { ModelConfigRepository } from './model-config.repository';
 
 const secretPayloadSchema = z
   .object({
@@ -73,6 +74,7 @@ export interface ProviderChatProfile {
   readonly contextWindow: number;
   readonly maxOutputTokens: number;
   readonly toolCalling: boolean;
+  readonly vision: boolean;
 }
 
 function toCoreConfig(stored: StoredProviderConfig): ProviderConfig {
@@ -180,6 +182,7 @@ function hasSecretPayload(payload: SecretPayload): boolean {
 export class ProviderService {
   public constructor(
     private readonly repository: ProviderConfigRepository,
+    private readonly models: ModelConfigRepository,
     private readonly secretStore: SecretStore,
     private readonly registry: ProviderRegistry,
   ) {}
@@ -287,7 +290,8 @@ export class ProviderService {
   public async listModels(providerId: string): Promise<ReadonlyArray<PublicModelInfo>> {
     const controller = new AbortController();
     const runtime = await this.getRuntime(providerId, randomUUID(), controller.signal);
-    return runtime.adapter.listModels(runtime.config, runtime.context);
+    const models = await runtime.adapter.listModels(runtime.config, runtime.context);
+    return this.models.replaceForProvider(providerId, models);
   }
 
   public async createChatStream(
@@ -326,6 +330,7 @@ export class ProviderService {
       contextWindow: capabilities.contextWindow ?? 32_000,
       maxOutputTokens: capabilities.maxOutputTokens ?? 4_096,
       toolCalling: capabilities.toolCalling,
+      vision: capabilities.vision,
     };
   }
 

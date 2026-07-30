@@ -5,6 +5,7 @@ import {
   Pencil,
   Plus,
   RotateCcw,
+  Search,
   Send,
   Settings2,
   Square,
@@ -41,6 +42,7 @@ const statusLabels = {
 
 export function ChatPanel() {
   const [draft, setDraft] = useState('');
+  const [historyQuery, setHistoryQuery] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
   const currentWorkspace = useWorkspaceStore((state) => state.current);
   const chat = useChatStore();
@@ -122,6 +124,36 @@ export function ChatPanel() {
             <Settings2 className="size-4" />
           </button>
         </div>
+
+        <form
+          className="flex items-center rounded border border-zinc-800 bg-zinc-900 px-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void chat.searchConversations(historyQuery);
+          }}
+        >
+          <Search className="size-3.5 text-zinc-600" aria-hidden="true" />
+          <input
+            className="h-7 min-w-0 flex-1 bg-transparent px-1.5 text-xs text-zinc-300 outline-none placeholder:text-zinc-600"
+            value={historyQuery}
+            onChange={(event) => setHistoryQuery(event.target.value)}
+            placeholder="搜索历史会话"
+            aria-label="搜索历史会话"
+            data-testid="conversation-search"
+          />
+          {chat.conversationQuery !== '' ? (
+            <button
+              type="button"
+              className="text-[10px] text-zinc-500 hover:text-zinc-200"
+              onClick={() => {
+                setHistoryQuery('');
+                void chat.searchConversations('');
+              }}
+            >
+              清除
+            </button>
+          ) : null}
+        </form>
 
         <div className="flex items-center gap-1">
           <select

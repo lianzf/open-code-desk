@@ -49,14 +49,23 @@ import type {
   ProviderIdRequest,
   SaveProviderRequest,
 } from './providers';
+import type { AppSettings, UpdateAppSettingsRequest } from './settings';
 import type {
+  CancelFileSearchRequest,
+  CreateDirectoryRequest,
+  CreateFileRequest,
+  DeletePathRequest,
   FileChangedEvent,
   FileEntry,
+  FileMutationResponse,
   ListDirectoryRequest,
+  MovePathRequest,
   OpenRecentWorkspaceRequest,
   ReadFileRequest,
   ReadFileResponse,
   SearchFilesRequest,
+  SearchTextRequest,
+  TextSearchResponse,
   WorkspaceInfo,
   WriteFileRequest,
   WriteFileResponse,
@@ -84,9 +93,15 @@ export interface DesktopApi {
   };
   readonly files: {
     onChanged(listener: (event: FileChangedEvent) => void): () => void;
+    cancelSearch(input: CancelFileSearchRequest): Promise<{ readonly cancelled: boolean }>;
+    createDirectory(input: CreateDirectoryRequest): Promise<FileMutationResponse>;
+    createFile(input: CreateFileRequest): Promise<FileMutationResponse>;
+    deletePath(input: DeletePathRequest): Promise<FileMutationResponse>;
     listDirectory(input: ListDirectoryRequest): Promise<ReadonlyArray<FileEntry>>;
+    movePath(input: MovePathRequest): Promise<FileMutationResponse>;
     readFile(input: ReadFileRequest): Promise<ReadFileResponse>;
     searchFiles(input: SearchFilesRequest): Promise<ReadonlyArray<FileEntry>>;
+    searchText(input: SearchTextRequest): Promise<TextSearchResponse>;
     writeFile(input: WriteFileRequest): Promise<WriteFileResponse>;
   };
   readonly providers: {
@@ -96,6 +111,10 @@ export interface DesktopApi {
     delete(input: DeleteProviderRequest): Promise<{ readonly deleted: true }>;
     testConnection(input: ProviderIdRequest): Promise<ConnectionTestResult>;
     listModels(input: ProviderIdRequest): Promise<ReadonlyArray<ModelInfo>>;
+  };
+  readonly settings: {
+    get(): Promise<AppSettings>;
+    update(input: UpdateAppSettingsRequest): Promise<AppSettings>;
   };
   readonly conversations: {
     list(input: ListConversationsRequest): Promise<ReadonlyArray<Conversation>>;
@@ -132,6 +151,7 @@ export interface DesktopApi {
   };
   readonly context: {
     list(input: ContextConversationRequest): Promise<ReadonlyArray<ConversationContextItem>>;
+    pickImage(input: ContextConversationRequest): Promise<ConversationContextItem | null>;
     save(input: SaveConversationContextRequest): Promise<ConversationContextItem>;
     delete(input: DeleteConversationContextRequest): Promise<{ readonly deleted: boolean }>;
   };

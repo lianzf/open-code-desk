@@ -242,6 +242,34 @@ const databaseMigrations = [
     CREATE UNIQUE INDEX context_items_conversation_source_idx
       ON context_items(conversation_id, source_key);
   `,
+  `
+    CREATE TABLE model_configs (
+      id TEXT PRIMARY KEY NOT NULL,
+      provider_config_id TEXT NOT NULL
+        REFERENCES provider_configs(id) ON DELETE CASCADE,
+      model_id TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      owned_by TEXT,
+      context_window INTEGER,
+      max_output_tokens INTEGER,
+      streaming INTEGER,
+      tool_calling INTEGER,
+      vision INTEGER,
+      reasoning INTEGER,
+      structured_output INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(provider_config_id, model_id)
+    );
+    CREATE INDEX model_configs_provider_updated_idx
+      ON model_configs(provider_config_id, updated_at);
+
+    CREATE TABLE app_settings (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `,
 ] as const;
 
 function migrateDatabase(client: DatabaseSync): void {

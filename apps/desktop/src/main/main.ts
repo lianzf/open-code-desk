@@ -16,6 +16,8 @@ import { CommandService } from './commands/command.service';
 import { PermissionRuleRepository } from './commands/permission-rule.repository';
 import { ContextItemRepository } from './context/context-item.repository';
 import { ContextItemService } from './context/context-item.service';
+import { ElectronContextImagePicker } from './context/image-context-picker';
+import { ProjectRulesService } from './context/project-rules.service';
 import { ConversationRepository } from './conversations/conversation.repository';
 import { ConversationService } from './conversations/conversation.service';
 import { createAppDatabase, type AppDatabase } from './database/database';
@@ -31,13 +33,17 @@ import { registerCommandsIpc, unregisterCommandsIpc } from './ipc/commands.ipc';
 import { registerContextIpc, unregisterContextIpc } from './ipc/context.ipc';
 import { registerConversationsIpc, unregisterConversationsIpc } from './ipc/conversations.ipc';
 import { registerProvidersIpc, unregisterProvidersIpc } from './ipc/providers.ipc';
+import { registerSettingsIpc, unregisterSettingsIpc } from './ipc/settings.ipc';
 import { registerWorkspaceIpc, unregisterWorkspaceIpc } from './ipc/workspace.ipc';
 import { registerTerminalIpc, unregisterTerminalIpc } from './ipc/terminal.ipc';
 import { ProviderConfigRepository } from './providers/provider-config.repository';
+import { ModelConfigRepository } from './providers/model-config.repository';
 import { ProviderService } from './providers/provider.service';
 import { registerModelProviders } from './providers/register-model-providers';
 import { SecretRepository } from './security/secret.repository';
 import { ElectronSafeStorageCryptography, SecureSecretStore } from './security/secret-store';
+import { AppSettingsRepository } from './settings/app-settings.repository';
+import { AppSettingsService } from './settings/app-settings.service';
 import { ProposalAwarePermissionPolicy } from './tools/file-proposal-tools';
 import { createAgentToolRegistry } from './tools/register-read-only-tools';
 import { createMainWindow, resolvePreloadPath } from './window/create-main-window';
@@ -83,10 +89,16 @@ app.whenReady().then(async () => {
     new SecretRepository(database),
     new ElectronSafeStorageCryptography(),
   );
+  const providerConfigRepository = new ProviderConfigRepository(database);
   const providerService = new ProviderService(
-    new ProviderConfigRepository(database),
+    providerConfigRepository,
+    new ModelConfigRepository(database),
     secretStore,
     providerRegistry,
+  );
+  const settingsService = new AppSettingsService(
+    new AppSettingsRepository(database),
+    providerConfigRepository,
   );
   const conversationRepository = new ConversationRepository(database);
   const contextItemRepository = new ContextItemRepository(database);
@@ -136,6 +148,7 @@ app.whenReady().then(async () => {
     new ProposalAwarePermissionPolicy(),
     commandService,
     contextItemRepository,
+    new ProjectRulesService(fileService),
   );
   chatIpcController = new ChatIpcController(agentService);
 
@@ -149,10 +162,15 @@ app.whenReady().then(async () => {
   registerFilesIpc(trustedRendererOptions, fileService);
   registerGitIpc(trustedRendererOptions, gitService);
   registerProvidersIpc(trustedRendererOptions, providerService);
+  registerSettingsIpc(trustedRendererOptions, settingsService);
   registerConversationsIpc(trustedRendererOptions, conversationService);
   registerContextIpc(
     trustedRendererOptions,
-    new ContextItemService(contextItemRepository, conversationRepository),
+    new ContextItemService(
+      contextItemRepository,
+      conversationRepository,
+      new ElectronContextImagePicker(),
+    ),
   );
   registerChangesIpc(trustedRendererOptions, changeService, changeTransactions);
   registerCommandsIpc(trustedRendererOptions, commandService);
@@ -179,6 +197,7 @@ app.on('before-quit', () => {
   unregisterCommandsIpc();
   unregisterTerminalIpc();
   unregisterProvidersIpc();
+  unregisterSettingsIpc();
   unregisterGitIpc();
   unregisterFilesIpc();
   unregisterWorkspaceIpc();

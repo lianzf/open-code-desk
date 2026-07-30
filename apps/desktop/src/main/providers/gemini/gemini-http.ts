@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type {
+  ChatMessageContent,
   ChatMessage,
   ChatRequest,
   ProviderConfig,
@@ -63,6 +64,15 @@ interface GeminiContent {
   readonly parts: ReadonlyArray<GeminiPart>;
 }
 
+function textContentOf(content: ChatMessageContent): string {
+  return typeof content === 'string'
+    ? content
+    : content
+        .filter((part) => part.type === 'text')
+        .map((part) => part.text)
+        .join('\n');
+}
+
 function parseFunctionArguments(argumentsJson: string): Readonly<Record<string, unknown>> {
   let parsed: unknown;
   try {
@@ -121,15 +131,25 @@ function partsForMessage(
         functionResponse: {
           id: message.toolCallId,
           name,
-          response: { output: message.content },
+          response: { output: textContentOf(message.content) },
         },
       },
     ];
   }
 
   const parts: GeminiPart[] = [];
-  if (message.content !== '') {
-    parts.push({ text: message.content });
+  const contentParts =
+    typeof message.content === 'string'
+      ? message.content === ''
+        ? []
+        : [{ type: 'text' as const, text: message.content }]
+      : message.content;
+  for (const part of contentParts) {
+    parts.push(
+      part.type === 'text'
+        ? { text: part.text }
+        : { inlineData: { mimeType: part.mediaType, data: part.data } },
+    );
   }
   for (const toolCall of message.toolCalls ?? []) {
     parts.push({
@@ -176,7 +196,7 @@ export function buildGeminiHeaders(context: ProviderContext): Headers {
 export function geminiRequestBody(request: ChatRequest): Readonly<Record<string, unknown>> {
   const system = request.messages
     .filter((message) => message.role === 'system')
-    .map((message) => message.content)
+    .map((message) => textContentOf(message.content))
     .filter((content) => content !== '')
     .join('\n\n');
 

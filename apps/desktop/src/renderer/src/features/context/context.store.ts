@@ -13,6 +13,7 @@ interface ConversationContextState {
   readonly errorMessage: string | undefined;
   initialize(conversationId: string): Promise<void>;
   refresh(): Promise<void>;
+  pickImage(): Promise<void>;
   save(input: SaveContextInput): Promise<void>;
   saveDirectory(workspaceId: string, relativePath: string): Promise<void>;
   remove(contextItemId: string): Promise<void>;
@@ -73,6 +74,28 @@ export const useConversationContextStore = create<ConversationContextState>((set
         set((state) => ({
           loading: false,
           items: sorted([...state.items.filter((item) => item.id !== saved.id), saved]),
+        }));
+      }
+    } catch (error) {
+      set({ loading: false, errorMessage: readableError(error) });
+    }
+  },
+
+  async pickImage() {
+    const conversationId = get().conversationId;
+    if (conversationId === undefined) {
+      return;
+    }
+    set({ loading: true, errorMessage: undefined });
+    try {
+      const saved = await window.openCodeDesk.context.pickImage({ conversationId });
+      if (get().conversationId === conversationId) {
+        set((state) => ({
+          loading: false,
+          items:
+            saved === null
+              ? state.items
+              : sorted([...state.items.filter((item) => item.id !== saved.id), saved]),
         }));
       }
     } catch (error) {

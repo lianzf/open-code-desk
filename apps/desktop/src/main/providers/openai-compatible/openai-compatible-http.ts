@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import type { ChatRequest, ProviderConfig, ProviderContext } from '@open-code-desk/provider-core';
+import type {
+  ChatMessageContent,
+  ChatRequest,
+  ProviderConfig,
+  ProviderContext,
+} from '@open-code-desk/provider-core';
 
 import {
   errorForHttpStatus,
@@ -92,6 +97,20 @@ export interface ToolCallAccumulator {
 const maximumJsonResponseBytes = 2_000_000;
 const requestTimeoutMs = 30_000;
 
+function openAIContent(content: ChatMessageContent): unknown {
+  if (typeof content === 'string') {
+    return content;
+  }
+  return content.map((part) =>
+    part.type === 'text'
+      ? { type: 'text', text: part.text }
+      : {
+          type: 'image_url',
+          image_url: { url: `data:${part.mediaType};base64,${part.data}` },
+        },
+  );
+}
+
 export function endpoint(config: ProviderConfig, path: string): string {
   return `${config.baseUrl.replace(/\/+$/, '')}/${path}`;
 }
@@ -118,7 +137,7 @@ export function requestBody(
     model: request.model,
     messages: request.messages.map((message) => ({
       role: message.role,
-      content: message.content,
+      content: openAIContent(message.content),
       ...(message.toolCallId === undefined ? {} : { tool_call_id: message.toolCallId }),
       ...(message.toolCalls === undefined
         ? {}
