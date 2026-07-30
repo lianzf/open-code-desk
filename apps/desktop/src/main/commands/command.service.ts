@@ -6,6 +6,7 @@ import type { ToolExecutionContext } from '@open-code-desk/tool-core';
 
 import { isPathInside, normalizeRelativePath, toPlatformPath } from '../filesystem/path-policy';
 import type { WorkspaceService } from '../workspace/workspace.service';
+import type { AuditLogService } from '../audit/audit-log.service';
 import type { CommandRepository } from './command.repository';
 import {
   assessCommandRisk,
@@ -41,6 +42,7 @@ export class CommandService {
     private readonly rules: PermissionRuleRepository,
     private readonly workspaces: WorkspaceService,
     private readonly runner: StructuredCommandRunner = new StructuredCommandRunner(),
+    private readonly audit?: AuditLogService,
   ) {}
 
   public subscribe(taskId: string, listener: CommandListener): () => void {
@@ -64,7 +66,28 @@ export class CommandService {
   }
 
   public addRule(workspaceId: string, kind: PermissionRuleKind, value: string) {
-    return this.rules.upsert(workspaceId, kind, value);
+    const rule = this.rules.upsert(workspaceId, kind, value);
+    this.audit?.record({
+      workspaceId,
+      actor: 'user',
+      category: 'permission',
+      action: 'permission_rule.upsert',
+      outcome: 'succeeded',
+      summary: `Permission rule ${kind} was saved.`,
+      metadata: { kind, ruleId: rule.id },
+    });
+    return rule;
+  }
+
+  public async upsertExecutableRule(
+    workspaceId: string,
+    kind: Extract<PermissionRuleKind, 'allow_executable' | 'deny_executable'>,
+    executable: string,
+    requestedCwd: string,
+  ) {
+    const workspace = await this.workspaces.getById(workspaceId);
+    const cwd = await this.resolveWorkingDirectory(workspace.rootPath, requestedCwd);
+    return this.addRule(workspaceId, kind, executableRuleValue(executable, cwd));
   }
 
   public setNetworkAccess(workspaceId: string, allowed: boolean) {
@@ -76,11 +99,35 @@ export class CommandService {
     if (allowed) {
       this.rules.upsert(workspaceId, 'allow_network_commands', 'true');
     }
+    this.audit?.record({
+      workspaceId,
+      actor: 'user',
+      category: 'permission',
+      action: 'network_commands.configure',
+      outcome: 'succeeded',
+      summary: allowed
+        ? 'Automatic execution of allow-listed network commands was enabled.'
+        : 'Automatic execution of network commands was disabled.',
+      metadata: { allowed },
+    });
     return this.rules.list(workspaceId);
   }
 
   public deleteRule(workspaceId: string, ruleId: string): boolean {
-    return this.rules.delete(workspaceId, ruleId);
+    const rule = this.rules.list(workspaceId).find((item) => item.id === ruleId);
+    const deleted = this.rules.delete(workspaceId, ruleId);
+    if (deleted) {
+      this.audit?.record({
+        workspaceId,
+        actor: 'user',
+        category: 'permission',
+        action: 'permission_rule.delete',
+        outcome: 'succeeded',
+        summary: `Permission rule ${rule?.kind ?? 'unknown'} was deleted.`,
+        metadata: { ruleId, ...(rule === undefined ? {} : { kind: rule.kind }) },
+      });
+    }
+    return deleted;
   }
 
   public async requestAndExecute(
@@ -368,6 +415,45 @@ export class CommandService {
 
   private emit(event: CommandLifecycleEvent): void {
     const taskId = event.type === 'command_output' ? event.taskId : event.command.taskId;
+    if (event.type !== 'command_output') {
+      const command = event.command;
+      const outcome =
+        command.status === 'pending_approval'
+          ? 'requested'
+          : command.status === 'approved'
+            ? 'allowed'
+            : command.status === 'running'
+              ? 'started'
+              : command.status === 'completed'
+                ? 'succeeded'
+                : command.status === 'cancelled'
+                  ? 'cancelled'
+                  : command.status === 'failed' || command.status === 'timed_out'
+                    ? 'failed'
+                    : 'denied';
+      this.audit?.record({
+        workspaceId: command.workspaceId,
+        conversationId: command.conversationId,
+        taskId: command.taskId,
+        actor:
+          command.status === 'pending_approval'
+            ? 'agent'
+            : command.status === 'approved' && !command.autoApproved
+              ? 'user'
+              : 'system',
+        category: 'command',
+        action: 'command.execute',
+        outcome,
+        summary: `Command ${command.executable} changed to ${command.status}.`,
+        metadata: {
+          commandId: command.id,
+          executable: command.executable,
+          riskLevel: command.riskLevel,
+          status: command.status,
+          autoApproved: command.autoApproved,
+        },
+      });
+    }
     for (const listener of this.#listeners.get(taskId) ?? []) {
       listener(event);
     }

@@ -269,6 +269,33 @@ describe('CommandService integration', () => {
     expect(fixture.commands.findById(result.commandId)?.riskLevel).toBe('blocked');
   });
 
+  it('creates an exact allow or deny rule for a validated workspace directory', async () => {
+    const allowed = await fixture.service.upsertExecutableRule(
+      fixture.workspaceId,
+      'allow_executable',
+      process.execPath,
+      '',
+    );
+    const denied = await fixture.service.upsertExecutableRule(
+      fixture.workspaceId,
+      'deny_executable',
+      'fixture-denied',
+      '',
+    );
+
+    expect(allowed.kind).toBe('allow_executable');
+    expect(denied.kind).toBe('deny_executable');
+    expect(fixture.service.listRules(fixture.workspaceId)).toHaveLength(2);
+    await expect(
+      fixture.service.upsertExecutableRule(
+        fixture.workspaceId,
+        'allow_executable',
+        process.execPath,
+        '../outside',
+      ),
+    ).rejects.toThrow();
+  });
+
   it('cancels a running command and persists the terminal state', async () => {
     const proposalPromise = waitForEvent(
       fixture.service,

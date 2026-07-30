@@ -187,6 +187,14 @@ describe('AgentService', () => {
       'real workspace file',
     );
     expect(tasks.latestForConversation(conversation.id)?.status).toBe('completed');
+    expect(tasks.latestForConversation(conversation.id)?.checkpoint).toMatchObject({
+      round: 2,
+      steps: expect.arrayContaining([
+        expect.objectContaining({ label: '执行工具 read_file', status: 'completed' }),
+        expect.objectContaining({ label: '完成任务', status: 'completed' }),
+      ]),
+    });
+    expect(events).toContainEqual(expect.objectContaining({ type: 'task_plan' }));
     expect(toolCalls.listForConversation(conversation.id)).toMatchObject([
       { toolName: 'read_file', status: 'completed' },
     ]);

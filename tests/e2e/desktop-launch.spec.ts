@@ -161,6 +161,10 @@ test('manages workspace paths and performs cancellable source-text search', asyn
     await window.getByTestId('tree-entry-docs').hover();
     await window.getByTestId('delete-path-docs').click();
     await expect(window.getByTestId('tree-entry-docs')).toHaveCount(0);
+
+    await window.getByTestId('toggle-audit').click();
+    await expect(window.getByTestId('audit-panel')).toBeVisible();
+    await expect(window.getByText('path.delete', { exact: true }).first()).toBeVisible();
   } finally {
     await application.close();
     await rm(projectDirectory, { recursive: true, force: true });

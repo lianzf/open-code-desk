@@ -5,6 +5,8 @@ import { dirname, join } from 'node:path';
 import type { FileChange } from '@open-code-desk/domain';
 
 import type { AgentTaskRepository } from '../agent/agent-task.repository';
+import { completeAgentTaskCheckpoint } from '../agent/agent-task-plan';
+import type { AuditLogService } from '../audit/audit-log.service';
 import { ChangeArtifactStore, sha256 } from './artifact-store';
 import { ChangePathResolver, type ResolvedWorkspaceFile } from './change-path-resolver';
 import type { FileChangeAggregate, FileChangeRepository } from './file-change.repository';
@@ -61,6 +63,7 @@ export class FileChangeTransactionService {
     private readonly paths: ChangePathResolver,
     private readonly tasks: AgentTaskRepository,
     private readonly faultInjector?: FileTransactionFaultInjector,
+    private readonly audit?: AuditLogService,
   ) {
     this.#rollback = new FileChangeRollbackService(repository, artifacts, paths, tasks);
   }
@@ -127,8 +130,25 @@ export class FileChangeTransactionService {
         appliedAt: now,
         error: null,
       });
-      this.tasks.update(aggregate.changeSet.taskId, 'completed');
-      return this.changes.get(changeSetId);
+      this.tasks.update(aggregate.changeSet.taskId, 'completed', {
+        checkpoint: completeAgentTaskCheckpoint(
+          this.tasks.findById(aggregate.changeSet.taskId)?.checkpoint,
+          '应用已批准的文件修改',
+        ),
+      });
+      const applied = this.changes.get(changeSetId);
+      this.audit?.record({
+        workspaceId: aggregate.changeSet.workspaceId,
+        conversationId: aggregate.changeSet.conversationId,
+        taskId: aggregate.changeSet.taskId,
+        actor: 'user',
+        category: 'file_change',
+        action: 'change_set.apply',
+        outcome: 'succeeded',
+        summary: `Applied ${approved.length} approved file change(s).`,
+        metadata: { changeSetId, approvedChanges: approved.length },
+      });
+      return applied;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Applying the change set failed.';
       const compensationError = await this.compensatePlans(plans);
@@ -158,6 +178,17 @@ export class FileChangeTransactionService {
           retryable: compensationError === null,
         },
       });
+      this.audit?.record({
+        workspaceId: aggregate.changeSet.workspaceId,
+        conversationId: aggregate.changeSet.conversationId,
+        taskId: aggregate.changeSet.taskId,
+        actor: 'user',
+        category: 'file_change',
+        action: 'change_set.apply',
+        outcome: 'failed',
+        summary: `Applying file changes failed: ${message}`,
+        metadata: { changeSetId, compensationFailed: compensationError !== null },
+      });
       throw new Error(
         compensationError === null
           ? `${message} All earlier writes were rolled back.`
@@ -178,7 +209,19 @@ export class FileChangeTransactionService {
       throw new Error('The rollback digest is stale.');
     }
     await this.#rollback.restoreAggregate(aggregate, true);
-    return this.changes.get(changeSetId);
+    const rolledBack = this.changes.get(changeSetId);
+    this.audit?.record({
+      workspaceId: aggregate.changeSet.workspaceId,
+      conversationId: aggregate.changeSet.conversationId,
+      taskId: aggregate.changeSet.taskId,
+      actor: 'user',
+      category: 'file_change',
+      action: 'change_set.rollback',
+      outcome: 'succeeded',
+      summary: `Rolled back ${aggregate.changes.length} file change(s).`,
+      metadata: { changeSetId, changes: aggregate.changes.length },
+    });
+    return rolledBack;
   }
 
   public async recoverInterrupted(): Promise<number> {

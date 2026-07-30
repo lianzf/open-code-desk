@@ -9,6 +9,7 @@ import type {
 
 import type { AppDatabase } from '../database/database';
 import { toolCalls } from '../database/schema';
+import type { AuditLogService } from '../audit/audit-log.service';
 
 type ToolCallRow = typeof toolCalls.$inferSelect;
 
@@ -35,7 +36,10 @@ function toToolCall(row: ToolCallRow): ToolCallRecord {
 }
 
 export class ToolCallRepository implements ToolExecutionObserver {
-  public constructor(private readonly database: AppDatabase) {}
+  public constructor(
+    private readonly database: AppDatabase,
+    private readonly audit?: AuditLogService,
+  ) {}
 
   public async started(
     tool: AgentTool,
@@ -70,10 +74,24 @@ export class ToolCallRepository implements ToolExecutionObserver {
         },
       })
       .run();
+    this.audit?.record({
+      workspaceId: context.workspaceId,
+      conversationId: context.conversationId,
+      taskId: context.taskId,
+      actor: 'agent',
+      category: 'tool',
+      action: `${tool.name}.execute`,
+      outcome: 'started',
+      summary: `Agent started tool ${tool.name}.`,
+      metadata: {
+        callId: context.callId,
+        permissionLevel: tool.permissionLevel,
+      },
+    });
   }
 
   public async completed(
-    _tool: AgentTool,
+    tool: AgentTool,
     result: ToolResult<unknown>,
     context: ToolExecutionContext,
   ): Promise<void> {
@@ -93,11 +111,28 @@ export class ToolCallRepository implements ToolExecutionObserver {
       })
       .where(eq(toolCalls.id, context.callId))
       .run();
+    this.audit?.record({
+      workspaceId: context.workspaceId,
+      conversationId: context.conversationId,
+      taskId: context.taskId,
+      actor: 'agent',
+      category: 'tool',
+      action: `${tool.name}.execute`,
+      outcome: result.ok ? 'succeeded' : result.error.code === 'CANCELLED' ? 'cancelled' : 'failed',
+      summary: result.ok
+        ? `Tool ${tool.name} completed.`
+        : `Tool ${tool.name} failed: ${result.error.message}`,
+      metadata: {
+        callId: context.callId,
+        ...(result.ok ? {} : { errorCode: result.error.code }),
+      },
+    });
   }
 
   public recordRejected(
     input: {
       readonly id: string;
+      readonly workspaceId: string;
       readonly taskId: string;
       readonly conversationId: string;
       readonly toolName: string;
@@ -130,6 +165,20 @@ export class ToolCallRepository implements ToolExecutionObserver {
       })
       .returning()
       .get();
+    this.audit?.record({
+      workspaceId: input.workspaceId,
+      conversationId: input.conversationId,
+      taskId: input.taskId,
+      actor: 'agent',
+      category: 'tool',
+      action: `${input.toolName}.execute`,
+      outcome: 'denied',
+      summary: `Tool ${input.toolName} was rejected: ${error.message}`,
+      metadata: {
+        callId: input.id,
+        errorCode: error.code,
+      },
+    });
     return toToolCall(row);
   }
 

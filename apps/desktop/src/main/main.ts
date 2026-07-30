@@ -6,6 +6,7 @@ import { ProviderRegistry } from '@open-code-desk/provider-core';
 import { AgentService } from './agent/agent.service';
 import { AgentTaskRepository } from './agent/agent-task.repository';
 import { ToolCallRepository } from './agent/tool-call.repository';
+import { AuditLogService } from './audit/audit-log.service';
 import { ChangeArtifactStore } from './changes/artifact-store';
 import { ChangePathResolver } from './changes/change-path-resolver';
 import { FileChangeRepository } from './changes/file-change.repository';
@@ -25,6 +26,7 @@ import { WorkspaceFileService } from './filesystem/workspace-file.service';
 import { WorkspaceWatchService } from './filesystem/workspace-watch.service';
 import { GitService } from './git/git.service';
 import { registerFilesIpc, unregisterFilesIpc } from './ipc/files.ipc';
+import { registerAuditIpc, unregisterAuditIpc } from './ipc/audit.ipc';
 import { registerGitIpc, unregisterGitIpc } from './ipc/git.ipc';
 import { registerHealthIpc, unregisterHealthIpc } from './ipc/health.ipc';
 import { ChatIpcController, registerChatIpc, unregisterChatIpc } from './ipc/chat.ipc';
@@ -77,9 +79,10 @@ app.whenReady().then(async () => {
   };
 
   database = createAppDatabase(join(app.getPath('userData'), 'open-code-desk.sqlite'));
+  const auditLog = new AuditLogService(database);
   const workspaceRepository = new WorkspaceRepository(database);
   const workspaceService = new WorkspaceService(workspaceRepository, new ElectronDirectoryPicker());
-  const fileService = new WorkspaceFileService(workspaceService);
+  const fileService = new WorkspaceFileService(workspaceService, auditLog);
   const gitService = new GitService(workspaceService);
   terminalService = new TerminalSessionService(workspaceService);
   workspaceWatcher = new WorkspaceWatchService();
@@ -103,7 +106,7 @@ app.whenReady().then(async () => {
   const conversationRepository = new ConversationRepository(database);
   const contextItemRepository = new ContextItemRepository(database);
   const agentTaskRepository = new AgentTaskRepository(database);
-  const toolCallRepository = new ToolCallRepository(database);
+  const toolCallRepository = new ToolCallRepository(database, auditLog);
   const commandRepository = new CommandRepository(database);
   const changeRepository = new FileChangeRepository(database);
   const changeArtifacts = new ChangeArtifactStore(
@@ -123,6 +126,8 @@ app.whenReady().then(async () => {
     changeArtifacts,
     changePaths,
     agentTaskRepository,
+    undefined,
+    auditLog,
   );
   await changeTransactions.recoverInterrupted();
   commandRepository.recoverInterrupted();
@@ -131,6 +136,8 @@ app.whenReady().then(async () => {
     commandRepository,
     new PermissionRuleRepository(database),
     workspaceService,
+    undefined,
+    auditLog,
   );
   const conversationService = new ConversationService(
     conversationRepository,
@@ -156,6 +163,7 @@ app.whenReady().then(async () => {
     version: app.getVersion(),
     ...trustedRendererOptions,
   });
+  registerAuditIpc(trustedRendererOptions, auditLog);
   registerWorkspaceIpc(trustedRendererOptions, workspaceService, (workspace) => {
     workspaceWatcher?.start(workspace);
   });
@@ -192,6 +200,7 @@ app.on('before-quit', () => {
     chatIpcController = null;
   }
   unregisterConversationsIpc();
+  unregisterAuditIpc();
   unregisterContextIpc();
   unregisterChangesIpc();
   unregisterCommandsIpc();

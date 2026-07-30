@@ -168,6 +168,10 @@ describe('Agent file proposal flow', () => {
     );
     expect(events).not.toContainEqual(expect.objectContaining({ type: 'completed' }));
     expect(tasks.latestForConversation(conversation.id)?.status).toBe('waiting_for_approval');
+    expect(tasks.latestForConversation(conversation.id)?.checkpoint?.steps.at(-1)).toMatchObject({
+      label: '等待用户审核代码 Diff',
+      status: 'in_progress',
+    });
     expect(changes.listForConversation(conversation.id)[0]?.changes[0]).toMatchObject({
       operation: 'update',
       filePath: 'example.txt',

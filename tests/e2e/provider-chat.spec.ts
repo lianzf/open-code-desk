@@ -161,6 +161,9 @@ test('runs a real read-tool Agent loop and restores the conversation after resta
     );
     await expect(window.getByTestId('context-stats')).toBeVisible();
     await expect(window.getByTestId('agent-status')).toContainText('已完成');
+    await expect(window.getByTestId('task-plan')).toBeVisible();
+    await window.getByTestId('task-plan').locator('summary').click();
+    await expect(window.getByTestId('task-plan')).toContainText('执行工具 read_file');
 
     const actualUserData = await application.evaluate(({ app }) => app.getPath('userData'));
     const databaseFiles = (await readdir(actualUserData)).filter((name) =>

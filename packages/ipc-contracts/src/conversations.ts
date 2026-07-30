@@ -65,7 +65,26 @@ export const agentTaskSchema = z
       'cancelled',
     ]),
     attempt: z.number().int().positive(),
-    checkpoint: z.record(z.string(), z.unknown()).optional(),
+    checkpoint: z
+      .object({
+        round: z.number().int().nonnegative(),
+        steps: z
+          .array(
+            z
+              .object({
+                id: z.string().min(1).max(100),
+                label: z.string().min(1).max(500),
+                status: z.enum(['pending', 'in_progress', 'completed', 'failed', 'cancelled']),
+                startedAt: z.string().datetime().optional(),
+                completedAt: z.string().datetime().optional(),
+              })
+              .strict(),
+          )
+          .max(50),
+        updatedAt: z.string().datetime(),
+      })
+      .strict()
+      .optional(),
     error: z
       .object({
         code: z.string(),
@@ -155,3 +174,4 @@ export type CreateConversationRequest = z.infer<typeof createConversationRequest
 export type ConversationIdRequest = z.infer<typeof conversationIdRequestSchema>;
 export type RenameConversationRequest = z.infer<typeof renameConversationRequestSchema>;
 export type ToolCallRecord = z.infer<typeof toolCallRecordSchema>;
+export type AgentTaskCheckpoint = NonNullable<z.infer<typeof agentTaskSchema>['checkpoint']>;

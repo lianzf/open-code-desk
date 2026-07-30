@@ -54,6 +54,8 @@ export function handleStreamEvent(
   const event = streamEvent.event;
   if (event.type === 'agent_status') {
     set({ agentStatus: event.status });
+  } else if (event.type === 'task_plan') {
+    set({ taskPlan: event.checkpoint, taskAttempt: event.attempt });
   } else if (event.type === 'context_built') {
     set({
       contextStats: {

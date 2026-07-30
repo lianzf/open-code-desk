@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   applyChangeSetRequestSchema,
+  auditChannels,
+  auditEventListSchema,
   cancelChatRequestSchema,
   cancelChatResponseSchema,
   cancelFileSearchRequestSchema,
@@ -53,6 +55,7 @@ import {
   gitStatusSchema,
   ipcChannels,
   listDirectoryRequestSchema,
+  listAuditEventsRequestSchema,
   listConversationsRequestSchema,
   listChangeSetsRequestSchema,
   listCommandsRequestSchema,
@@ -66,6 +69,7 @@ import {
   providerDescriptorListSchema,
   providerIdRequestSchema,
   permissionRuleListSchema,
+  permissionRuleSchema,
   pickConversationImageResponseSchema,
   readFileRequestSchema,
   readFileResponseSchema,
@@ -81,6 +85,7 @@ import {
   appSettingsSchema,
   updateAppSettingsRequestSchema,
   setNetworkAccessRequestSchema,
+  upsertExecutableRuleRequestSchema,
   startChatRequestSchema,
   startChatResponseSchema,
   deleteConversationResponseSchema,
@@ -104,6 +109,13 @@ import {
 } from '@open-code-desk/ipc-contracts';
 
 const desktopApi: DesktopApi = {
+  audit: {
+    async list(input) {
+      const request = listAuditEventsRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(auditChannels.list, request);
+      return auditEventListSchema.parse(response);
+    },
+  },
   app: {
     async health(input) {
       const request = healthRequestSchema.parse(input);
@@ -366,6 +378,14 @@ const desktopApi: DesktopApi = {
       const request = setNetworkAccessRequestSchema.parse(input);
       const response: unknown = await ipcRenderer.invoke(commandChannels.setNetworkAccess, request);
       return permissionRuleListSchema.parse(response);
+    },
+    async upsertExecutableRule(input) {
+      const request = upsertExecutableRuleRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(
+        commandChannels.upsertExecutableRule,
+        request,
+      );
+      return permissionRuleSchema.parse(response);
     },
   },
   context: {

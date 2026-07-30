@@ -329,6 +329,42 @@ export function ChatPanel() {
           ))
         )}
 
+        {chat.taskPlan === undefined || chat.taskPlan.steps.length === 0 ? null : (
+          <details
+            className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-2"
+            open={chat.agentStatus !== 'completed'}
+            data-testid="task-plan"
+          >
+            <summary className="cursor-pointer text-[11px] text-zinc-400">
+              任务计划 · 第 {chat.taskAttempt ?? 1} 次尝试 · 第 {chat.taskPlan.round} 轮
+            </summary>
+            <ol className="mt-2 space-y-1">
+              {chat.taskPlan.steps.map((step) => (
+                <li key={step.id} className="flex items-center gap-2 text-[10px]">
+                  <span
+                    className={`size-1.5 shrink-0 rounded-full ${
+                      step.status === 'completed'
+                        ? 'bg-emerald-500'
+                        : step.status === 'in_progress'
+                          ? 'animate-pulse bg-cyan-400'
+                          : step.status === 'failed'
+                            ? 'bg-red-500'
+                            : step.status === 'cancelled'
+                              ? 'bg-amber-500'
+                              : 'bg-zinc-700'
+                    }`}
+                  />
+                  <span
+                    className={step.status === 'in_progress' ? 'text-zinc-300' : 'text-zinc-500'}
+                  >
+                    {step.label}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </details>
+        )}
+
         {chat.toolActivity.length > 0 ? (
           <details className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-2" open>
             <summary className="cursor-pointer text-[11px] text-zinc-400">

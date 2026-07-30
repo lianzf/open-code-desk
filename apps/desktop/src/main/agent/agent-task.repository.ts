@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { and, desc, eq, inArray, max } from 'drizzle-orm';
-import type { AgentStatus, AgentTask, AppError } from '@open-code-desk/domain';
+import type { AgentStatus, AgentTask, AgentTaskCheckpoint, AppError } from '@open-code-desk/domain';
 
 import type { AppDatabase } from '../database/database';
 import { agentTasks } from '../database/schema';
@@ -17,7 +17,9 @@ function toAgentTask(row: AgentTaskRow): AgentTask {
     requestId: row.requestId,
     status: row.status as AgentStatus,
     attempt: row.attempt,
-    ...(row.checkpoint === null ? {} : { checkpoint: row.checkpoint }),
+    ...(row.checkpoint === null
+      ? {}
+      : { checkpoint: row.checkpoint as unknown as AgentTaskCheckpoint }),
     ...(row.error === null ? {} : { error: row.error as unknown as AppError }),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -64,6 +66,11 @@ export class AgentTaskRepository {
     return row === undefined ? null : toAgentTask(row);
   }
 
+  public findById(taskId: string): AgentTask | null {
+    const row = this.database.orm.select().from(agentTasks).where(eq(agentTasks.id, taskId)).get();
+    return row === undefined ? null : toAgentTask(row);
+  }
+
   public latestForConversation(conversationId: string): AgentTask | null {
     const row = this.database.orm
       .select()
@@ -79,7 +86,7 @@ export class AgentTaskRepository {
     taskId: string,
     status: AgentStatus,
     options: {
-      readonly checkpoint?: Readonly<Record<string, unknown>>;
+      readonly checkpoint?: AgentTaskCheckpoint;
       readonly error?: AppError;
     } = {},
   ): AgentTask | null {
@@ -89,7 +96,7 @@ export class AgentTaskRepository {
       .update(agentTasks)
       .set({
         status,
-        checkpoint: options.checkpoint ?? null,
+        checkpoint: options.checkpoint,
         error: options.error === undefined ? null : { ...options.error },
         updatedAt: now,
         completedAt: terminal ? now : null,

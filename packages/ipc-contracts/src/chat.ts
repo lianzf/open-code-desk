@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { conversationMessageSchema } from './conversations';
+import { agentTaskSchema } from './conversations';
 import { commandExecutionSchema } from './commands';
 
 const requestIdSchema = z.string().uuid();
@@ -85,6 +86,14 @@ export const chatStreamPayloadSchema = z.discriminatedUnion('type', [
       type: z.literal('agent_status'),
       taskId: z.string().uuid(),
       status: agentStatusSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('task_plan'),
+      taskId: z.string().uuid(),
+      attempt: z.number().int().positive(),
+      checkpoint: agentTaskSchema.shape.checkpoint.unwrap(),
     })
     .strict(),
   z

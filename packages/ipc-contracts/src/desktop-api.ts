@@ -1,4 +1,5 @@
 import type { HealthRequest, HealthResponse } from './health';
+import type { AuditEvent, ListAuditEventsRequest } from './audit';
 import type {
   CancelChatRequest,
   ChatStreamEvent,
@@ -24,6 +25,7 @@ import type {
   ListCommandsRequest,
   PermissionRule,
   SetNetworkAccessRequest,
+  UpsertExecutableRuleRequest,
   WorkspaceRulesRequest,
 } from './commands';
 import type {
@@ -82,6 +84,9 @@ import type {
 import type { GitDiff, GitDiffRequest, GitStatus, GitStatusRequest } from './git';
 
 export interface DesktopApi {
+  readonly audit: {
+    list(input: ListAuditEventsRequest): Promise<ReadonlyArray<AuditEvent>>;
+  };
   readonly app: {
     health(input: HealthRequest): Promise<HealthResponse>;
   };
@@ -148,6 +153,7 @@ export interface DesktopApi {
     listRules(input: WorkspaceRulesRequest): Promise<ReadonlyArray<PermissionRule>>;
     deleteRule(input: DeletePermissionRuleRequest): Promise<{ readonly deleted: boolean }>;
     setNetworkAccess(input: SetNetworkAccessRequest): Promise<ReadonlyArray<PermissionRule>>;
+    upsertExecutableRule(input: UpsertExecutableRuleRequest): Promise<PermissionRule>;
   };
   readonly context: {
     list(input: ContextConversationRequest): Promise<ReadonlyArray<ConversationContextItem>>;

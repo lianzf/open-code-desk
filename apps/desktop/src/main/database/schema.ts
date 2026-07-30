@@ -1,4 +1,5 @@
 import { blob, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import type { AgentTaskCheckpoint } from '@open-code-desk/domain';
 
 export const workspaces = sqliteTable(
   'workspaces',
@@ -136,7 +137,7 @@ export const agentTasks = sqliteTable(
     requestId: text('request_id').notNull().unique(),
     status: text('status').notNull(),
     attempt: integer('attempt').notNull(),
-    checkpoint: text('checkpoint', { mode: 'json' }).$type<Readonly<Record<string, unknown>>>(),
+    checkpoint: text('checkpoint', { mode: 'json' }).$type<AgentTaskCheckpoint>(),
     error: text('error', { mode: 'json' }).$type<Readonly<Record<string, unknown>>>(),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
@@ -324,3 +325,31 @@ export const appSettings = sqliteTable('app_settings', {
   value: text('value', { mode: 'json' }).$type<unknown>().notNull(),
   updatedAt: text('updated_at').notNull(),
 });
+
+export const auditEvents = sqliteTable(
+  'audit_events',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    conversationId: text('conversation_id').references(() => conversations.id, {
+      onDelete: 'set null',
+    }),
+    taskId: text('task_id').references(() => agentTasks.id, { onDelete: 'set null' }),
+    actor: text('actor').notNull(),
+    category: text('category').notNull(),
+    action: text('action').notNull(),
+    outcome: text('outcome').notNull(),
+    summary: text('summary').notNull(),
+    metadata: text('metadata', { mode: 'json' })
+      .$type<Readonly<Record<string, string | number | boolean | null>>>()
+      .notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('audit_events_workspace_created_idx').on(table.workspaceId, table.createdAt),
+    index('audit_events_conversation_created_idx').on(table.conversationId, table.createdAt),
+    index('audit_events_category_created_idx').on(table.category, table.createdAt),
+  ],
+);

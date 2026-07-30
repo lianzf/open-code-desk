@@ -42,6 +42,7 @@ describe('conversation database', () => {
     new ToolCallRepository(firstDatabase).recordRejected(
       {
         id: randomUUID(),
+        workspaceId: workspace.id,
         taskId: task.id,
         conversationId: conversation.id,
         toolName: 'unknown_tool',

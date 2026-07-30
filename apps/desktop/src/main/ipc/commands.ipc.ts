@@ -10,7 +10,9 @@ import {
   deletePermissionRuleResponseSchema,
   listCommandsRequestSchema,
   permissionRuleListSchema,
+  permissionRuleSchema,
   setNetworkAccessRequestSchema,
+  upsertExecutableRuleRequestSchema,
   workspaceRulesRequestSchema,
 } from '@open-code-desk/ipc-contracts';
 
@@ -60,6 +62,19 @@ export function registerCommandsIpc(
     const input = setNetworkAccessRequestSchema.parse(untrustedInput);
     return permissionRuleListSchema.parse(
       service.setNetworkAccess(input.workspaceId, input.allowed),
+    );
+  });
+
+  ipcMain.handle(commandChannels.upsertExecutableRule, async (event, untrustedInput: unknown) => {
+    assertTrustedIpcEvent(event, options);
+    const input = upsertExecutableRuleRequestSchema.parse(untrustedInput);
+    return permissionRuleSchema.parse(
+      await service.upsertExecutableRule(
+        input.workspaceId,
+        input.kind,
+        input.executable,
+        input.cwd,
+      ),
     );
   });
 }

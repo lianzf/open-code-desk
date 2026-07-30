@@ -1,5 +1,5 @@
 import type { CommandExecution } from '@open-code-desk/ipc-contracts';
-import { Ban, Check, CircleStop, ShieldAlert, TerminalSquare, Trash2 } from 'lucide-react';
+import { Ban, Check, CircleStop, Plus, ShieldAlert, TerminalSquare, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -138,12 +138,14 @@ export function CommandReviewPanel() {
   const rules = useCommandStore((state) => state.rules);
   const errorMessage = useCommandStore((state) => state.errorMessage);
   const setNetworkAccess = useCommandStore((state) => state.setNetworkAccess);
+  const addExecutableRule = useCommandStore((state) => state.addExecutableRule);
   const deleteRule = useCommandStore((state) => state.deleteRule);
   const networkAllowed = rules.some((rule) => rule.kind === 'allow_network_commands');
-
-  if (commands.length === 0 && rules.length === 0 && errorMessage === undefined) {
-    return null;
-  }
+  const [ruleKind, setRuleKind] = useState<'allow_executable' | 'deny_executable'>(
+    'allow_executable',
+  );
+  const [ruleExecutable, setRuleExecutable] = useState('');
+  const [ruleCwd, setRuleCwd] = useState('');
 
   const pending = commands.filter((command) =>
     ['pending_approval', 'approved', 'running'].includes(command.status),
@@ -189,6 +191,45 @@ export function CommandReviewPanel() {
               onChange={(event) => void setNetworkAccess(event.target.checked)}
             />
           </label>
+          <div className="grid grid-cols-[92px_1fr_1fr_auto] gap-1">
+            <select
+              className="rounded border border-zinc-800 bg-zinc-950 px-1.5 text-[10px] text-zinc-400"
+              value={ruleKind}
+              onChange={(event) =>
+                setRuleKind(event.target.value as 'allow_executable' | 'deny_executable')
+              }
+              aria-label="命令规则类型"
+            >
+              <option value="allow_executable">允许</option>
+              <option value="deny_executable">拒绝</option>
+            </select>
+            <input
+              className="h-7 min-w-0 rounded border border-zinc-800 bg-zinc-950 px-2 text-[10px] text-zinc-300 outline-none"
+              value={ruleExecutable}
+              onChange={(event) => setRuleExecutable(event.target.value)}
+              placeholder="可执行文件，如 pnpm"
+              aria-label="规则可执行文件"
+            />
+            <input
+              className="h-7 min-w-0 rounded border border-zinc-800 bg-zinc-950 px-2 text-[10px] text-zinc-300 outline-none"
+              value={ruleCwd}
+              onChange={(event) => setRuleCwd(event.target.value)}
+              placeholder="工作区相对目录，留空为根目录"
+              aria-label="规则工作目录"
+            />
+            <button
+              className="rounded border border-zinc-800 px-2 text-zinc-500 hover:bg-zinc-800 hover:text-cyan-300 disabled:opacity-40"
+              disabled={ruleExecutable.trim() === ''}
+              onClick={() => {
+                void addExecutableRule(ruleKind, ruleExecutable, ruleCwd).then(() => {
+                  setRuleExecutable('');
+                });
+              }}
+              aria-label="添加命令规则"
+            >
+              <Plus className="size-3.5" />
+            </button>
+          </div>
           {rules
             .filter((rule) => rule.kind !== 'allow_network_commands')
             .map((rule) => (

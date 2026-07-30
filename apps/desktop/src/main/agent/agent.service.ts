@@ -19,6 +19,7 @@ import type { CommandLifecycleEvent } from '../commands/command-lifecycle';
 import type { CommandService } from '../commands/command.service';
 import type { ProviderService } from '../providers/provider.service';
 import type { AgentTaskRepository } from './agent-task.repository';
+import { AgentTaskPlan } from './agent-task-plan';
 import {
   maximumAgentRounds,
   maximumToolCalls,
@@ -67,12 +68,15 @@ export class AgentService {
 
     const task = this.tasks.create(input.conversationId, input.requestId);
     const machine = new AgentStateMachine();
+    const plan = new AgentTaskPlan();
     let activeAssistantMessage: ConversationMessage | undefined;
 
-    const transition = (status: Parameters<AgentStateMachine['transition']>[0]) => {
+    const transition = (status: Parameters<AgentStateMachine['transition']>[0], label?: string) => {
       machine.transition(status);
-      this.tasks.update(task.id, status);
+      const checkpoint = plan.transition(status, label);
+      this.tasks.update(task.id, status, { checkpoint });
       emit({ type: 'agent_status', taskId: task.id, status });
+      emit({ type: 'task_plan', taskId: task.id, attempt: task.attempt, checkpoint });
     };
     const unsubscribeCommands = this.commands?.subscribe(task.id, (event) => {
       this.consumeCommandEvent(event, machine, transition, emit);
@@ -98,6 +102,7 @@ export class AgentService {
 
       let executedToolCalls = 0;
       for (let round = 0; round < maximumAgentRounds; round += 1) {
+        plan.setRound(round + 1);
         signal.throwIfAborted();
         const history = this.conversations.listMessages(input.conversationId);
         const context = this.#contextBuilder.build(
@@ -172,7 +177,7 @@ export class AgentService {
             proposedChanges.changes.length > 0 &&
             ['pending_review', 'ready_to_apply'].includes(proposedChanges.changeSet.status)
           ) {
-            transition('waiting_for_approval');
+            transition('waiting_for_approval', '等待用户审核代码 Diff');
             emit({
               type: 'change_set_ready',
               taskId: task.id,
@@ -192,7 +197,7 @@ export class AgentService {
           if (executedToolCalls > maximumToolCalls) {
             throw new Error('The Agent exceeded the maximum number of tool calls.');
           }
-          transition('executing_tool');
+          transition('executing_tool', `执行工具 ${modelToolCall.name}`);
           await this.executeToolCall(input, task.id, modelToolCall, signal, emit);
         }
         transition('planning');
@@ -216,8 +221,10 @@ export class AgentService {
       if (machine.status !== 'failed') {
         machine.transition('failed');
       }
-      this.tasks.update(task.id, 'failed', { error: appError });
+      const checkpoint = plan.transition('failed');
+      this.tasks.update(task.id, 'failed', { error: appError, checkpoint });
       emit({ type: 'agent_status', taskId: task.id, status: 'failed' });
+      emit({ type: 'task_plan', taskId: task.id, attempt: task.attempt, checkpoint });
       emit({ type: 'error', taskId: task.id, error: appError });
     } finally {
       unsubscribeCommands?.();
@@ -227,12 +234,12 @@ export class AgentService {
   private consumeCommandEvent(
     event: CommandLifecycleEvent,
     machine: AgentStateMachine,
-    transition: (status: Parameters<AgentStateMachine['transition']>[0]) => void,
+    transition: (status: Parameters<AgentStateMachine['transition']>[0], label?: string) => void,
     emit: AgentEventListener,
   ): void {
     if (event.type === 'command_proposed') {
       if (machine.status !== 'waiting_for_approval') {
-        transition('waiting_for_approval');
+        transition('waiting_for_approval', '等待用户批准终端命令');
       }
       emit(event);
       return;
@@ -245,7 +252,10 @@ export class AgentService {
       const nextStatus =
         event.command.toolName === 'run_tests' ? 'running_tests' : 'executing_tool';
       if (machine.status !== nextStatus) {
-        transition(nextStatus);
+        transition(
+          nextStatus,
+          nextStatus === 'running_tests' ? '运行批准的测试命令' : '执行批准的终端命令',
+        );
       }
     }
     emit(event);
@@ -294,6 +304,7 @@ export class AgentService {
       this.toolCalls.recordRejected(
         {
           id: callId,
+          workspaceId: input.workspaceId,
           taskId,
           conversationId: input.conversationId,
           toolName: modelToolCall.name,
@@ -333,6 +344,7 @@ export class AgentService {
       this.toolCalls.recordRejected(
         {
           id: callId,
+          workspaceId: input.workspaceId,
           taskId,
           conversationId: input.conversationId,
           toolName: modelToolCall.name,

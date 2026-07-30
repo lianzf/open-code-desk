@@ -7,12 +7,14 @@ import {
   RefreshCw,
   Search,
   Settings2,
+  ShieldCheck,
   Square,
   TerminalSquare,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { AuditPanel } from '@/features/audit/audit-panel';
 import { ChatPanel } from '@/features/chat/chat-panel';
 import { ChangeReviewDialog } from '@/features/changes/change-review-panel';
 import { EditorWorkbench } from '@/features/editor/editor-workbench';
@@ -44,7 +46,7 @@ export function WorkspacePage() {
   const handleEditorFileChange = useEditorStore((state) => state.handleFileChange);
   const handleWorkspaceFileChange = useWorkspaceStore((state) => state.handleFileChange);
   const [query, setQuery] = useState(searchQuery);
-  const [bottomPanel, setBottomPanel] = useState<'terminal' | 'git' | null>(null);
+  const [bottomPanel, setBottomPanel] = useState<'terminal' | 'git' | 'audit' | null>(null);
   const provider = useProviderStore();
   const selectedProvider = provider.configurations.find(
     (configuration) => configuration.id === provider.selectedProviderId,
@@ -246,6 +248,9 @@ export function WorkspacePage() {
           {bottomPanel === 'git' ? (
             <GitPanel workspaceId={current.id} onClose={() => setBottomPanel(null)} />
           ) : null}
+          {bottomPanel === 'audit' ? (
+            <AuditPanel workspaceId={current.id} onClose={() => setBottomPanel(null)} />
+          ) : null}
 
           <div className="flex h-8 shrink-0 items-center gap-2 border-t border-zinc-800 bg-zinc-950 px-2 text-[11px] text-zinc-500">
             <button
@@ -267,6 +272,16 @@ export function WorkspacePage() {
             >
               <TerminalSquare className="size-3" />
               终端
+            </button>
+            <button
+              className={`flex items-center gap-1.5 rounded px-2 py-1 hover:bg-zinc-800 hover:text-zinc-200 ${
+                bottomPanel === 'audit' ? 'bg-zinc-800 text-zinc-200' : ''
+              }`}
+              onClick={() => setBottomPanel((value) => (value === 'audit' ? null : 'audit'))}
+              data-testid="toggle-audit"
+            >
+              <ShieldCheck className="size-3" />
+              审计
             </button>
             <span className="ml-auto">{editor.activePath ?? '未打开文件'}</span>
           </div>

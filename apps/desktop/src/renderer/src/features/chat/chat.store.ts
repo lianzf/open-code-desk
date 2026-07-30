@@ -1,4 +1,8 @@
-import type { Conversation, ToolCallRecord } from '@open-code-desk/ipc-contracts';
+import type {
+  AgentTaskCheckpoint,
+  Conversation,
+  ToolCallRecord,
+} from '@open-code-desk/ipc-contracts';
 import { create } from 'zustand';
 
 import { useProviderStore } from '@/features/providers/provider.store';
@@ -55,6 +59,8 @@ export interface ChatState {
   readonly conversations: ReadonlyArray<Conversation>;
   readonly conversationQuery: string;
   readonly contextStats: ContextStats | undefined;
+  readonly taskPlan: AgentTaskCheckpoint | undefined;
+  readonly taskAttempt: number | undefined;
   readonly errorMessage: string | undefined;
   readonly messages: ReadonlyArray<DisplayChatMessage>;
   readonly toolActivity: ReadonlyArray<DisplayToolActivity>;
@@ -124,6 +130,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   conversations: [],
   conversationQuery: '',
   contextStats: undefined,
+  taskPlan: undefined,
+  taskAttempt: undefined,
   errorMessage: undefined,
   messages: [],
   toolActivity: [],
@@ -150,6 +158,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: [],
       toolActivity: [],
       contextStats: undefined,
+      taskPlan: undefined,
+      taskAttempt: undefined,
       errorMessage: undefined,
     });
     try {
@@ -212,6 +222,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         toolActivity: detail.toolCalls.map(toToolActivity),
         agentStatus: detail.latestTask?.status ?? 'idle',
         contextStats: undefined,
+        taskPlan: detail.latestTask?.checkpoint,
+        taskAttempt: detail.latestTask?.attempt,
         errorMessage: detail.latestTask?.error?.message,
       });
     } catch (error) {
@@ -317,6 +329,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: [...state.messages, localUserMessage],
       errorMessage: undefined,
       contextStats: undefined,
+      taskPlan: undefined,
+      taskAttempt: undefined,
     }));
     try {
       const response = await window.openCodeDesk.chat.start({

@@ -270,6 +270,27 @@ const databaseMigrations = [
       updated_at TEXT NOT NULL
     );
   `,
+  `
+    CREATE TABLE audit_events (
+      id TEXT PRIMARY KEY NOT NULL,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+      task_id TEXT REFERENCES agent_tasks(id) ON DELETE SET NULL,
+      actor TEXT NOT NULL,
+      category TEXT NOT NULL,
+      action TEXT NOT NULL,
+      outcome TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      metadata TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX audit_events_workspace_created_idx
+      ON audit_events(workspace_id, created_at);
+    CREATE INDEX audit_events_conversation_created_idx
+      ON audit_events(conversation_id, created_at);
+    CREATE INDEX audit_events_category_created_idx
+      ON audit_events(category, created_at);
+  `,
 ] as const;
 
 function migrateDatabase(client: DatabaseSync): void {

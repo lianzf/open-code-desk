@@ -1,5 +1,6 @@
 import type {
   AgentStatus,
+  AgentTaskCheckpoint,
   AppError,
   CommandExecution,
   ConversationMessage,
@@ -21,6 +22,12 @@ export type AgentStreamEvent =
       readonly type: 'agent_status';
       readonly taskId: string;
       readonly status: AgentStatus;
+    }
+  | {
+      readonly type: 'task_plan';
+      readonly taskId: string;
+      readonly attempt: number;
+      readonly checkpoint: AgentTaskCheckpoint;
     }
   | {
       readonly type: 'context_built';

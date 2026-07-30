@@ -18,6 +18,11 @@ interface CommandState {
   ): Promise<void>;
   cancel(commandId: string): Promise<void>;
   setNetworkAccess(allowed: boolean): Promise<void>;
+  addExecutableRule(
+    kind: 'allow_executable' | 'deny_executable',
+    executable: string,
+    cwd: string,
+  ): Promise<void>;
   deleteRule(ruleId: string): Promise<void>;
 }
 
@@ -162,6 +167,27 @@ export const useCommandStore = create<CommandState>((set, get) => ({
         allowed,
       });
       set({ rules, errorMessage: undefined });
+    } catch (error) {
+      set({ errorMessage: readableError(error) });
+    }
+  },
+
+  async addExecutableRule(kind, executable, cwd) {
+    const workspaceId = get().workspaceId;
+    if (workspaceId === undefined || executable.trim() === '') {
+      return;
+    }
+    try {
+      const saved = await window.openCodeDesk.commands.upsertExecutableRule({
+        workspaceId,
+        kind,
+        executable,
+        cwd,
+      });
+      set((state) => ({
+        rules: [...state.rules.filter((rule) => rule.id !== saved.id), saved],
+        errorMessage: undefined,
+      }));
     } catch (error) {
       set({ errorMessage: readableError(error) });
     }

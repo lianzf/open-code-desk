@@ -22,6 +22,7 @@ import type {
 } from '@open-code-desk/ipc-contracts';
 
 import type { WorkspaceService } from '../workspace/workspace.service';
+import type { AuditLogService } from '../audit/audit-log.service';
 import {
   isIgnoredDirectoryName,
   isPathInside,
@@ -113,7 +114,10 @@ function isMissingPathError(error: unknown): boolean {
 }
 
 export class WorkspaceFileService {
-  public constructor(private readonly workspaces: WorkspaceService) {}
+  public constructor(
+    private readonly workspaces: WorkspaceService,
+    private readonly audit?: AuditLogService,
+  ) {}
 
   public async listDirectory(
     workspaceId: string,
@@ -258,6 +262,7 @@ export class WorkspaceFileService {
     }
 
     const updatedStat = await stat(filePath);
+    this.auditMutation(workspaceId, 'file.write', relativePath);
     return {
       relativePath,
       contentHash: contentHash(nextContent),
@@ -292,6 +297,7 @@ export class WorkspaceFileService {
         await unlink(filePath).catch(() => undefined);
       }
     }
+    this.auditMutation(workspaceId, 'file.create', relativePath);
     return { relativePath };
   }
 
@@ -304,6 +310,7 @@ export class WorkspaceFileService {
     const directoryPath = toPlatformPath(workspace.rootPath, relativePath);
     await this.assertWritableParentInside(workspace.rootPath, directoryPath);
     await mkdir(directoryPath);
+    this.auditMutation(workspaceId, 'directory.create', relativePath);
     return { relativePath };
   }
 
@@ -341,6 +348,10 @@ export class WorkspaceFileService {
     }
 
     await rename(absoluteSource, absoluteDestination);
+    this.auditMutation(workspaceId, 'path.move', destinationPath, {
+      sourcePath,
+      destinationPath,
+    });
     return { relativePath: destinationPath };
   }
 
@@ -363,7 +374,27 @@ export class WorkspaceFileService {
     } else {
       throw new Error('只能删除普通文件或空目录。');
     }
+    this.auditMutation(workspaceId, 'path.delete', relativePath, {
+      kind: pathStat.isDirectory() ? 'directory' : 'file',
+    });
     return { relativePath };
+  }
+
+  private auditMutation(
+    workspaceId: string,
+    action: string,
+    relativePath: string,
+    metadata: Readonly<Record<string, string>> = {},
+  ): void {
+    this.audit?.record({
+      workspaceId,
+      actor: 'user',
+      category: 'file_system',
+      action,
+      outcome: 'succeeded',
+      summary: `${action} completed for ${relativePath}.`,
+      metadata: { relativePath, ...metadata },
+    });
   }
 
   public async searchFiles(
