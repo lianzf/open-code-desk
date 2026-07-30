@@ -43,6 +43,11 @@ import type {
   RenameConversationRequest,
 } from './conversations';
 import type {
+  AcknowledgeCrashReportRequest,
+  CrashReport,
+  ListCrashReportsRequest,
+} from './crash-reports';
+import type {
   ConnectionTestResult,
   DeleteProviderRequest,
   ModelInfo,
@@ -81,6 +86,7 @@ import type {
   TerminalSessionRequest,
   TerminalWriteRequest,
 } from './terminal';
+import type { UpdateStatus } from './updates';
 import type { GitDiff, GitDiffRequest, GitStatus, GitStatusRequest } from './git';
 
 export interface DesktopApi {
@@ -131,6 +137,10 @@ export interface DesktopApi {
       input: ConversationIdRequest,
     ): Promise<{ readonly saved: boolean; readonly path?: string | undefined }>;
   };
+  readonly crashReports: {
+    list(input: ListCrashReportsRequest): Promise<ReadonlyArray<CrashReport>>;
+    acknowledge(input: AcknowledgeCrashReportRequest): Promise<{ readonly acknowledged: boolean }>;
+  };
   readonly chat: {
     start(input: StartChatRequest): Promise<StartChatResponse>;
     cancel(input: CancelChatRequest): Promise<{ readonly cancelled: boolean }>;
@@ -168,6 +178,13 @@ export interface DesktopApi {
     close(input: TerminalSessionRequest): Promise<{ readonly accepted: boolean }>;
     onData(listener: (event: TerminalDataEvent) => void): () => void;
     onExit(listener: (event: TerminalExitEvent) => void): () => void;
+  };
+  readonly updates: {
+    getStatus(): Promise<UpdateStatus>;
+    check(): Promise<UpdateStatus>;
+    download(): Promise<UpdateStatus>;
+    install(): Promise<{ readonly accepted: true }>;
+    onStatusChanged(listener: (status: UpdateStatus) => void): () => void;
   };
   readonly git: {
     status(input: GitStatusRequest): Promise<GitStatus>;

@@ -28,6 +28,8 @@ import {
   conversationListSchema,
   conversationSchema,
   conversationsChannels,
+  crashReportChannels,
+  crashReportListSchema,
   createDirectoryRequestSchema,
   createFileRequestSchema,
   createConversationRequestSchema,
@@ -59,6 +61,7 @@ import {
   listConversationsRequestSchema,
   listChangeSetsRequestSchema,
   listCommandsRequestSchema,
+  listCrashReportsRequestSchema,
   modelInfoListSchema,
   movePathRequestSchema,
   nullableWorkspaceInfoSchema,
@@ -84,8 +87,12 @@ import {
   settingsChannels,
   appSettingsSchema,
   updateAppSettingsRequestSchema,
+  updateActionRequestSchema,
+  updateChannels,
+  updateStatusSchema,
   setNetworkAccessRequestSchema,
   upsertExecutableRuleRequestSchema,
+  installUpdateResponseSchema,
   startChatRequestSchema,
   startChatResponseSchema,
   deleteConversationResponseSchema,
@@ -100,6 +107,8 @@ import {
   terminalSessionRequestSchema,
   terminalWriteRequestSchema,
   createTerminalRequestSchema,
+  acknowledgeCrashReportRequestSchema,
+  acknowledgeCrashReportResponseSchema,
   workspaceChannels,
   workspaceRulesRequestSchema,
   workspaceInfoListSchema,
@@ -279,6 +288,18 @@ const desktopApi: DesktopApi = {
       return exportConversationResponseSchema.parse(response);
     },
   },
+  crashReports: {
+    async list(input) {
+      const request = listCrashReportsRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(crashReportChannels.list, request);
+      return crashReportListSchema.parse(response);
+    },
+    async acknowledge(input) {
+      const request = acknowledgeCrashReportRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(crashReportChannels.acknowledge, request);
+      return acknowledgeCrashReportResponseSchema.parse(response);
+    },
+  },
   chat: {
     async start(input) {
       const request = startChatRequestSchema.parse(input);
@@ -448,6 +469,35 @@ const desktopApi: DesktopApi = {
       return () => {
         ipcRenderer.removeListener(terminalChannels.exit, wrappedListener);
       };
+    },
+  },
+  updates: {
+    async getStatus() {
+      const request = updateActionRequestSchema.parse({});
+      const response: unknown = await ipcRenderer.invoke(updateChannels.getStatus, request);
+      return updateStatusSchema.parse(response);
+    },
+    async check() {
+      const request = updateActionRequestSchema.parse({});
+      const response: unknown = await ipcRenderer.invoke(updateChannels.check, request);
+      return updateStatusSchema.parse(response);
+    },
+    async download() {
+      const request = updateActionRequestSchema.parse({});
+      const response: unknown = await ipcRenderer.invoke(updateChannels.download, request);
+      return updateStatusSchema.parse(response);
+    },
+    async install() {
+      const request = updateActionRequestSchema.parse({});
+      const response: unknown = await ipcRenderer.invoke(updateChannels.install, request);
+      return installUpdateResponseSchema.parse(response);
+    },
+    onStatusChanged(listener) {
+      const wrappedListener = (_event: Electron.IpcRendererEvent, untrustedStatus: unknown) => {
+        listener(updateStatusSchema.parse(untrustedStatus));
+      };
+      ipcRenderer.on(updateChannels.statusChanged, wrappedListener);
+      return () => ipcRenderer.removeListener(updateChannels.statusChanged, wrappedListener);
     },
   },
   git: {

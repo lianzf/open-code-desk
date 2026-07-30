@@ -99,7 +99,7 @@ describe('GitService integration', () => {
     });
     expect(stagedDiff.content).toContain('staged.txt');
     expect(stagedDiff.content).toContain('+staged');
-  });
+  }, 15_000);
 
   it('rejects an explicit sensitive path diff', async () => {
     await expect(

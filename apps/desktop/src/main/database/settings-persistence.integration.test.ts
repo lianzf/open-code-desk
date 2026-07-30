@@ -114,13 +114,38 @@ describe('model and application settings persistence', () => {
       new AppSettingsRepository(reopenedDatabase),
       reopenedProviders,
     );
-    expect(reopenedService.get()).toEqual({
+    expect(reopenedService.get()).toMatchObject({
       selectedProviderId: providerId,
       selectedModels: { [providerId]: 'model-2' },
     });
 
     reopenedProviders.delete(providerId);
-    expect(reopenedService.get()).toEqual({ selectedModels: {} });
+    expect(reopenedService.get()).toMatchObject({ selectedModels: {} });
     reopenedDatabase.close();
+  });
+
+  it('merges desktop preference patches without overwriting model selection', async () => {
+    const temporaryDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-preferences-'));
+    temporaryPaths.push(temporaryDirectory);
+    const databasePath = join(temporaryDirectory, 'application.sqlite');
+
+    const database = createAppDatabase(databasePath);
+    const providers = new ProviderConfigRepository(database);
+    saveProvider(providers);
+    const service = new AppSettingsService(new AppSettingsRepository(database), providers);
+    service.update({
+      selectedProviderId: providerId,
+      selectedModels: { [providerId]: 'model-2' },
+    });
+    service.update({ theme: 'light', locale: 'en-US', autoCheckUpdates: false });
+
+    expect(service.get()).toMatchObject({
+      selectedProviderId: providerId,
+      selectedModels: { [providerId]: 'model-2' },
+      theme: 'light',
+      locale: 'en-US',
+      autoCheckUpdates: false,
+    });
+    database.close();
   });
 });

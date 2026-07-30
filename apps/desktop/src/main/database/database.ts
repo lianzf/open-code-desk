@@ -291,6 +291,22 @@ const databaseMigrations = [
     CREATE INDEX audit_events_category_created_idx
       ON audit_events(category, created_at);
   `,
+  `
+    CREATE TABLE crash_reports (
+      id TEXT PRIMARY KEY NOT NULL,
+      process_type TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      exit_code INTEGER,
+      app_version TEXT NOT NULL,
+      details TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      acknowledged_at TEXT
+    );
+    CREATE INDEX crash_reports_created_idx
+      ON crash_reports(created_at);
+    CREATE INDEX crash_reports_acknowledged_idx
+      ON crash_reports(acknowledged_at, created_at);
+  `,
 ] as const;
 
 function migrateDatabase(client: DatabaseSync): void {

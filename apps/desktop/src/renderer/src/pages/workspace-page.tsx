@@ -9,9 +9,10 @@ import {
   Settings2,
   ShieldCheck,
   Square,
+  MonitorCog,
   TerminalSquare,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { AuditPanel } from '@/features/audit/audit-panel';
@@ -20,6 +21,9 @@ import { ChangeReviewDialog } from '@/features/changes/change-review-panel';
 import { EditorWorkbench } from '@/features/editor/editor-workbench';
 import { useEditorStore } from '@/features/editor/editor.store';
 import { useProviderStore } from '@/features/providers/provider.store';
+import { useAppSettingsStore } from '@/features/settings/app-settings.store';
+import { translate } from '@/features/settings/i18n';
+import { useApplicationShortcuts } from '@/features/settings/use-application-shortcuts';
 import { GitPanel } from '@/features/git/git-panel';
 import { TerminalPanel } from '@/features/terminal/terminal-panel';
 import { FileTree } from '@/features/workspace/file-tree';
@@ -48,9 +52,20 @@ export function WorkspacePage() {
   const [query, setQuery] = useState(searchQuery);
   const [bottomPanel, setBottomPanel] = useState<'terminal' | 'git' | 'audit' | null>(null);
   const provider = useProviderStore();
+  const openAppSettings = useAppSettingsStore((state) => state.openDialog);
+  const settings = useAppSettingsStore((state) => state.settings);
+  const t = (key: Parameters<typeof translate>[1]) => translate(settings.locale, key);
   const selectedProvider = provider.configurations.find(
     (configuration) => configuration.id === provider.selectedProviderId,
   );
+  const workspaceShortcutHandlers = useMemo(
+    () => ({
+      toggleTerminal: () => setBottomPanel((value) => (value === 'terminal' ? null : 'terminal')),
+      toggleGit: () => setBottomPanel((value) => (value === 'git' ? null : 'git')),
+    }),
+    [],
+  );
+  useApplicationShortcuts(settings.shortcuts, workspaceShortcutHandlers);
 
   useEffect(() => {
     if (current !== null) {
@@ -90,8 +105,18 @@ export function WorkspacePage() {
         </div>
         <div className="ml-auto flex items-center gap-2">
           <button
+            className="rounded border border-zinc-800 p-1.5 text-zinc-500 hover:border-zinc-700 hover:text-zinc-200"
+            onClick={openAppSettings}
+            aria-label={t('appSettings')}
+            title={`${t('appSettings')} (${settings.shortcuts.openApplicationSettings})`}
+            data-testid="open-app-settings"
+          >
+            <MonitorCog className="size-3" />
+          </button>
+          <button
             className="flex items-center gap-1.5 rounded border border-zinc-800 px-2 py-1 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
             onClick={provider.openSettings}
+            title={`${t('configureModel')} (${settings.shortcuts.openProviderSettings})`}
           >
             <Settings2 className="size-3" />
             {selectedProvider === undefined
@@ -258,6 +283,7 @@ export function WorkspacePage() {
                 bottomPanel === 'git' ? 'bg-zinc-800 text-zinc-200' : ''
               }`}
               onClick={() => setBottomPanel((value) => (value === 'git' ? null : 'git'))}
+              title={settings.shortcuts.toggleGit}
               data-testid="toggle-git"
             >
               <GitBranch className="size-3" />
@@ -268,6 +294,7 @@ export function WorkspacePage() {
                 bottomPanel === 'terminal' ? 'bg-zinc-800 text-zinc-200' : ''
               }`}
               onClick={() => setBottomPanel((value) => (value === 'terminal' ? null : 'terminal'))}
+              title={settings.shortcuts.toggleTerminal}
               data-testid="toggle-terminal"
             >
               <TerminalSquare className="size-3" />

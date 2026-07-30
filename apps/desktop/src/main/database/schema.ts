@@ -353,3 +353,23 @@ export const auditEvents = sqliteTable(
     index('audit_events_category_created_idx').on(table.category, table.createdAt),
   ],
 );
+
+export const crashReports = sqliteTable(
+  'crash_reports',
+  {
+    id: text('id').primaryKey(),
+    processType: text('process_type').notNull(),
+    reason: text('reason').notNull(),
+    exitCode: integer('exit_code'),
+    appVersion: text('app_version').notNull(),
+    details: text('details', { mode: 'json' })
+      .$type<Readonly<Record<string, string | number | boolean | null>>>()
+      .notNull(),
+    createdAt: text('created_at').notNull(),
+    acknowledgedAt: text('acknowledged_at'),
+  },
+  (table) => [
+    index('crash_reports_created_idx').on(table.createdAt),
+    index('crash_reports_acknowledged_idx').on(table.acknowledgedAt, table.createdAt),
+  ],
+);

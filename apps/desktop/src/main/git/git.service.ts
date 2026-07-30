@@ -85,6 +85,11 @@ function toGitStatus(workspaceId: string, status: StatusResult): GitStatus {
 }
 
 export class GitService {
+  private readonly validatedClients = new Map<
+    string,
+    { readonly rootPath: string; readonly client: SimpleGit }
+  >();
+
   public constructor(private readonly workspaces: WorkspaceService) {}
 
   public async status(workspaceId: string): Promise<GitStatus> {
@@ -103,6 +108,7 @@ export class GitService {
     try {
       return toGitStatus(workspaceId, await client.status());
     } catch (error) {
+      this.validatedClients.delete(workspaceId);
       throw new Error(
         `无法读取 Git 状态：${error instanceof Error ? error.message : 'Git 命令失败。'}`,
       );
@@ -143,6 +149,7 @@ export class GitService {
         truncated: bounded.truncated,
       };
     } catch (error) {
+      this.validatedClients.delete(input.workspaceId);
       throw new Error(
         `无法读取 Git Diff：${error instanceof Error ? error.message : 'Git 命令失败。'}`,
       );
@@ -151,8 +158,17 @@ export class GitService {
 
   private async clientFor(workspaceId: string): Promise<SimpleGit | null> {
     const workspace = await this.workspaces.getById(workspaceId);
+    const canonicalWorkspaceRoot = await realpath(workspace.rootPath);
+    if (!samePath(canonicalWorkspaceRoot, workspace.rootPath)) {
+      this.validatedClients.delete(workspaceId);
+      throw new Error('工作区真实路径已发生变化，已阻止继续执行 Git 命令。');
+    }
+    const cached = this.validatedClients.get(workspaceId);
+    if (cached !== undefined && samePath(cached.rootPath, canonicalWorkspaceRoot)) {
+      return cached.client;
+    }
     const client = simpleGit({
-      baseDir: workspace.rootPath,
+      baseDir: canonicalWorkspaceRoot,
       binary: 'git',
       maxConcurrentProcesses: 1,
       trimmed: false,
@@ -171,9 +187,13 @@ export class GitService {
       return null;
     }
     const repositoryRoot = await realpath((await client.revparse(['--show-toplevel'])).trim());
-    if (!samePath(repositoryRoot, workspace.rootPath)) {
+    if (!samePath(repositoryRoot, canonicalWorkspaceRoot)) {
       throw new Error('Git 仓库根目录不等于当前工作区，已阻止读取工作区外的仓库内容。');
     }
+    this.validatedClients.set(workspaceId, {
+      rootPath: canonicalWorkspaceRoot,
+      client,
+    });
     return client;
   }
 }

@@ -13,6 +13,12 @@ files:
   - out/**/*
   - package.json
 
+publish:
+  provider: github
+  owner: lianzf
+  repo: open-code-desk
+  releaseType: release
+
 win:
   target:
     - target: nsis

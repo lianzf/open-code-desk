@@ -27,6 +27,7 @@
     "@xterm/xterm": "^6.0.0",
     "diff": "^9.0.0",
     "drizzle-orm": "1.0.0-rc.4",
+    "electron-updater": "^6.6.2",
     "node-pty": "^1.1.0",
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1",

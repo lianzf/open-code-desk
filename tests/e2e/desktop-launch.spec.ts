@@ -42,6 +42,56 @@ test('launches the secure desktop shell and reaches the main process', async () 
   }
 });
 
+test('persists appearance, locale, updater state, and configurable shortcuts', async () => {
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-e2e-settings-project-'));
+  const userDataDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-e2e-settings-user-'));
+  await writeFile(join(projectDirectory, 'README.md'), '# Settings fixture\n', 'utf8');
+  let application: ElectronApplication | undefined;
+
+  try {
+    application = await launchDesktop(userDataDirectory);
+    await application.evaluate(({ dialog }, selectedDirectory) => {
+      Object.defineProperty(dialog, 'showOpenDialog', {
+        configurable: true,
+        value: async () => ({ canceled: false, filePaths: [selectedDirectory] }),
+      });
+    }, projectDirectory);
+    let window = await application.firstWindow();
+
+    await window.getByTestId('open-app-settings').click();
+    await expect(window.getByTestId('app-settings-dialog')).toBeVisible();
+    await expect(window.getByText('开发环境不执行更新检查')).toBeVisible();
+    await expect(window.getByText('尚无崩溃报告')).toBeVisible();
+    await window.getByTestId('theme-select').selectOption('light');
+    await window.getByTestId('locale-select').selectOption('en-US');
+    await window.getByTestId('shortcut-toggleGit').fill('Ctrl+Shift+J');
+    await window.getByTestId('save-app-settings').click();
+
+    await expect(window.getByTestId('open-project')).toContainText('Open local project');
+    expect(await window.evaluate(() => document.documentElement.dataset.theme)).toBe('light');
+    await window.getByTestId('open-project').click();
+    await expect(window.getByTestId('workspace-page')).toBeVisible();
+    await window.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+J' : 'Control+Shift+J');
+    await expect(window.getByTestId('git-panel')).toBeVisible();
+
+    await application.close();
+    application = undefined;
+    application = await launchDesktop(userDataDirectory);
+    window = await application.firstWindow();
+    await window.getByTestId('open-app-settings').click();
+    await expect(window.getByTestId('theme-select')).toHaveValue('light');
+    await expect(window.getByTestId('locale-select')).toHaveValue('en-US');
+    await expect(window.getByTestId('shortcut-toggleGit')).toHaveValue('Ctrl+Shift+J');
+    await expect(window.getByText('Update checks are disabled in development')).toBeVisible();
+  } finally {
+    if (application !== undefined) {
+      await application.close();
+    }
+    await rm(projectDirectory, { recursive: true, force: true });
+    await rm(userDataDirectory, { recursive: true, force: true });
+  }
+});
+
 test('opens, edits, saves, and restores a recent workspace', async () => {
   const projectDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-e2e-project-'));
   const userDataDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-e2e-user-'));

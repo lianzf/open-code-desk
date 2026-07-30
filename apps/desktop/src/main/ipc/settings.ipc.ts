@@ -11,6 +11,7 @@ import { assertTrustedIpcEvent, type TrustedRendererOptions } from './assert-tru
 export function registerSettingsIpc(
   options: TrustedRendererOptions,
   service: AppSettingsService,
+  onUpdated?: (settings: ReturnType<AppSettingsService['update']>) => void,
 ): void {
   ipcMain.handle(settingsChannels.get, (event) => {
     assertTrustedIpcEvent(event, options);
@@ -20,7 +21,9 @@ export function registerSettingsIpc(
   ipcMain.handle(settingsChannels.update, (event, untrustedInput: unknown) => {
     assertTrustedIpcEvent(event, options);
     const input = updateAppSettingsRequestSchema.parse(untrustedInput);
-    return appSettingsSchema.parse(service.update(input));
+    const settings = appSettingsSchema.parse(service.update(input));
+    onUpdated?.(settings);
+    return settings;
   });
 }
 

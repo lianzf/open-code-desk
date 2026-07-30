@@ -4,11 +4,13 @@ import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { useConversationContextStore } from '@/features/context/context.store';
+import { useResolvedTheme } from '@/features/settings/use-resolved-theme';
 import { cn } from '@/lib/utils';
 import { useEditorStore } from './editor.store';
 import './monaco-environment';
 
 export function EditorWorkbench() {
+  const resolvedTheme = useResolvedTheme();
   const { activePath, closeFile, loading, saveActive, saving, setActive, tabs, updateContent } =
     useEditorStore();
   const activeTab = tabs.find((tab) => tab.relativePath === activePath);
@@ -149,7 +151,7 @@ export function EditorWorkbench() {
           path={activeTab.relativePath}
           language={activeTab.language}
           value={activeTab.content}
-          theme="vs-dark"
+          theme={resolvedTheme === 'dark' ? 'vs-dark' : 'light'}
           onChange={(value) => updateContent(value ?? '')}
           onMount={(editor, monaco) => {
             setSelectedCode(undefined);

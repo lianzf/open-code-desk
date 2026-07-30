@@ -17,11 +17,24 @@ export class AppSettingsService {
 
   public get(): AppSettings {
     const stored = appSettingsSchema.safeParse(this.repository.get(providerSelectionKey));
-    return this.normalize(stored.success ? stored.data : { selectedModels: {} });
+    return this.normalize(
+      stored.success ? stored.data : appSettingsSchema.parse({ selectedModels: {} }),
+    );
   }
 
   public update(input: UpdateAppSettingsRequest): AppSettings {
-    const normalized = this.normalize(input);
+    const current = this.get();
+    const normalized = this.normalize({
+      selectedModels: input.selectedModels ?? current.selectedModels,
+      shortcuts: input.shortcuts ?? current.shortcuts,
+      theme: input.theme ?? current.theme,
+      locale: input.locale ?? current.locale,
+      autoCheckUpdates: input.autoCheckUpdates ?? current.autoCheckUpdates,
+      crashReporting: input.crashReporting ?? current.crashReporting,
+      ...(input.selectedProviderId === undefined && current.selectedProviderId === undefined
+        ? {}
+        : { selectedProviderId: input.selectedProviderId ?? current.selectedProviderId }),
+    });
     this.repository.set(providerSelectionKey, normalized);
     return normalized;
   }
@@ -38,6 +51,11 @@ export class AppSettingsService {
     return {
       ...(selectedProviderId === undefined ? {} : { selectedProviderId }),
       selectedModels,
+      theme: input.theme,
+      locale: input.locale,
+      shortcuts: input.shortcuts,
+      autoCheckUpdates: input.autoCheckUpdates,
+      crashReporting: input.crashReporting,
     };
   }
 }
