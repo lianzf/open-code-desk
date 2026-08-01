@@ -4,19 +4,12 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
+import { expect, test, type ElectronApplication } from '@playwright/test';
+
+import { launchDesktop } from './desktop-fixture';
 
 const secretSentinel = 'e2e-secret-sentinel-must-not-persist';
 const workspaceSentinel = 'E2E_WORKSPACE_SENTINEL_42';
-
-function launchDesktop(userDataDirectory: string): Promise<ElectronApplication> {
-  return electron.launch({
-    args: [
-      join(process.cwd(), 'apps/desktop/out/main/main.js'),
-      `--user-data-dir=${userDataDirectory}`,
-    ],
-  });
-}
 
 interface FixtureMessage {
   readonly role?: string;

@@ -4,19 +4,12 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
+import { expect, test, type ElectronApplication } from '@playwright/test';
+
+import { launchDesktop } from './desktop-fixture';
 
 const apiKey = 'sk-e2e-change-review';
 const proposedContent = '# AI reviewed update\n';
-
-function launchDesktop(userDataDirectory: string): Promise<ElectronApplication> {
-  return electron.launch({
-    args: [
-      join(process.cwd(), 'apps/desktop/out/main/main.js'),
-      `--user-data-dir=${userDataDirectory}`,
-    ],
-  });
-}
 
 async function startProviderFixture(): Promise<{ baseUrl: string; server: Server }> {
   const server = createServer((request, response) => {
