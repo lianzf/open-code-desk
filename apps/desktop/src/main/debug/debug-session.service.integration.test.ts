@@ -163,7 +163,14 @@ describe('DebugSessionService integration', () => {
     expect(service.listBreakpoints({ workspaceId: workspace.id })[0]?.status).toBe('verified');
     expect(service.listWatches({ workspaceId: workspace.id })).toContainEqual(watch);
 
-    const adapterProcessId = paused.adapterProcessId;
+    const originalAdapterProcessId = paused.adapterProcessId;
+    const restartedPause = waitForStatus(service, 'paused');
+    await service.restart(proposal.id);
+    const pausedAgain = (await restartedPause).session;
+    expect(pausedAgain.pause).toMatchObject({ relativePath: 'program.js', line: 3 });
+    if (originalAdapterProcessId !== undefined) await expectProcessToExit(originalAdapterProcessId);
+
+    const adapterProcessId = pausedAgain.adapterProcessId;
     const stopped = await service.stop(proposal.id);
     expect(stopped.status).toBe('stopped');
     if (adapterProcessId !== undefined) await expectProcessToExit(adapterProcessId);

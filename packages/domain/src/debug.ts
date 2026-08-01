@@ -143,6 +143,48 @@ export interface DebugEvaluationResult {
   readonly variablesReference: number;
 }
 
+export type DebugContextSectionKey =
+  | 'location'
+  | 'source'
+  | 'exception'
+  | 'stack'
+  | 'variables'
+  | 'watches'
+  | 'console'
+  | 'configuration'
+  | 'git_diff'
+  | 'recent_changes'
+  | 'dependencies';
+
+/** A bounded, redacted section shown to the user before it can reach a model. */
+export interface DebugContextSection {
+  readonly key: DebugContextSectionKey;
+  readonly title: string;
+  readonly content: string;
+  readonly tokenEstimate: number;
+  readonly redactionCount: number;
+  readonly truncated: boolean;
+  readonly selectedByDefault: boolean;
+}
+
+/**
+ * A short-lived renderer-safe preview. Raw debugger values are never retained
+ * in this object: every section has already crossed the main-process sanitizer.
+ */
+export interface DebugContextSnapshot {
+  readonly id: string;
+  readonly sessionId: string;
+  readonly workspaceId: string;
+  readonly conversationId: string;
+  readonly pauseFingerprint: string;
+  readonly digest: string;
+  readonly sections: ReadonlyArray<DebugContextSection>;
+  readonly totalTokenEstimate: number;
+  readonly totalRedactionCount: number;
+  readonly createdAt: string;
+  readonly expiresAt: string;
+}
+
 export type DebugOutputCategory = 'console' | 'stdout' | 'stderr' | 'telemetry' | 'important';
 
 export type DebugEvent =
