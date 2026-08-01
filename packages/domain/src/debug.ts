@@ -13,12 +13,16 @@ export type DebugSessionStatus =
 
 export type DebugBreakpointStatus = 'pending' | 'verified' | 'unverified' | 'disabled' | 'error';
 
+export type DebugExceptionPauseMode = 'none' | 'uncaught' | 'all';
+
 export interface DebugAdapterCapabilities {
   readonly pause: boolean;
   readonly restart: boolean;
   readonly stepBack: boolean;
   readonly setVariable: boolean;
   readonly conditionalBreakpoints: boolean;
+  readonly hitConditionalBreakpoints: boolean;
+  readonly logPoints: boolean;
   readonly functionBreakpoints: boolean;
   readonly exceptionInfo: boolean;
 }
@@ -93,10 +97,19 @@ export interface DebugBreakpoint {
   readonly line: number;
   readonly column?: number;
   readonly enabled: boolean;
+  readonly condition?: string;
+  readonly hitCondition?: string;
+  readonly logMessage?: string;
   readonly status: DebugBreakpointStatus;
   readonly adapterBreakpointId?: number;
   readonly message?: string;
   readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface DebugSettings {
+  readonly workspaceId: string;
+  readonly exceptionPauseMode: DebugExceptionPauseMode;
   readonly updatedAt: string;
 }
 

@@ -18,6 +18,169 @@ afterEach(async () => {
 });
 
 describe('NodeDebugAdapterProvider integration', () => {
+  it('supports real conditional breakpoints, hit conditions and logpoints', async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'open-code-desk-debug-advanced-'));
+    temporaryPaths.push(workspaceRoot);
+    await writeFile(
+      join(workspaceRoot, 'loop.js'),
+      [
+        'for (let i = 0; i < 5; i += 1) {',
+        '  const doubled = i * 2;',
+        '  const checkpoint = doubled + 1;',
+        "  console.log('loop=' + checkpoint);",
+        '}',
+      ].join('\n'),
+      'utf8',
+    );
+    const provider = createProvider();
+    let session: DebugAdapterSession | undefined;
+    const now = new Date().toISOString();
+    try {
+      session = await provider.createSession({
+        sessionId: '00000000-0000-4000-8000-000000000021',
+        workspaceRoot,
+        command: command('00000000-0000-4000-8000-000000000022', 'loop.js'),
+        environment: {},
+        sensitiveValues: [],
+        breakpoints: [
+          {
+            id: '00000000-0000-4000-8000-000000000023',
+            workspaceId: '00000000-0000-4000-8000-000000000024',
+            relativePath: 'loop.js',
+            line: 2,
+            enabled: true,
+            logMessage: 'LOGPOINT i={i}',
+            status: 'pending',
+            createdAt: now,
+            updatedAt: now,
+          },
+          {
+            id: '00000000-0000-4000-8000-000000000025',
+            workspaceId: '00000000-0000-4000-8000-000000000024',
+            relativePath: 'loop.js',
+            line: 3,
+            enabled: true,
+            condition: 'i === 3',
+            hitCondition: '>= 2',
+            status: 'pending',
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+        exceptionPauseMode: 'none',
+      });
+
+      expect(session.capabilities).toMatchObject({
+        conditionalBreakpoints: true,
+        hitConditionalBreakpoints: true,
+        logPoints: true,
+      });
+      const observed = await collectEventsUntil(
+        session,
+        'conditional breakpoint',
+        (event) => event.type === 'stopped',
+      );
+      expect(observed.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'output', data: expect.stringContaining('LOGPOINT i=') }),
+        ]),
+      );
+      expect(observed.event).toMatchObject({ type: 'stopped', reason: 'breakpoint' });
+      if (observed.event.type !== 'stopped') throw new Error('Expected stopped event.');
+      const frames = await session.stackTrace(observed.event.threadId);
+      expect(frames[0]).toMatchObject({ relativePath: 'loop.js', line: 3 });
+      const scopes = await session.scopes(frames[0]?.id ?? 0);
+      const variables = (
+        await Promise.all(
+          scopes
+            .filter((scope) => !scope.expensive)
+            .map((scope) => session?.variables(scope.variablesReference) ?? []),
+        )
+      ).flat();
+      expect(variables).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: 'i', value: '3' })]),
+      );
+
+      const terminated = collectEvent(
+        session,
+        'advanced breakpoint termination',
+        (event) => event.type === 'terminated',
+      );
+      await session.continue(observed.event.threadId);
+      await expect(terminated).resolves.toMatchObject({ type: 'terminated' });
+    } finally {
+      await session?.disconnect();
+    }
+  }, 30_000);
+
+  it('applies all and none exception pause modes to real caught and uncaught errors', async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'open-code-desk-debug-policy-'));
+    temporaryPaths.push(workspaceRoot);
+    await writeFile(
+      join(workspaceRoot, 'caught.js'),
+      [
+        'try {',
+        "  throw new Error('caught failure');",
+        '} catch {}',
+        "console.log('continued');",
+      ].join('\n'),
+      'utf8',
+    );
+    await writeFile(
+      join(workspaceRoot, 'uncaught.js'),
+      "throw new Error('uncaught failure');",
+      'utf8',
+    );
+    const provider = createProvider();
+    let allSession: DebugAdapterSession | undefined;
+    let noneSession: DebugAdapterSession | undefined;
+    try {
+      allSession = await provider.createSession({
+        sessionId: '00000000-0000-4000-8000-000000000031',
+        workspaceRoot,
+        command: command('00000000-0000-4000-8000-000000000032', 'caught.js'),
+        environment: {},
+        sensitiveValues: [],
+        breakpoints: [],
+        exceptionPauseMode: 'all',
+      });
+      const stopped = await collectEvent(
+        allSession,
+        'caught exception',
+        (event) => event.type === 'stopped' && event.reason === 'exception',
+      );
+      if (stopped.type !== 'stopped') throw new Error('Expected caught exception stop.');
+      expect((await allSession.exceptionInfo(stopped.threadId))?.message).toContain(
+        'caught failure',
+      );
+      const allTerminated = collectEvent(
+        allSession,
+        'all-mode termination',
+        (event) => event.type === 'terminated',
+      );
+      await allSession.continue(stopped.threadId);
+      await allTerminated;
+
+      noneSession = await provider.createSession({
+        sessionId: '00000000-0000-4000-8000-000000000033',
+        workspaceRoot,
+        command: command('00000000-0000-4000-8000-000000000034', 'uncaught.js'),
+        environment: {},
+        sensitiveValues: [],
+        breakpoints: [],
+        exceptionPauseMode: 'none',
+      });
+      const observed = await collectEventsUntil(
+        noneSession,
+        'none-mode termination',
+        (event) => event.type === 'terminated',
+      );
+      expect(observed.events.some((event) => event.type === 'stopped')).toBe(false);
+    } finally {
+      await Promise.allSettled([allSession?.disconnect(), noneSession?.disconnect()]);
+    }
+  }, 30_000);
+
   it('hits a real breakpoint and exposes stack, locals, stepping and termination', async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'open-code-desk-debug-'));
     temporaryPaths.push(workspaceRoot);
@@ -76,6 +239,7 @@ describe('NodeDebugAdapterProvider integration', () => {
         environment: {},
         sensitiveValues: [],
         breakpoints: [breakpoint],
+        exceptionPauseMode: 'uncaught',
       });
 
       const stopped = await collectEvent(
@@ -171,6 +335,7 @@ describe('NodeDebugAdapterProvider integration', () => {
         environment: { RUNTIME_SECRET: secret },
         sensitiveValues: [secret],
         breakpoints: [],
+        exceptionPauseMode: 'uncaught',
       });
 
       const stopped = await collectEvent(
@@ -224,4 +389,50 @@ function collectEvent(
     unsubscribe = subscribed;
     if (settled) unsubscribe();
   });
+}
+
+async function collectEventsUntil(
+  session: DebugAdapterSession,
+  label: string,
+  predicate: (event: DebugAdapterEvent) => boolean,
+): Promise<{
+  readonly event: DebugAdapterEvent;
+  readonly events: ReadonlyArray<DebugAdapterEvent>;
+}> {
+  const events: DebugAdapterEvent[] = [];
+  const event = await collectEvent(session, label, (candidate) => {
+    events.push(candidate);
+    return predicate(candidate);
+  });
+  return { event, events };
+}
+
+function createProvider(): NodeDebugAdapterProvider {
+  return new NodeDebugAdapterProvider({
+    executable: debugAdapterExecutable,
+    serverPath: join(
+      process.cwd(),
+      'apps',
+      'desktop',
+      'vendor',
+      'js-debug-1.117.0',
+      'src',
+      'dapDebugServer.js',
+    ),
+  });
+}
+
+function command(configurationId: string, program: string) {
+  return {
+    configurationId,
+    configurationUpdatedAt: new Date().toISOString(),
+    configurationName: 'Node advanced integration fixture',
+    projectType: 'node' as const,
+    executable: process.execPath,
+    runtimeArgs: [],
+    args: [program],
+    workingDirectory: '',
+    environmentVariables: [],
+    console: 'runOutput' as const,
+  };
 }

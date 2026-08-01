@@ -5,6 +5,10 @@ import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { useConversationContextStore } from '@/features/context/context.store';
+import {
+  debugBreakpointKind,
+  debugBreakpointTooltip,
+} from '@/features/debug/debug-breakpoint-format';
 import { useDebugStore } from '@/features/debug/debug.store';
 import { useResolvedTheme } from '@/features/settings/use-resolved-theme';
 import { cn } from '@/lib/utils';
@@ -72,9 +76,9 @@ export function EditorWorkbench() {
           endColumn: 1,
         },
         options: {
-          glyphMarginClassName: `debug-breakpoint debug-breakpoint-${breakpoint.status}`,
+          glyphMarginClassName: `debug-breakpoint debug-breakpoint-${breakpoint.status} debug-breakpoint-kind-${debugBreakpointKind(breakpoint)}`,
           glyphMarginHoverMessage: {
-            value: breakpointTooltip(breakpoint.status, breakpoint.message),
+            value: debugBreakpointTooltip(breakpoint),
           },
         },
       }),
@@ -276,7 +280,8 @@ export function EditorWorkbench() {
             editor.onMouseDown((event) => {
               if (
                 event.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN ||
-                event.target.position === null
+                event.target.position === null ||
+                !event.event.leftButton
               ) {
                 return;
               }
@@ -295,6 +300,24 @@ export function EditorWorkbench() {
                 const line = mountedEditor.getPosition()?.lineNumber;
                 if (line !== undefined) {
                   void useDebugStore.getState().toggleBreakpoint(activeTab.relativePath, line);
+                }
+              },
+            });
+            editor.addAction({
+              id: 'open-code-desk.debug.edit-breakpoint',
+              label: '编辑条件/日志断点…',
+              contextMenuGroupId: 'debug',
+              contextMenuOrder: 1.5,
+              run: (mountedEditor) => {
+                const position = mountedEditor.getPosition();
+                if (position !== null) {
+                  useDebugStore
+                    .getState()
+                    .openBreakpointEditor(
+                      activeTab.relativePath,
+                      position.lineNumber,
+                      position.column,
+                    );
                 }
               },
             });
@@ -341,16 +364,4 @@ export function EditorWorkbench() {
       )}
     </section>
   );
-}
-
-function breakpointTooltip(status: string, message: string | undefined): string {
-  const label =
-    {
-      pending: '等待调试器验证',
-      verified: '已由调试器验证',
-      unverified: '调试器未验证',
-      disabled: '已禁用',
-      error: '断点错误',
-    }[status] ?? status;
-  return message === undefined ? `断点：${label}` : `断点：${label}\n\n${message}`;
 }

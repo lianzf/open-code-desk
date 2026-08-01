@@ -21,6 +21,7 @@ import { AuditPanel } from '@/features/audit/audit-panel';
 import { ChatPanel } from '@/features/chat/chat-panel';
 import { ChangeReviewDialog } from '@/features/changes/change-review-panel';
 import { DebugPanel } from '@/features/debug/debug-panel';
+import { DebugBreakpointDialog } from '@/features/debug/debug-breakpoint-dialog';
 import { DebugToolbar } from '@/features/debug/debug-toolbar';
 import { useDebugStore } from '@/features/debug/debug.store';
 import { EditorWorkbench } from '@/features/editor/editor-workbench';
@@ -380,6 +381,7 @@ export function WorkspacePage() {
         </div>
       ) : null}
       <ChangeReviewDialog />
+      <DebugBreakpointDialog />
     </main>
   );
 }

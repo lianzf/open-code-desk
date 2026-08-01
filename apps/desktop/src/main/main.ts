@@ -31,6 +31,7 @@ import { DebugBreakpointRepository } from './debug/debug-breakpoint.repository';
 import { DebugContextService } from './debug/debug-context.service';
 import { DebugSessionRepository } from './debug/debug-session.repository';
 import { DebugSessionService } from './debug/debug-session.service';
+import { DebugSettingsRepository } from './debug/debug-settings.repository';
 import { DebugWatchRepository } from './debug/debug-watch.repository';
 import { NodeDebugAdapterProvider } from './debug/node/node-debug-adapter.provider';
 import { resolveNodeDebugAdapterServerPath } from './debug/node/node-debug-adapter-path';
@@ -238,6 +239,7 @@ void app
       runConfigurationRepository,
       debugSessionRepository,
       new DebugBreakpointRepository(database),
+      new DebugSettingsRepository(database),
       new DebugWatchRepository(database),
       workspaceService,
       secretStore,

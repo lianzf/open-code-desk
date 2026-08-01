@@ -16,6 +16,9 @@ function toBreakpoint(row: DebugBreakpointRow): DebugBreakpoint {
     line: row.line,
     ...(row.column === 1 ? {} : { column: row.column }),
     enabled: row.enabled,
+    ...(row.condition === null ? {} : { condition: row.condition }),
+    ...(row.hitCondition === null ? {} : { hitCondition: row.hitCondition }),
+    ...(row.logMessage === null ? {} : { logMessage: row.logMessage }),
     status: row.status,
     ...(row.adapterBreakpointId === null ? {} : { adapterBreakpointId: row.adapterBreakpointId }),
     ...(row.message === null ? {} : { message: row.message }),
@@ -31,6 +34,9 @@ export interface SaveDebugBreakpointInput {
   readonly line: number;
   readonly column?: number;
   readonly enabled: boolean;
+  readonly condition?: string;
+  readonly hitCondition?: string;
+  readonly logMessage?: string;
 }
 
 export class DebugBreakpointRepository {
@@ -75,6 +81,9 @@ export class DebugBreakpointRepository {
         line: input.line,
         column: input.column ?? 1,
         enabled: input.enabled,
+        condition: input.condition ?? null,
+        hitCondition: input.hitCondition ?? null,
+        logMessage: input.logMessage ?? null,
         status: input.enabled ? 'pending' : 'disabled',
         adapterBreakpointId: null,
         message: null,
@@ -88,6 +97,9 @@ export class DebugBreakpointRepository {
           line: input.line,
           column: input.column ?? 1,
           enabled: input.enabled,
+          condition: input.condition ?? null,
+          hitCondition: input.hitCondition ?? null,
+          logMessage: input.logMessage ?? null,
           status: input.enabled ? 'pending' : 'disabled',
           adapterBreakpointId: null,
           message: null,

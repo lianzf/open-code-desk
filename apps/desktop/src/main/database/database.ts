@@ -466,6 +466,20 @@ const databaseMigrations = [
     CREATE INDEX debug_watches_workspace_updated_idx
       ON debug_watches(workspace_id, updated_at);
   `,
+  `
+    ALTER TABLE debug_breakpoints ADD COLUMN condition TEXT;
+    ALTER TABLE debug_breakpoints ADD COLUMN hit_condition TEXT;
+    ALTER TABLE debug_breakpoints ADD COLUMN log_message TEXT;
+
+    CREATE TABLE debug_settings (
+      workspace_id TEXT PRIMARY KEY NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      exception_pause_mode TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      CONSTRAINT debug_settings_exception_pause_mode_check CHECK (
+        exception_pause_mode IN ('none', 'uncaught', 'all')
+      )
+    );
+  `,
 ] as const;
 
 function migrateDatabase(client: DatabaseSync): void {

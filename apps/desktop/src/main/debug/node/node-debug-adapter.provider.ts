@@ -67,6 +67,7 @@ export class NodeDebugAdapterProvider implements RuntimeDebugAdapterProvider {
       environment: input.environment,
       sensitiveValues: input.sensitiveValues,
       breakpoints: input.breakpoints,
+      exceptionPauseMode: input.exceptionPauseMode,
     });
   }
 }
