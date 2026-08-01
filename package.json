@@ -1,6 +1,6 @@
 {
   "name": "open-code-desk",
-  "version": "0.3.0-alpha.1",
+  "version": "0.4.0-alpha.1",
   "private": true,
   "description": "A local-first, approval-driven AI coding desktop application.",
   "license": "UNLICENSED",

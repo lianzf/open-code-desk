@@ -736,7 +736,7 @@ initialize、launch、断点同步和 configurationDone，并把协议事件归�
 - [x] Git Status、Git Diff 和测试结果能进入上下文或会话。
 - [x] Provider、工具、数据库和 IPC 错误映射为可读的 `AppError`。
 - [x] 日志脱敏测试证明 API Key、Authorization 和敏感 Header 不泄漏。
-- [ ] `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 全部通过。
+- [x] `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 全部通过。
 - [x] 关键 E2E 覆盖“配置模型 → 对话 → Diff 审批 → 应用 → 批准测试 → 恢复会话”。
 
 阶段 C 的 IDE 调试验收状态：

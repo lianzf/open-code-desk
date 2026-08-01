@@ -2,6 +2,38 @@
 
 本文档记录 OpenCode Desk 各阶段版本的用户可见变化。版本遵循语义化版本规范；正式版发布前使用预发布标识。
 
+## [0.4.0-alpha.1] - 2026-08-02
+
+### 新增
+
+- 增加 DAP framing/client、可扩展 Debug Adapter Registry 和独立 Node.js Debug Adapter。
+- 支持真实普通行断点、验证状态、线程、调用栈、作用域、局部/嵌套变量和持久化监视表达式。
+- 支持继续、暂停、Step Over、Step Into、Step Out、运行到光标、重启和停止调试。
+- 增加独立调试控制台、表达式求值、异常信息、当前执行行高亮和源码自动定位。
+- SQLite migration 10 新增调试会话、断点和监视数据，应用重启后可恢复调试历史。
+
+### 安全与可靠性
+
+- 调试开始前展示结构化命令快照和风险，审批摘要变化后拒绝重放旧批准。
+- 调试输出、变量、表达式结果和异常信息在进入 UI/数据库前按真实 Secret 值脱敏。
+- 固定官方 `vscode-js-debug 1.117.0`，记录来源、许可证与入口 SHA-256，并随桌面包分发。
+- 停止、协议终止、适配器异常和应用退出均清理本应用拥有的 adapter/debuggee 进程。
+- 修复 DAP 合法 `threadId = 0` 被 IPC 校验拒绝，以及断点事件/响应竞态导致重复显示的问题。
+- 修复运行/调试底部面板挤压 Monaco 布局，以及文件事务 E2E 在原子替换瞬间的错误失败。
+
+### 验证
+
+- 格式检查、ESLint、TypeScript 严格类型检查、生产构建和 Vitest 全部通过。
+- Vitest：64 个测试文件、200 个测试通过。
+- Playwright Electron E2E：10 个场景通过，包含真实 Node 断点、变量、单步、求值与重启恢复。
+
+### 已知限制
+
+- 完整调试闭环当前只覆盖 Node.js/TypeScript；其他语言 Adapter 尚未接入。
+- 条件/日志/函数断点和调试面板拖动调整尚未实现。
+- 调试上下文交给 AI、生成修复 Diff 并重新验证属于下一阶段。
+- Windows 代码签名、macOS 签名/notarization 和干净设备安装验收仍是正式发布门槛。
+
 ## [0.3.0-alpha.1] - 2026-08-01
 
 ### 新增
@@ -60,3 +92,4 @@
 
 [0.2.0-alpha.1]: docs/releases/0.2.0-alpha.1.md
 [0.3.0-alpha.1]: docs/releases/0.3.0-alpha.1.md
+[0.4.0-alpha.1]: docs/releases/0.4.0-alpha.1.md
