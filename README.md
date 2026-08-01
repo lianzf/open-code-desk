@@ -2,6 +2,8 @@
 
 OpenCode Desk 是一款本地优先、审批驱动的跨平台 AI 编程桌面工具。它使用 Electron、React 和 TypeScript 构建，允许用户自行配置模型服务地址、API Key 与模型名称，并通过统一 Provider 和 Tool 契约扩展新的模型或编程工具。
 
+当前阶段版本：[`0.2.0-alpha.1`](docs/releases/0.2.0-alpha.1.md)
+
 模型输出始终被视为不可信输入。文件写入必须先生成 Diff 并由用户审核，命令执行必须经过风险评估和明确授权，渲染进程不能直接访问文件系统、数据库、密钥或系统 Shell。
 
 ## 当前能力
@@ -151,6 +153,8 @@ Agent 提议的命令必须先展示可执行文件、参数、目录和风险�
 
 ## 文档
 
+- [更新日志](CHANGELOG.md)
+- [0.2.0-alpha.1 阶段版本说明](docs/releases/0.2.0-alpha.1.md)
 - [系统架构](docs/architecture.md)
 - [安全设计](docs/security.md)
 - [开发路线图](docs/roadmap.md)
