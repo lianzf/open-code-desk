@@ -1,6 +1,6 @@
 # OpenCode Desk 系统架构
 
-> 状态：阶段 C（Node.js/TypeScript DAP 调试）实现基线
+> 状态：阶段 D（AI 辅助调试）实现基线
 > 日期：2026-08-02
 > 适用范围：MVP、IDE 运行调试与后续 Provider/Debug Adapter 扩展
 
@@ -8,8 +8,8 @@
 
 OpenCode Desk 已在独立 monorepo `D:\电脑\open-code-desk` 中实现。当前基线包括 Electron 安全壳、
 工作区与 Monaco 编辑器、多 Provider、Agent 工具循环、Diff 审批事务、受控终端/Git、运行配置、
-受管项目运行，以及 Node.js/TypeScript 的真实 DAP 调试闭环。架构文档既保留最初边界，也记录已经
-落地的运行时组件和仍未完成的 AI 辅助调试范围。
+受管项目运行、Node.js/TypeScript 的真实 DAP 调试，以及由用户审核驱动的 AI 辅助修复闭环。
+架构文档既保留最初边界，也记录已落地的运行时组件和仍未完成的多语言调试范围。
 
 OpenCode Desk 是一个本地优先、用户审批驱动的跨平台 AI 编程桌面端。系统必须将模型输出视为
 不可信输入，所有文件、终端、Git 和凭据能力只存在于 Electron 主进程，并由类型安全 IPC、
@@ -87,6 +87,7 @@ MVP 实现 OpenAI Compatible Provider，并为其他厂商保留注册表和独�
 - `CommandService`：命令审批、受控执行、超时、取消和输出持久化。
 - `RunExecutionService`：项目运行提案、审批绑定、进程生命周期和历史恢复。
 - `DebugSessionService`：调试提案、DAP 会话、断点协调、单步控制、变量访问和调试历史。
+- `DebugContextService`：从暂停会话收集有界数据、脱敏、生成短期预览、校验用户选择并附加会话上下文。
 
 Application 只依赖端口接口，例如 `WorkspaceFileSystem`、`SecretStore`、`ProviderRegistry`、
 `ConversationRepository` 和 `CommandRunner`，由主进程组合根注入实现。
@@ -99,7 +100,7 @@ Application 只依赖端口接口，例如 `WorkspaceFileSystem`、`SecretStore`
 - Workspace、Conversation、ChatMessage、AgentTask。
 - ToolCall、ToolResult、PermissionRequest。
 - FileChange、FileChangeSet、CommandExecution、RunConfiguration、RunExecution。
-- DebugSession、DebugBreakpoint、DebugThread、DebugStackFrame、DebugVariable、DebugWatchExpression。
+- DebugSession、DebugBreakpoint、DebugThread、DebugStackFrame、DebugVariable、DebugWatchExpression、DebugContextSnapshot。
 - ContextItem、TokenBudget、AppError。
 
 Domain 不读取环境变量、不访问网络、不调用 Electron，也不包含数据库行类型。
@@ -230,8 +231,43 @@ sequenceDiagram
 DTO。断点、监视和会话快照持久化，活动调试器与被调试进程由应用拥有并在停止或退出时清理。
 
 当前暂停位置会驱动 Monaco 打开对应工作区文件、居中并高亮执行行。线程、调用栈、作用域、嵌套
-变量、监视表达式和调试控制台均从真实 DAP 请求取得，不从普通运行日志推断。将这些调试上下文
-脱敏后交给 AI、生成修复 Diff 并重新验证，属于阶段 D，阶段 C 不声明已完成该闭环。
+变量、监视表达式和调试控制台均从真实 DAP 请求取得，不从普通运行日志推断。阶段 D 增加独立
+`DebugContextService`：它只接受当前处于 paused 的真实会话，并在主进程读取源码片段、调用栈、
+变量、监视、控制台、运行配置、Git Diff、最近变更和依赖。每个分区先脱敏、限长和估算 Token，
+再通过类型安全 IPC 展示；Renderer 从未取得原始变量或异常的旁路副本。
+
+### 5.5 AI 辅助调试
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant R as Renderer
+    participant C as DebugContextService
+    participant A as AgentService
+    participant F as FileChangeService
+    participant D as DebugSessionService
+
+    D-->>R: paused + exception/location
+    U->>R: 点击“交给 AI 分析”
+    R->>C: preview(sessionId, conversationId)
+    C-->>R: 已脱敏、限长、带摘要的分区预览
+    U->>R: 勾选分区并确认
+    R->>C: attach(snapshotId, digest, selectedSections)
+    C->>C: 校验 TTL、会话、工作区与暂停指纹
+    C-->>R: 已保存 diagnostic ContextItem + 分析提示
+    R->>A: startChat(prompt)
+    A->>A: 读取选中上下文并按需调用只读工具
+    A->>F: 提出 FileChange
+    F-->>R: 待审核 Diff
+    U->>F: 批准并应用
+    U->>D: 显式重新调试
+    D-->>R: 新 DAP 会话结果
+```
+
+预览只在主进程内存保留已脱敏版本，默认 10 分钟过期并限制缓存数量。其摘要绑定 session、workspace、
+conversation、暂停指纹和全部分区；附加时任一值不一致都要求重新收集。用户确认后只把所选分区保存
+为 `diagnostic` ContextItem，并标注调试来源。Agent 继续使用既有上下文预算、只读工具、写入权限、
+FileChange 和命令审批，调试入口不拥有特殊写权限。应用修改不会自动继续、改变变量或重启程序。
 
 ## 6. 推荐项目目录
 
@@ -553,6 +589,20 @@ export interface DebugAdapterSession {
   restart(): Promise<void>;
   disconnect(): Promise<void>;
 }
+
+export interface DebugContextSnapshot {
+  readonly id: string;
+  readonly sessionId: string;
+  readonly workspaceId: string;
+  readonly conversationId: string;
+  readonly pauseFingerprint: string;
+  readonly digest: string;
+  readonly sections: ReadonlyArray<DebugContextSection>;
+  readonly totalTokenEstimate: number;
+  readonly totalRedactionCount: number;
+  readonly createdAt: string;
+  readonly expiresAt: string;
+}
 ```
 
 `RuntimeDebugAdapterProvider` 是 Infrastructure 端口；Application 只依赖注册表与统一会话接口。
@@ -696,8 +746,9 @@ initialize、launch、断点同步和 configurationDone，并把协议事件归�
 均由模块化 `debug.ipc.ts` 转发，输入输出经 Zod 校验；断点、监视和会话历史由 migration 10 持久化。
 
 阶段 C 支持普通行断点、启用/禁用/删除、线程、调用栈、局部与嵌套变量、监视、REPL 求值、继续、
-暂停、Step Over/Into/Out、运行到光标、重启、停止、异常信息和当前行高亮。条件/日志/函数断点、
-其他语言 Adapter 与 AI 调试上下文闭环仍在后续阶段，不以能力标记或静态 UI 冒充完成。
+暂停、Step Over/Into/Out、运行到光标、重启、停止、异常信息和当前行高亮。阶段 D 通过独立
+`debug-context.ipc.ts` 增加脱敏预览和显式附加，不修改 Agent 或 FileChange 主流程。条件/日志/函数
+断点与其他语言 Adapter 仍在后续阶段，不以能力标记或静态 UI 冒充完成。
 
 ## 11. 关键非功能需求
 
@@ -739,7 +790,7 @@ initialize、launch、断点同步和 configurationDone，并把协议事件归�
 - [x] `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 全部通过。
 - [x] 关键 E2E 覆盖“配置模型 → 对话 → Diff 审批 → 应用 → 批准测试 → 恢复会话”。
 
-阶段 C 的 IDE 调试验收状态：
+阶段 D 的 IDE 调试验收状态：
 
 - [x] Node.js/TypeScript 使用真实 DAP Adapter 启动，开始前必须审核准确命令快照。
 - [x] Monaco 行号区可设置持久化断点，并显示 pending/verified/unverified/disabled/error 状态。
@@ -748,7 +799,7 @@ initialize、launch、断点同步和 configurationDone，并把协议事件归�
 - [x] 可继续、暂停、Step Over、Step Into、Step Out、运行到光标、重启和停止。
 - [x] 会话、断点、监视、暂停位置、受限输出和错误可持久化恢复。
 - [x] 停止、终止与应用退出会清理本应用拥有的调试器和被调试进程。
-- [ ] 调试上下文脱敏后交给 AI，并走“分析 → 修复 Diff → 审批 → 重新验证”闭环。
+- [x] 调试上下文脱敏后由用户逐分区审核，再走“分析 → 修复 Diff → 审批 → 显式重新验证”闭环。
 - [ ] Java、Python、C/C++、.NET、Go、Rust 与浏览器调试 Adapter。
 
 ## 13. 主要架构风险

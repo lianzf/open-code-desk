@@ -3,6 +3,7 @@ import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { useEditorStore } from '@/features/editor/editor.store';
+import { DebugAiAction } from './debug-ai-action';
 import { DebugSection, VariableList } from './debug-panel.components';
 import { useDebugStore } from './debug.store';
 
@@ -67,14 +68,17 @@ export function DebugPanel({
             {session.pause.relativePath ?? '未知位置'}:{session.pause.line ?? '—'}
           </span>
         )}
-        <button
-          type="button"
-          className="ml-auto rounded p-1 text-zinc-500 hover:bg-zinc-800"
-          onClick={onClose}
-          aria-label="关闭调试面板"
-        >
-          <X className="size-3.5" />
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <DebugAiAction paused={session?.status === 'paused'} />
+          <button
+            type="button"
+            className="rounded p-1 text-zinc-500 hover:bg-zinc-800"
+            onClick={onClose}
+            aria-label="关闭调试面板"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
       </header>
 
       {session?.status === 'pending_approval' ? (

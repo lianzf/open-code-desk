@@ -28,6 +28,7 @@ import { CrashReportService, type RecordCrashReportInput } from './crash/crash-r
 import { createAppDatabase, type AppDatabase } from './database/database';
 import { DebugAdapterRegistry } from './debug/debug-adapter.registry';
 import { DebugBreakpointRepository } from './debug/debug-breakpoint.repository';
+import { DebugContextService } from './debug/debug-context.service';
 import { DebugSessionRepository } from './debug/debug-session.repository';
 import { DebugSessionService } from './debug/debug-session.service';
 import { DebugWatchRepository } from './debug/debug-watch.repository';
@@ -38,6 +39,7 @@ import { WorkspaceWatchService } from './filesystem/workspace-watch.service';
 import { GitService } from './git/git.service';
 import { registerFilesIpc, unregisterFilesIpc } from './ipc/files.ipc';
 import { registerDebugIpc, unregisterDebugIpc } from './ipc/debug.ipc';
+import { registerDebugContextIpc, unregisterDebugContextIpc } from './ipc/debug-context.ipc';
 import { registerAuditIpc, unregisterAuditIpc } from './ipc/audit.ipc';
 import { registerGitIpc, unregisterGitIpc } from './ipc/git.ipc';
 import { registerHealthIpc, unregisterHealthIpc } from './ipc/health.ipc';
@@ -278,6 +280,21 @@ void app
       changePaths,
       agentTaskRepository,
     );
+    const contextItemService = new ContextItemService(
+      contextItemRepository,
+      conversationRepository,
+      new ElectronContextImagePicker(),
+    );
+    const debugContextService = new DebugContextService(
+      debugSessionRepository,
+      debugSessionService,
+      conversationRepository,
+      contextItemService,
+      fileService,
+      gitService,
+      changeService,
+      auditLog,
+    );
     const changeTransactions = new FileChangeTransactionService(
       changeRepository,
       changeService,
@@ -342,6 +359,7 @@ void app
       runExecutionService,
     );
     registerDebugIpc(trustedRendererOptions, debugSessionService);
+    registerDebugContextIpc(trustedRendererOptions, debugContextService);
     registerSettingsIpc(trustedRendererOptions, settingsService, (settings) => {
       nativeTheme.themeSource = settings.theme;
       crashReportService?.setEnabled(settings.crashReporting, crashReporter);
@@ -349,14 +367,7 @@ void app
     registerConversationsIpc(trustedRendererOptions, conversationService);
     registerCrashReportsIpc(trustedRendererOptions, crashReportService);
     registerUpdatesIpc(trustedRendererOptions, updateService);
-    registerContextIpc(
-      trustedRendererOptions,
-      new ContextItemService(
-        contextItemRepository,
-        conversationRepository,
-        new ElectronContextImagePicker(),
-      ),
-    );
+    registerContextIpc(trustedRendererOptions, contextItemService);
     registerChangesIpc(trustedRendererOptions, changeService, changeTransactions);
     registerCommandsIpc(trustedRendererOptions, commandService);
     registerPermissionsIpc(
@@ -434,6 +445,7 @@ app.on('before-quit', (event) => {
   unregisterPermissionsIpc();
   unregisterTerminalIpc();
   unregisterProvidersIpc();
+  unregisterDebugContextIpc();
   unregisterDebugIpc();
   unregisterRunIpc();
   unregisterSettingsIpc();

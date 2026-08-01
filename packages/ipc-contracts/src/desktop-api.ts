@@ -74,6 +74,12 @@ import type {
   SaveDebugWatchRequest,
 } from './debug';
 import type {
+  AttachDebugContextRequest,
+  AttachDebugContextResponse,
+  DebugContextSnapshot,
+  PreviewDebugContextRequest,
+} from './debug-context';
+import type {
   ConnectionTestResult,
   DeleteProviderRequest,
   ModelInfo,
@@ -212,6 +218,8 @@ export interface DesktopApi {
     listWatches(input: ListDebugWatchesRequest): Promise<ReadonlyArray<DebugWatchExpression>>;
     saveWatch(input: SaveDebugWatchRequest): Promise<DebugWatchExpression>;
     deleteWatch(input: DeleteDebugWatchRequest): Promise<{ readonly accepted: boolean }>;
+    previewContext(input: PreviewDebugContextRequest): Promise<DebugContextSnapshot>;
+    attachContext(input: AttachDebugContextRequest): Promise<AttachDebugContextResponse>;
     onEvent(listener: (event: DebugEvent) => void): () => void;
   };
   readonly settings: {

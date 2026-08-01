@@ -1,6 +1,6 @@
 {
   "name": "@open-code-desk/desktop",
-  "version": "0.4.0-alpha.1",
+  "version": "0.5.0-alpha.1",
   "private": true,
   "description": "OpenCode Desk desktop application",
   "author": "OpenCode Desk Contributors",

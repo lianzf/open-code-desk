@@ -31,9 +31,13 @@ import {
   conversationsChannels,
   crashReportChannels,
   crashReportListSchema,
+  attachDebugContextRequestSchema,
+  attachDebugContextResponseSchema,
   debugBreakpointListSchema,
   debugBreakpointSchema,
   debugChannels,
+  debugContextChannels,
+  debugContextSnapshotSchema,
   debugEvaluationResultSchema,
   debugEventSchema,
   debugFrameRequestSchema,
@@ -57,6 +61,7 @@ import {
   listDebugHistoryRequestSchema,
   listDebugWatchesRequestSchema,
   proposeDebugStartRequestSchema,
+  previewDebugContextRequestSchema,
   runToCursorRequestSchema,
   saveDebugBreakpointRequestSchema,
   saveDebugWatchRequestSchema,
@@ -471,6 +476,18 @@ const desktopApi: DesktopApi = {
       const request = deleteDebugWatchRequestSchema.parse(input);
       return debugMutationResponseSchema.parse(
         await ipcRenderer.invoke(debugChannels.deleteWatch, request),
+      );
+    },
+    async previewContext(input) {
+      const request = previewDebugContextRequestSchema.parse(input);
+      return debugContextSnapshotSchema.parse(
+        await ipcRenderer.invoke(debugContextChannels.preview, request),
+      );
+    },
+    async attachContext(input) {
+      const request = attachDebugContextRequestSchema.parse(input);
+      return attachDebugContextResponseSchema.parse(
+        await ipcRenderer.invoke(debugContextChannels.attach, request),
       );
     },
     onEvent(listener) {

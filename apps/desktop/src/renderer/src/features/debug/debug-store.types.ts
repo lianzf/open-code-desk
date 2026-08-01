@@ -1,5 +1,7 @@
 import type {
   DebugBreakpoint,
+  DebugContextSectionKey,
+  DebugContextSnapshot,
   DebugEvaluationResult,
   DebugEvent,
   DebugScope,
@@ -33,6 +35,8 @@ export interface DebugState {
   readonly variables: Readonly<Record<number, ReadonlyArray<DebugVariable>>>;
   readonly watchResults: Readonly<Record<string, DebugEvaluationResult | string>>;
   readonly consoleEntries: ReadonlyArray<DebugConsoleEntry>;
+  readonly contextPreview: DebugContextSnapshot | undefined;
+  readonly contextLoading: boolean;
   readonly errorMessage: string | undefined;
   initialize(workspaceId: string): Promise<void>;
   dispose(): void;
@@ -57,5 +61,11 @@ export interface DebugState {
     context?: 'watch' | 'repl' | 'hover',
   ): Promise<DebugEvaluationResult | undefined>;
   clearConsole(): void;
+  previewContext(conversationId: string): Promise<DebugContextSnapshot | undefined>;
+  attachContext(
+    conversationId: string,
+    selectedSections: ReadonlyArray<DebugContextSectionKey>,
+  ): Promise<{ readonly prompt: string } | undefined>;
+  clearContextPreview(): void;
   notify(event: DebugEvent): void;
 }
