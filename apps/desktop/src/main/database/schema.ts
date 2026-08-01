@@ -1,6 +1,14 @@
 import { blob, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import type { AgentTaskCheckpoint } from '@open-code-desk/domain';
-import type { ProjectType, RunConsole } from '@open-code-desk/domain';
+import type {
+  ProjectType,
+  RunApprovalDecision,
+  RunCommandSnapshot,
+  RunConsole,
+  RunExecutionError,
+  RunRiskLevel,
+  RunStatus,
+} from '@open-code-desk/domain';
 
 export interface StoredRunEnvironmentVariable {
   readonly name: string;
@@ -62,6 +70,43 @@ export const workspaceRunSettings = sqliteTable('workspace_run_settings', {
   }),
   updatedAt: text('updated_at').notNull(),
 });
+
+export const runExecutions = sqliteTable(
+  'run_executions',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    /** Kept as a snapshot key so deleting a configuration does not erase its execution history. */
+    configurationId: text('configuration_id').notNull(),
+    restartOfExecutionId: text('restart_of_execution_id'),
+    commandSnapshot: text('command_snapshot', { mode: 'json' })
+      .$type<RunCommandSnapshot>()
+      .notNull(),
+    status: text('status').$type<RunStatus>().notNull(),
+    riskLevel: text('risk_level').$type<RunRiskLevel>().notNull(),
+    riskReasons: text('risk_reasons', { mode: 'json' }).$type<ReadonlyArray<string>>().notNull(),
+    approvalDigest: text('approval_digest').notNull(),
+    approvalDecision: text('approval_decision').$type<RunApprovalDecision>(),
+    processId: integer('process_id'),
+    outputTail: text('output_tail').notNull(),
+    outputBytes: integer('output_bytes').notNull(),
+    outputTruncated: integer('output_truncated', { mode: 'boolean' }).notNull(),
+    exitCode: integer('exit_code'),
+    terminationSignal: text('termination_signal'),
+    error: text('error', { mode: 'json' }).$type<RunExecutionError>(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    approvalDecidedAt: text('approval_decided_at'),
+    startedAt: text('started_at'),
+    completedAt: text('completed_at'),
+  },
+  (table) => [
+    index('run_executions_workspace_created_idx').on(table.workspaceId, table.createdAt),
+    index('run_executions_configuration_created_idx').on(table.configurationId, table.createdAt),
+  ],
+);
 
 export const providerConfigs = sqliteTable(
   'provider_configs',

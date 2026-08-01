@@ -350,6 +350,50 @@ const databaseMigrations = [
       updated_at TEXT NOT NULL
     );
   `,
+  `
+    CREATE TABLE run_executions (
+      id TEXT PRIMARY KEY NOT NULL,
+      workspace_id TEXT NOT NULL
+        REFERENCES workspaces(id) ON DELETE CASCADE,
+      configuration_id TEXT NOT NULL,
+      restart_of_execution_id TEXT,
+      command_snapshot TEXT NOT NULL,
+      status TEXT NOT NULL,
+      risk_level TEXT NOT NULL,
+      risk_reasons TEXT NOT NULL,
+      approval_digest TEXT NOT NULL,
+      approval_decision TEXT,
+      process_id INTEGER,
+      output_tail TEXT NOT NULL,
+      output_bytes INTEGER NOT NULL,
+      output_truncated INTEGER NOT NULL,
+      exit_code INTEGER,
+      termination_signal TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      approval_decided_at TEXT,
+      started_at TEXT,
+      completed_at TEXT,
+      CONSTRAINT run_executions_status_check
+        CHECK (status IN (
+          'pending_approval', 'starting', 'running', 'stopping',
+          'stopped', 'completed', 'failed', 'rejected'
+        )),
+      CONSTRAINT run_executions_risk_level_check
+        CHECK (risk_level IN ('low', 'medium', 'high', 'blocked')),
+      CONSTRAINT run_executions_approval_decision_check
+        CHECK (approval_decision IS NULL OR approval_decision IN ('approve', 'reject')),
+      CONSTRAINT run_executions_output_bytes_check
+        CHECK (output_bytes >= 0),
+      CONSTRAINT run_executions_output_truncated_check
+        CHECK (output_truncated IN (0, 1))
+    );
+    CREATE INDEX run_executions_workspace_created_idx
+      ON run_executions(workspace_id, created_at);
+    CREATE INDEX run_executions_configuration_created_idx
+      ON run_executions(configuration_id, created_at);
+  `,
 ] as const;
 
 function migrateDatabase(client: DatabaseSync): void {

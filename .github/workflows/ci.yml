@@ -49,8 +49,38 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Install Linux keyring dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes gnome-keyring libsecret-tools
+
       - name: End-to-end tests
-        run: xvfb-run --auto-servernum pnpm exec playwright test
+        env:
+          OPEN_CODE_DESK_E2E_PASSWORD_STORE: gnome-libsecret
+          XDG_CURRENT_DESKTOP: GNOME
+        run: |
+          dbus-run-session -- bash -euo pipefail -c '
+            keyring_password="$(openssl rand -hex 32)"
+            eval "$(printf "%s" "$keyring_password" | gnome-keyring-daemon --daemonize --unlock --components=secrets)"
+            unset keyring_password
+            probe_value="$(openssl rand -hex 32)"
+            printf "%s" "$probe_value" | timeout 15s secret-tool store --label="OpenCode Desk CI probe" application open-code-desk-ci
+            test "$(timeout 15s secret-tool lookup application open-code-desk-ci)" = "$probe_value"
+            timeout 15s secret-tool clear application open-code-desk-ci
+            unset probe_value
+            xvfb-run --auto-servernum pnpm exec playwright test
+          '
+
+      - name: Upload end-to-end diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-diagnostics
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 7
 
   package:
     name: Package ${{ matrix.name }}

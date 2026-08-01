@@ -60,7 +60,7 @@ describe('conversation context persistence', () => {
     expect(updated.content).toContain('version = 2');
     expect(updated.tokenEstimate).toBeGreaterThan(0);
     expect(service.list(conversation.id)).toHaveLength(2);
-    expect(database.client.prepare('PRAGMA user_version').get()).toEqual({ user_version: 8 });
+    expect(database.client.prepare('PRAGMA user_version').get()).toEqual({ user_version: 9 });
     database.close();
 
     const reopened = createAppDatabase(databasePath);

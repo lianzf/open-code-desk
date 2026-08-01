@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   Square,
   MonitorCog,
+  Play,
   TerminalSquare,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -25,6 +26,8 @@ import { useAppSettingsStore } from '@/features/settings/app-settings.store';
 import { translate } from '@/features/settings/i18n';
 import { useApplicationShortcuts } from '@/features/settings/use-application-shortcuts';
 import { GitPanel } from '@/features/git/git-panel';
+import { RunOutputPanel } from '@/features/run/run-output-panel';
+import { RunToolbar } from '@/features/run/run-toolbar';
 import { TerminalPanel } from '@/features/terminal/terminal-panel';
 import { FileTree } from '@/features/workspace/file-tree';
 import { useWorkspaceStore } from '@/features/workspace/workspace.store';
@@ -50,7 +53,7 @@ export function WorkspacePage() {
   const handleEditorFileChange = useEditorStore((state) => state.handleFileChange);
   const handleWorkspaceFileChange = useWorkspaceStore((state) => state.handleFileChange);
   const [query, setQuery] = useState(searchQuery);
-  const [bottomPanel, setBottomPanel] = useState<'terminal' | 'git' | 'audit' | null>(null);
+  const [bottomPanel, setBottomPanel] = useState<'terminal' | 'git' | 'audit' | 'run' | null>(null);
   const provider = useProviderStore();
   const openAppSettings = useAppSettingsStore((state) => state.openDialog);
   const settings = useAppSettingsStore((state) => state.settings);
@@ -104,6 +107,7 @@ export function WorkspacePage() {
           </span>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <RunToolbar workspaceId={current.id} onShowOutput={() => setBottomPanel('run')} />
           <button
             className="rounded border border-zinc-800 p-1.5 text-zinc-500 hover:border-zinc-700 hover:text-zinc-200"
             onClick={openAppSettings}
@@ -276,8 +280,19 @@ export function WorkspacePage() {
           {bottomPanel === 'audit' ? (
             <AuditPanel workspaceId={current.id} onClose={() => setBottomPanel(null)} />
           ) : null}
+          {bottomPanel === 'run' ? <RunOutputPanel onClose={() => setBottomPanel(null)} /> : null}
 
           <div className="flex h-8 shrink-0 items-center gap-2 border-t border-zinc-800 bg-zinc-950 px-2 text-[11px] text-zinc-500">
+            <button
+              className={`flex items-center gap-1.5 rounded px-2 py-1 hover:bg-zinc-800 hover:text-zinc-200 ${
+                bottomPanel === 'run' ? 'bg-zinc-800 text-zinc-200' : ''
+              }`}
+              onClick={() => setBottomPanel((value) => (value === 'run' ? null : 'run'))}
+              data-testid="toggle-run-output"
+            >
+              <Play className="size-3" />
+              运行
+            </button>
             <button
               className={`flex items-center gap-1.5 rounded px-2 py-1 hover:bg-zinc-800 hover:text-zinc-200 ${
                 bottomPanel === 'git' ? 'bg-zinc-800 text-zinc-200' : ''

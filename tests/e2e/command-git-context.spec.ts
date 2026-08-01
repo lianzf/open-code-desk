@@ -6,21 +6,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
-import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
+import { expect, test, type ElectronApplication } from '@playwright/test';
+
+import { launchDesktop } from './desktop-fixture';
 
 const execFileAsync = promisify(execFile);
 const apiKey = 'sk-e2e-command-context';
 const contextMarker = 'E2E_CONTEXT_MARKER_73';
 const commandOutput = 'E2E_COMMAND_OUTPUT_91';
-
-function launchDesktop(userDataDirectory: string): Promise<ElectronApplication> {
-  return electron.launch({
-    args: [
-      join(process.cwd(), 'apps/desktop/out/main/main.js'),
-      `--user-data-dir=${userDataDirectory}`,
-    ],
-  });
-}
 
 async function git(cwd: string, ...args: ReadonlyArray<string>): Promise<void> {
   await execFileAsync('git', args, { cwd, windowsHide: true });
