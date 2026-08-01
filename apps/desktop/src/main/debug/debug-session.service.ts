@@ -150,15 +150,27 @@ export class DebugSessionService {
     });
   }
 
-  public async restart(sessionId: string): Promise<DebugSession> {
-    const current = this.requireActiveSession(sessionId);
-    const previous = this.requireSession(sessionId);
-    const starting = this.sessions.update(sessionId, { status: 'starting', pause: null });
-    this.emitStatus(previous, starting);
-    await current.adapter.restart();
-    const running = this.sessions.update(sessionId, { status: 'running' });
-    this.emitStatus(starting, running);
-    return running;
+  public restart(sessionId: string): Promise<DebugSession> {
+    return this.enqueue(sessionId, async () => {
+      const previous = this.requireSession(sessionId);
+      if (!['running', 'paused'].includes(previous.status)) {
+        throw new Error('只有正在运行或暂停的调试会话可以重新启动。');
+      }
+      const current = this.requireActiveSession(sessionId);
+      current.terminating = true;
+      current.unsubscribe();
+      this.#active.delete(sessionId);
+      try {
+        await current.adapter.disconnect();
+      } catch (error) {
+        return this.fail(
+          previous,
+          'DEBUG_RESTART_FAILED',
+          `重新调试失败：${safeErrorMessage(error)}`,
+        );
+      }
+      return this.startApproved(this.requireSession(sessionId));
+    });
   }
 
   public pause(sessionId: string, threadId: number): Promise<DebugSession> {
@@ -255,6 +267,12 @@ export class DebugSessionService {
       status: 'starting',
       approvalDecision: 'approve',
       approvalDecidedAt: new Date().toISOString(),
+      adapterProcessId: null,
+      pause: null,
+      outputTail: '',
+      outputBytes: 0,
+      error: null,
+      completedAt: null,
     });
     this.emitStatus(session, starting);
     recordDebugSessionAudit(this.audit, starting, 'allowed');

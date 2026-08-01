@@ -37,6 +37,8 @@ export const useDebugStore = create<DebugState>((set, get) => ({
   variables: {},
   watchResults: {},
   consoleEntries: [],
+  contextPreview: undefined,
+  contextLoading: false,
   errorMessage: undefined,
 
   async initialize(workspaceId) {
@@ -59,6 +61,8 @@ export const useDebugStore = create<DebugState>((set, get) => ({
       variables: {},
       watchResults: {},
       consoleEntries: [],
+      contextPreview: undefined,
+      contextLoading: false,
       errorMessage: undefined,
     });
     try {
@@ -317,6 +321,46 @@ export const useDebugStore = create<DebugState>((set, get) => ({
     set({ consoleEntries: [] });
   },
 
+  async previewContext(conversationId) {
+    const session = selectedDebugSession(get());
+    if (session?.status !== 'paused') return undefined;
+    set({ contextLoading: true, contextPreview: undefined, errorMessage: undefined });
+    try {
+      const snapshot = await window.openCodeDesk.debug.previewContext({
+        sessionId: session.id,
+        conversationId,
+      });
+      set({ contextLoading: false, contextPreview: snapshot });
+      return snapshot;
+    } catch (error) {
+      set({ contextLoading: false, errorMessage: readableDebugError(error) });
+      return undefined;
+    }
+  },
+
+  async attachContext(conversationId, selectedSections) {
+    const preview = get().contextPreview;
+    if (preview === undefined || preview.conversationId !== conversationId) return undefined;
+    set({ contextLoading: true, errorMessage: undefined });
+    try {
+      const result = await window.openCodeDesk.debug.attachContext({
+        snapshotId: preview.id,
+        expectedDigest: preview.digest,
+        conversationId,
+        selectedSections: [...selectedSections],
+      });
+      set({ contextLoading: false, contextPreview: undefined });
+      return { prompt: result.prompt };
+    } catch (error) {
+      set({ contextLoading: false, errorMessage: readableDebugError(error) });
+      return undefined;
+    }
+  },
+
+  clearContextPreview() {
+    set({ contextPreview: undefined });
+  },
+
   notify(event) {
     if (event.type !== 'status' && event.workspaceId !== get().workspaceId) return;
     if (event.type === 'breakpoints') {
@@ -348,6 +392,9 @@ export const useDebugStore = create<DebugState>((set, get) => ({
       if (event.session.status === 'paused') {
         void refreshPausedDebugState(get, set, event.session);
       }
+      if (event.session.status === 'starting') {
+        set({ consoleEntries: [], contextPreview: undefined });
+      }
       if (['running', 'completed', 'stopped', 'failed'].includes(event.session.status)) {
         set({
           threads: [],
@@ -356,6 +403,7 @@ export const useDebugStore = create<DebugState>((set, get) => ({
           variables: {},
           selectedThreadId: undefined,
           selectedFrameId: undefined,
+          contextPreview: undefined,
         });
       }
     }
