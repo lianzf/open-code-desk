@@ -394,6 +394,78 @@ const databaseMigrations = [
     CREATE INDEX run_executions_configuration_created_idx
       ON run_executions(configuration_id, created_at);
   `,
+  `
+    CREATE TABLE debug_sessions (
+      id TEXT PRIMARY KEY NOT NULL,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      configuration_id TEXT NOT NULL,
+      adapter_type TEXT NOT NULL,
+      command_snapshot TEXT NOT NULL,
+      status TEXT NOT NULL,
+      risk_level TEXT NOT NULL,
+      risk_reasons TEXT NOT NULL,
+      approval_digest TEXT NOT NULL,
+      approval_decision TEXT,
+      adapter_process_id INTEGER,
+      capabilities TEXT,
+      pause TEXT,
+      output_tail TEXT NOT NULL,
+      output_bytes INTEGER NOT NULL,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      approval_decided_at TEXT,
+      started_at TEXT,
+      completed_at TEXT,
+      CONSTRAINT debug_sessions_status_check CHECK (status IN (
+        'pending_approval', 'starting', 'running', 'paused', 'stopping',
+        'stopped', 'completed', 'failed', 'rejected'
+      )),
+      CONSTRAINT debug_sessions_risk_level_check
+        CHECK (risk_level IN ('low', 'medium', 'high', 'blocked')),
+      CONSTRAINT debug_sessions_approval_decision_check
+        CHECK (approval_decision IS NULL OR approval_decision IN ('approve', 'reject')),
+      CONSTRAINT debug_sessions_output_bytes_check CHECK (output_bytes >= 0)
+    );
+    CREATE INDEX debug_sessions_workspace_created_idx
+      ON debug_sessions(workspace_id, created_at);
+    CREATE INDEX debug_sessions_configuration_created_idx
+      ON debug_sessions(configuration_id, created_at);
+
+    CREATE TABLE debug_breakpoints (
+      id TEXT PRIMARY KEY NOT NULL,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      relative_path TEXT NOT NULL,
+      line INTEGER NOT NULL,
+      column INTEGER NOT NULL,
+      enabled INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      adapter_breakpoint_id INTEGER,
+      message TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      CONSTRAINT debug_breakpoints_line_check CHECK (line > 0),
+      CONSTRAINT debug_breakpoints_column_check CHECK (column > 0),
+      CONSTRAINT debug_breakpoints_enabled_check CHECK (enabled IN (0, 1)),
+      CONSTRAINT debug_breakpoints_status_check CHECK (status IN (
+        'pending', 'verified', 'unverified', 'disabled', 'error'
+      )),
+      UNIQUE(workspace_id, relative_path, line, column)
+    );
+    CREATE INDEX debug_breakpoints_workspace_path_idx
+      ON debug_breakpoints(workspace_id, relative_path);
+
+    CREATE TABLE debug_watches (
+      id TEXT PRIMARY KEY NOT NULL,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      expression TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(workspace_id, expression)
+    );
+    CREATE INDEX debug_watches_workspace_updated_idx
+      ON debug_watches(workspace_id, updated_at);
+  `,
 ] as const;
 
 function migrateDatabase(client: DatabaseSync): void {

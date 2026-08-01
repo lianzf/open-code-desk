@@ -60,7 +60,7 @@ export function RunOutputPanel({ onClose }: RunOutputPanelProps) {
 
   return (
     <section
-      className="flex min-h-48 flex-col border-t border-zinc-800 bg-zinc-950"
+      className="flex h-60 min-h-0 shrink-0 flex-col border-t border-zinc-800 bg-zinc-950"
       aria-label="运行输出"
       data-testid="run-output-panel"
     >

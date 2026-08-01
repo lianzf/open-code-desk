@@ -1,15 +1,15 @@
 # OpenCode Desk 系统架构
 
-> 状态：阶段 1 架构基线
-> 日期：2026-07-28
-> 适用范围：MVP 与后续 Provider 扩展
-> 本阶段不包含工程初始化或业务实现
+> 状态：阶段 C（Node.js/TypeScript DAP 调试）实现基线
+> 日期：2026-08-02
+> 适用范围：MVP、IDE 运行调试与后续 Provider/Debug Adapter 扩展
 
 ## 1. 仓库现状与需求理解
 
-当前工作区 `D:\电脑` 不是 Git 仓库，也没有 OpenCode Desk 的既有工程。工作区中的
-`ssh-desktop-client` 是名为 SwiftSSH 的独立 Electron/JavaScript 项目，不适合作为本项目基础。
-因此 OpenCode Desk 使用独立目录 `D:\电脑\open-code-desk`，阶段 1 仅创建文档。
+OpenCode Desk 已在独立 monorepo `D:\电脑\open-code-desk` 中实现。当前基线包括 Electron 安全壳、
+工作区与 Monaco 编辑器、多 Provider、Agent 工具循环、Diff 审批事务、受控终端/Git、运行配置、
+受管项目运行，以及 Node.js/TypeScript 的真实 DAP 调试闭环。架构文档既保留最初边界，也记录已经
+落地的运行时组件和仍未完成的 AI 辅助调试范围。
 
 OpenCode Desk 是一个本地优先、用户审批驱动的跨平台 AI 编程桌面端。系统必须将模型输出视为
 不可信输入，所有文件、终端、Git 和凭据能力只存在于 Electron 主进程，并由类型安全 IPC、
@@ -85,6 +85,8 @@ MVP 实现 OpenAI Compatible Provider，并为其他厂商保留注册表和独�
 - `ProviderService`：Provider 配置、连接测试、模型列表和流式调用。
 - `WorkspaceService`：工作区生命周期、最近项目和项目规则发现。
 - `CommandService`：命令审批、受控执行、超时、取消和输出持久化。
+- `RunExecutionService`：项目运行提案、审批绑定、进程生命周期和历史恢复。
+- `DebugSessionService`：调试提案、DAP 会话、断点协调、单步控制、变量访问和调试历史。
 
 Application 只依赖端口接口，例如 `WorkspaceFileSystem`、`SecretStore`、`ProviderRegistry`、
 `ConversationRepository` 和 `CommandRunner`，由主进程组合根注入实现。
@@ -96,7 +98,8 @@ Application 只依赖端口接口，例如 `WorkspaceFileSystem`、`SecretStore`
 - Provider、模型能力和流事件。
 - Workspace、Conversation、ChatMessage、AgentTask。
 - ToolCall、ToolResult、PermissionRequest。
-- FileChange、FileChangeSet、CommandExecution。
+- FileChange、FileChangeSet、CommandExecution、RunConfiguration、RunExecution。
+- DebugSession、DebugBreakpoint、DebugThread、DebugStackFrame、DebugVariable、DebugWatchExpression。
 - ContextItem、TokenBudget、AppError。
 
 Domain 不读取环境变量、不访问网络、不调用 Electron，也不包含数据库行类型。
@@ -108,6 +111,7 @@ Domain 不读取环境变量、不访问网络、不调用 Electron，也不包�
 - 系统凭据库 Adapter。
 - 安全文件系统、路径策略、原子文件写入和回滚快照。
 - simple-git、受控子进程/PTY、日志和审计日志。
+- DAP client、Debug Adapter Registry、Node.js Debug Adapter 与受管调试器子进程。
 - Electron BrowserWindow、dialog、IPC、CSP 和生命周期。
 
 ## 5. 运行时组件与数据流
@@ -119,11 +123,14 @@ flowchart LR
     Main --> Domain["Domain Policies"]
     Main --> Provider["Provider Registry"]
     Main --> Tools["Tool Dispatcher"]
+    Main --> Debug["Debug Session Service"]
     Main --> Repos["Drizzle Repositories"]
     Provider --> Network["Configured Model Endpoint"]
     Tools --> FS["Guarded File System"]
     Tools --> Git["simple-git"]
     Tools --> Proc["Command Runner / PTY"]
+    Debug --> Adapter["Debug Adapter Registry"]
+    Adapter --> DAP["Node.js js-debug / DAP"]
     Repos --> SQLite["SQLite"]
     Main --> Secrets["OS Credential Store"]
 ```
@@ -189,6 +196,43 @@ Renderer 订阅基于 `subscriptionId` 的事件流。窗口刷新或重启后�
 7. 对大文件按语义边界截断并明确标注，永不静默截断。
 8. 超过预算时先移除低优先级内容，再摘要历史；仍超限则返回 `CONTEXT_TOO_LARGE`。
 
+### 5.4 Node.js/TypeScript DAP 调试
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant R as Renderer
+    participant S as DebugSessionService
+    participant G as DebugAdapterRegistry
+    participant D as Node Debug Adapter
+    participant P as Debuggee Process
+
+    U->>R: 选择配置并点击调试
+    R->>S: proposeStart(validated request)
+    S-->>R: 命令快照、风险与 approvalDigest
+    U->>R: 明确批准
+    R->>S: decideStart(digest)
+    S->>G: resolve(adapterType)
+    G->>D: createSession(structured launch)
+    D->>P: DAP initialize/launch/configurationDone
+    P-->>D: stopped/output/breakpoint events
+    D-->>S: normalized DebugAdapterEvent
+    S-->>R: validated debug event
+    R->>S: threads/stack/scopes/variables/evaluate
+    U->>R: continue/step/stop
+    R->>S: typed control request
+    S->>D: DAP request
+```
+
+`DebugAdapterRegistry` 将语言适配与会话编排隔离。阶段 C 注册 `node` Provider，并使用固定版本、
+带来源和 SHA-256 记录的官方 `vscode-js-debug` 构建产物。DAP framing/client、反向
+`startDebugging` 请求、协议事件归一化和适配器进程管理位于主进程；Renderer 只接收经 Zod 校验的
+DTO。断点、监视和会话快照持久化，活动调试器与被调试进程由应用拥有并在停止或退出时清理。
+
+当前暂停位置会驱动 Monaco 打开对应工作区文件、居中并高亮执行行。线程、调用栈、作用域、嵌套
+变量、监视表达式和调试控制台均从真实 DAP 请求取得，不从普通运行日志推断。将这些调试上下文
+脱敏后交给 AI、生成修复 Diff 并重新验证，属于阶段 D，阶段 C 不声明已完成该闭环。
+
 ## 6. 推荐项目目录
 
 ```text
@@ -199,6 +243,7 @@ open-code-desk/
 │     │  ├─ main/
 │     │  │  ├─ agent/              # Application 组合与 Agent 生命周期
 │     │  │  ├─ database/           # SQLite、Drizzle、迁移、Repository
+│     │  │  ├─ debug/              # DAP client、会话、注册表与语言 Adapter
 │     │  │  ├─ filesystem/         # 路径策略、安全文件系统、原子写入
 │     │  │  ├─ git/                # simple-git Adapter
 │     │  │  ├─ ipc/                # 按领域拆分的 IPC handler
@@ -216,6 +261,7 @@ open-code-desk/
 │     │  │  │  ├─ moonshot/
 │     │  │  │  └─ ollama/
 │     │  │  ├─ security/           # SecretStore、脱敏、权限和网络策略
+│     │  │  ├─ run/                # 项目识别、运行配置与受管执行
 │     │  │  ├─ terminal/           # 命令 Runner 与 PTY
 │     │  │  ├─ tools/              # 内置工具实现与注册
 │     │  │  ├─ workspace/          # 工作区服务
@@ -230,8 +276,10 @@ open-code-desk/
 │     │     │  ├─ agent/
 │     │     │  ├─ chat/
 │     │     │  ├─ editor/
+│     │     │  ├─ debug/
 │     │     │  ├─ git/
 │     │     │  ├─ providers/
+│     │     │  ├─ run/
 │     │     │  ├─ settings/
 │     │     │  ├─ terminal/
 │     │     │  └─ workspace/
@@ -241,6 +289,7 @@ open-code-desk/
 │     │     ├─ styles/
 │     │     └─ types/
 │     ├─ electron.vite.config.ts
+│     ├─ vendor/js-debug-1.117.0/    # 固定版本官方 Node Debug Adapter 产物
 │     └─ package.json
 ├─ packages/
 │  ├─ domain/                       # 纯实体、值对象、状态机、错误
@@ -472,7 +521,46 @@ export interface FileChangeService {
 状态流转由 Domain 函数控制。`applied` 只能来自 `approved`，`rejected` 不可应用；内容被用户编辑后
 必须重新生成 diff、hash 和审批摘要。
 
-### 7.4 统一错误与 IPC 契约
+### 7.4 运行与调试契约
+
+```ts
+export interface RuntimeDebugAdapterProvider {
+  readonly type: string;
+  readonly displayName: string;
+  isAvailable(): Promise<boolean>;
+  validateConfiguration(configuration: RunCommandSnapshot): Promise<DebugValidationResult>;
+  createSession(input: DebugAdapterLaunchInput): Promise<DebugAdapterSession>;
+}
+
+export interface DebugAdapterSession {
+  readonly processId: number;
+  readonly capabilities: DebugAdapterCapabilities;
+  subscribe(listener: (event: DebugAdapterEvent) => void): () => void;
+  continue(threadId: number): Promise<void>;
+  pause(threadId: number): Promise<void>;
+  next(threadId: number): Promise<void>;
+  stepIn(threadId: number): Promise<void>;
+  stepOut(threadId: number): Promise<void>;
+  threads(): Promise<ReadonlyArray<DebugThread>>;
+  stackTrace(threadId: number): Promise<ReadonlyArray<DebugStackFrame>>;
+  scopes(frameId: number): Promise<ReadonlyArray<DebugScope>>;
+  variables(reference: number): Promise<ReadonlyArray<DebugVariable>>;
+  evaluate(expression: string, frameId?: number): Promise<DebugEvaluationResult>;
+  setBreakpoints(
+    path: string,
+    points: ReadonlyArray<DebugBreakpoint>,
+  ): Promise<ReadonlyArray<DebugBreakpoint>>;
+  restart(): Promise<void>;
+  disconnect(): Promise<void>;
+}
+```
+
+`RuntimeDebugAdapterProvider` 是 Infrastructure 端口；Application 只依赖注册表与统一会话接口。
+不同语言适配器可拥有独立进程、启动参数和能力映射，但不得修改 `DebugSessionService` 的审批、
+持久化、事件投递和生命周期主流程。调试 IPC 对 DAP reference 使用非负整数，因为协议实现可能
+合法返回 `threadId = 0` 或 `frameId = 0`；行号和列号仍必须为正数。
+
+### 7.5 统一错误与 IPC 契约
 
 ```ts
 export type AppErrorCode =
@@ -511,6 +599,8 @@ export interface DesktopApi {
   readonly permissions: PermissionsApi;
   readonly terminal: TerminalApi;
   readonly git: GitApi;
+  readonly run: RunApi;
+  readonly debug: DebugApi;
 }
 ```
 
@@ -538,24 +628,30 @@ SQLite 文件位于 Electron `userData` 目录，启用外键和 WAL。时间统
 主键使用 UUID/ULID 文本。JSON 字段在 Repository 边界通过 Zod 校验。API Key 和敏感 Header
 明文不进入数据库；`secure_secrets` 只保存 Electron `safeStorage` 使用系统凭据能力生成的密文。
 
-| 表                    | 关键字段                                                                                                                                                                   | 约束与索引                                         |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `workspaces`          | `id`, `canonical_path`, `display_name`, `last_opened_at`, `created_at`, `updated_at`                                                                                       | `canonical_path` 唯一；索引 `last_opened_at`       |
-| `conversations`       | `id`, `workspace_id`, `title`, `summary`, `provider_config_id`, `model_id`, `status`, `deleted_at`, timestamps                                                             | FK workspace；索引 workspace+updated；软删除       |
-| `messages`            | `id`, `conversation_id`, `role`, `content_json`, `sequence`, `token_estimate`, `created_at`                                                                                | conversation+sequence 唯一；级联删除策略由服务控制 |
-| `provider_configs`    | `id`, `kind`, `display_name`, `base_url`, `default_model`, fast/reasoning model, capability flags, Header metadata, `secret_ref`, timestamps                               | 不含明文密钥；`secret_ref` 是不透明引用            |
-| `secure_secrets`      | `ref`, `encrypted_value`, timestamps                                                                                                                                       | 仅系统保护密文；主进程可解密                       |
-| `model_configs`       | `id`, `provider_config_id`, `model_id`, `display_name`, `capabilities_json`, `context_window`, `is_default`, timestamps                                                    | provider+model 唯一；每类默认模型由事务保证        |
-| `agent_tasks`         | `id`, `conversation_id`, `status`, `attempt`, `checkpoint_json`, `error_json`, timestamps, `completed_at`                                                                  | 索引 conversation+created、status                  |
-| `tool_calls`          | `id`, `task_id`, `tool_name`, `permission_level`, `input_json`, `input_digest`, `status`, `output_summary_json`, timestamps                                                | 不默认存完整文件内容；索引 task+created            |
-| `file_change_sets`    | `id`, `task_id`, `status`, `transaction_id`, `snapshot_path_ref`, timestamps, `applied_at`                                                                                 | 为多文件事务提供聚合根                             |
-| `file_changes`        | `id`, `change_set_id`, `file_path`, `previous_path`, `operation`, `base_content_hash`, `original_snapshot_ref`, `proposed_snapshot_ref`, `diff_text`, `status`, timestamps | FK change set；不把大文件正文常驻行内              |
-| `command_executions`  | `id`, `task_id`, `tool_call_id`, `executable`, `args_json`, `cwd`, `status`, `exit_code`, `signal`, `started_at`, `ended_at`, `output_ref`                                 | 索引 task+started；敏感 env 不落库                 |
-| `permission_requests` | `id`, `task_id`, `tool_call_id`, `level`, `summary`, `target`, `input_digest`, `risk_reasons_json`, `status`, `expires_at`, timestamps                                     | 审批与准确输入绑定                                 |
-| `permission_rules`    | `id`, `workspace_id`, `scope`, `action`, `matcher_json`, `enabled`, timestamps                                                                                             | workspace 可空表示全局；危险规则禁止静默持久化     |
-| `app_settings`        | `key`, `value_json`, `updated_at`                                                                                                                                          | 只存非敏感设置                                     |
-| `audit_events`        | `id`, `workspace_id`, `task_id`, `actor`, `action`, `target`, `result`, `metadata_json`, `created_at`                                                                      | 追加写；索引 created、workspace                    |
-| `schema_migrations`   | `id`, `checksum`, `applied_at`                                                                                                                                             | 防止迁移漂移                                       |
+| 表                       | 关键字段                                                                                                                                                                   | 约束与索引                                         |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `workspaces`             | `id`, `canonical_path`, `display_name`, `last_opened_at`, `created_at`, `updated_at`                                                                                       | `canonical_path` 唯一；索引 `last_opened_at`       |
+| `conversations`          | `id`, `workspace_id`, `title`, `summary`, `provider_config_id`, `model_id`, `status`, `deleted_at`, timestamps                                                             | FK workspace；索引 workspace+updated；软删除       |
+| `messages`               | `id`, `conversation_id`, `role`, `content_json`, `sequence`, `token_estimate`, `created_at`                                                                                | conversation+sequence 唯一；级联删除策略由服务控制 |
+| `provider_configs`       | `id`, `kind`, `display_name`, `base_url`, `default_model`, fast/reasoning model, capability flags, Header metadata, `secret_ref`, timestamps                               | 不含明文密钥；`secret_ref` 是不透明引用            |
+| `secure_secrets`         | `ref`, `encrypted_value`, timestamps                                                                                                                                       | 仅系统保护密文；主进程可解密                       |
+| `model_configs`          | `id`, `provider_config_id`, `model_id`, `display_name`, `capabilities_json`, `context_window`, `is_default`, timestamps                                                    | provider+model 唯一；每类默认模型由事务保证        |
+| `agent_tasks`            | `id`, `conversation_id`, `status`, `attempt`, `checkpoint_json`, `error_json`, timestamps, `completed_at`                                                                  | 索引 conversation+created、status                  |
+| `tool_calls`             | `id`, `task_id`, `tool_name`, `permission_level`, `input_json`, `input_digest`, `status`, `output_summary_json`, timestamps                                                | 不默认存完整文件内容；索引 task+created            |
+| `file_change_sets`       | `id`, `task_id`, `status`, `transaction_id`, `snapshot_path_ref`, timestamps, `applied_at`                                                                                 | 为多文件事务提供聚合根                             |
+| `file_changes`           | `id`, `change_set_id`, `file_path`, `previous_path`, `operation`, `base_content_hash`, `original_snapshot_ref`, `proposed_snapshot_ref`, `diff_text`, `status`, timestamps | FK change set；不把大文件正文常驻行内              |
+| `command_executions`     | `id`, `task_id`, `tool_call_id`, `executable`, `args_json`, `cwd`, `status`, `exit_code`, `signal`, `started_at`, `ended_at`, `output_ref`                                 | 索引 task+started；敏感 env 不落库                 |
+| `run_configurations`     | `id`, `workspace_id`, `name`, `type`, `executable`, `args`, `runtime_args`, `working_directory`, environment metadata, console, timestamps                                 | workspace+name 唯一；敏感值只保存 Secret 引用      |
+| `workspace_run_settings` | `workspace_id`, `default_configuration_id`, `updated_at`                                                                                                                   | 每个工作区一个默认运行配置                         |
+| `run_executions`         | `id`, `workspace_id`, `configuration_id`, command snapshot, status, risk, approval digest, PID, output tail, exit/error, timestamps                                        | 保留不可变审批快照；索引 workspace/config+created  |
+| `debug_sessions`         | `id`, workspace/config/adapter, command snapshot, status, risk, approval digest, adapter PID, capabilities, pause, output tail, error, timestamps                          | migration 10；索引 workspace/config+created        |
+| `debug_breakpoints`      | `id`, `workspace_id`, relative path, line/column, enabled, status, adapter breakpoint ID, message, timestamps                                                              | workspace+path+line+column 唯一                    |
+| `debug_watches`          | `id`, `workspace_id`, expression, timestamps                                                                                                                               | workspace+expression 唯一                          |
+| `permission_requests`    | `id`, `task_id`, `tool_call_id`, `level`, `summary`, `target`, `input_digest`, `risk_reasons_json`, `status`, `expires_at`, timestamps                                     | 审批与准确输入绑定                                 |
+| `permission_rules`       | `id`, `workspace_id`, `scope`, `action`, `matcher_json`, `enabled`, timestamps                                                                                             | workspace 可空表示全局；危险规则禁止静默持久化     |
+| `app_settings`           | `key`, `value_json`, `updated_at`                                                                                                                                          | 只存非敏感设置                                     |
+| `audit_events`           | `id`, `workspace_id`, `task_id`, `actor`, `action`, `target`, `result`, `metadata_json`, `created_at`                                                                      | 追加写；索引 created、workspace                    |
+| `schema_migrations`      | `id`, `checksum`, `applied_at`                                                                                                                                             | 防止迁移漂移                                       |
 
 ### 9.1 消息和大对象存储
 
@@ -582,6 +678,27 @@ MVP 必须真实实现：`list_directory`、`read_file`、`read_files`、`search
 使用 Node 实现；工具不能通过软链接、junction、绝对路径、`..`、大小写差异或 UNC 路径绕过
 工作区边界。
 
+### 10.1 IDE 项目运行子系统
+
+项目运行不复用 Agent `run_command` 或用户交互 PTY。`RunConfigurationService` 负责识别与配置，
+`RunExecutionService` 创建不可变命令快照并绑定审批摘要，`RunProcessSupervisor` 只接收已经批准的
+结构化 executable/args/cwd/env。运行时使用 `shell: false`，输出按流分片、脱敏、限长后推送到
+Renderer，并将尾部、退出码、风险和状态写入 `run_executions`。
+
+停止、重新运行和应用退出都通过 Supervisor 清理其拥有的进程树。重启只从既有配置创建新的审批
+与执行记录，不复用旧批准；配置、环境文件摘要或审批快照变化都会要求用户重新确认。
+
+### 10.2 IDE 调试子系统
+
+调试不复用普通运行输出模拟状态。`DebugSessionService` 在开始前创建审批提案并验证摘要，随后通过
+`DebugAdapterRegistry` 选择语言适配器。Node Adapter 启动独立 js-debug 进程，通过 DAP 完成
+initialize、launch、断点同步和 configurationDone，并把协议事件归一化为领域事件。所有查询与控制
+均由模块化 `debug.ipc.ts` 转发，输入输出经 Zod 校验；断点、监视和会话历史由 migration 10 持久化。
+
+阶段 C 支持普通行断点、启用/禁用/删除、线程、调用栈、局部与嵌套变量、监视、REPL 求值、继续、
+暂停、Step Over/Into/Out、运行到光标、重启、停止、异常信息和当前行高亮。条件/日志/函数断点、
+其他语言 Adapter 与 AI 调试上下文闭环仍在后续阶段，不以能力标记或静态 UI 冒充完成。
+
 ## 11. 关键非功能需求
 
 - **可取消**：Provider、搜索、Git、命令和 Agent 循环传播同一个 `AbortSignal`。
@@ -598,15 +715,15 @@ MVP 必须真实实现：`list_directory`、`read_file`、`read_files`、`search
 以下项目必须基于真实实现和自动/人工验证打勾：
 
 - [ ] Windows 与 macOS 应用可安装、启动、退出和重新打开。
-- [ ] `contextIsolation=true`、`nodeIntegration=false`，Renderer 无 Node 能力。
-- [ ] 用户可打开本地目录、查看最近项目和文件树。
-- [ ] 用户可在 Monaco 查看、编辑并手动保存工作区文件。
-- [ ] 路径边界、敏感路径和软链接绕过测试通过。
-- [ ] 用户可创建 OpenAI Compatible 配置。
-- [ ] API Key 与敏感 Header 只保存在系统凭据库。
-- [ ] UI 只能看到密钥是否存在，不回显完整密钥。
-- [ ] 可测试连接、拉取模型列表或清楚说明端点不支持。
-- [ ] 可选择模型并看到可取消的流式响应。
+- [x] `contextIsolation=true`、`nodeIntegration=false`，Renderer 无 Node 能力。
+- [x] 用户可打开本地目录、查看最近项目和文件树。
+- [x] 用户可在 Monaco 查看、编辑并手动保存工作区文件。
+- [x] 路径边界、敏感路径和软链接绕过测试通过。
+- [x] 用户可创建 OpenAI Compatible 配置。
+- [x] API Key 与敏感 Header 只保存在系统凭据库。
+- [x] UI 只能看到密钥是否存在，不回显完整密钥。
+- [x] 可测试连接、拉取模型列表或清楚说明端点不支持。
+- [x] 可选择模型并看到可取消的流式响应。
 - [x] 会话、消息、Agent 状态和工具记录可在重启后恢复。
 - [x] Agent 可调用经过 Schema 校验的只读文件/搜索工具。
 - [x] Agent 不能把普通文本直接当作命令或文件修改执行。
@@ -614,13 +731,25 @@ MVP 必须真实实现：`list_directory`、`read_file`、`read_files`、`search
 - [x] 用户可逐文件/整体批准、拒绝或编辑拟议内容。
 - [x] 仅已批准且基线未冲突的修改可原子应用。
 - [x] 应用失败可补偿回滚，最近一次成功变更可回滚。
-- [ ] 命令显示 executable、args、cwd 和风险后再审批。
-- [ ] 批准后的命令可取消、超时并实时显示有界输出。
-- [ ] Git Status、Git Diff 和测试结果能进入上下文或会话。
-- [ ] Provider、工具、数据库和 IPC 错误映射为可读的 `AppError`。
-- [ ] 日志脱敏测试证明 API Key、Authorization 和敏感 Header 不泄漏。
+- [x] 命令显示 executable、args、cwd 和风险后再审批。
+- [x] 批准后的命令可取消、超时并实时显示有界输出。
+- [x] Git Status、Git Diff 和测试结果能进入上下文或会话。
+- [x] Provider、工具、数据库和 IPC 错误映射为可读的 `AppError`。
+- [x] 日志脱敏测试证明 API Key、Authorization 和敏感 Header 不泄漏。
 - [ ] `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 全部通过。
-- [ ] 关键 E2E 覆盖“配置模型 → 对话 → Diff 审批 → 应用 → 批准测试 → 恢复会话”。
+- [x] 关键 E2E 覆盖“配置模型 → 对话 → Diff 审批 → 应用 → 批准测试 → 恢复会话”。
+
+阶段 C 的 IDE 调试验收状态：
+
+- [x] Node.js/TypeScript 使用真实 DAP Adapter 启动，开始前必须审核准确命令快照。
+- [x] Monaco 行号区可设置持久化断点，并显示 pending/verified/unverified/disabled/error 状态。
+- [x] 真实程序命中断点后自动打开源码、居中并高亮当前执行行。
+- [x] 可查看线程、调用栈、作用域、嵌套变量和监视表达式，并在调试控制台求值。
+- [x] 可继续、暂停、Step Over、Step Into、Step Out、运行到光标、重启和停止。
+- [x] 会话、断点、监视、暂停位置、受限输出和错误可持久化恢复。
+- [x] 停止、终止与应用退出会清理本应用拥有的调试器和被调试进程。
+- [ ] 调试上下文脱敏后交给 AI，并走“分析 → 修复 Diff → 审批 → 重新验证”闭环。
+- [ ] Java、Python、C/C++、.NET、Go、Rust 与浏览器调试 Adapter。
 
 ## 13. 主要架构风险
 
@@ -632,6 +761,8 @@ MVP 必须真实实现：`list_directory`、`read_file`、`read_files`、`search
 6. **上下文成本风险**：Token 估算、相关性选择和工具结果膨胀会影响质量与费用。
 7. **数据隐私风险**：会话、Diff、终端输出和 Artifact 可能包含源码或秘密，即使 API Key 已安全保存。
 8. **Renderer 性能风险**：Monaco、xterm、文件树和高频流并存，需要懒加载和背压。
+9. **调试协议风险**：DAP reference、反向请求、路径映射和适配器生命周期在不同实现间存在差异。
+10. **调试器供应链风险**：官方 js-debug 构建产物体积较大，必须固定版本、来源、许可证与校验和。
 
 风险缓解和不可妥协控制见 [security.md](./security.md)，交付顺序与退出条件见
 [roadmap.md](./roadmap.md)。

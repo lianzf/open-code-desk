@@ -195,7 +195,7 @@ describe('run execution persistence', () => {
     database.close();
   });
 
-  it('upgrades a version 8 database by appending the run execution migration', async () => {
+  it('upgrades a version 8 database through the current migrations', async () => {
     const temporaryDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-run-migration-'));
     temporaryPaths.push(temporaryDirectory);
     const databasePath = join(temporaryDirectory, 'application.sqlite');
@@ -228,7 +228,7 @@ describe('run execution persistence', () => {
       .all() as unknown as ReadonlyArray<{ readonly name: string }>;
     migrated.close();
 
-    expect(version.user_version).toBe(9);
+    expect(version.user_version).toBe(10);
     expect(indexes.map((index) => index.name)).toEqual([
       'run_executions_configuration_created_idx',
       'run_executions_workspace_created_idx',

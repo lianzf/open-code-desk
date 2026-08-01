@@ -5,6 +5,7 @@ export * from './commands';
 export * from './context';
 export * from './conversations';
 export * from './crash-reports';
+export * from './debug';
 export * from './desktop-api';
 export * from './git';
 export * from './health';
