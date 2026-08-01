@@ -23,6 +23,7 @@ interface ProviderState {
   initialize(): Promise<void>;
   listModels(providerId: string): Promise<ReadonlyArray<ModelInfo>>;
   openSettings(): void;
+  persistSelection(): Promise<void>;
   save(input: SaveProviderRequest): Promise<ProviderConfig>;
   selectModel(providerId: string, model: string): void;
   selectProvider(providerId: string): void;
@@ -62,21 +63,31 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
     }
     set({ loading: true, errorMessage: undefined });
     try {
-      const [configurations, descriptors] = await Promise.all([
+      const [configurations, descriptors, settings] = await Promise.all([
         window.openCodeDesk.providers.list(),
         window.openCodeDesk.providers.listKinds(),
+        window.openCodeDesk.settings.get(),
       ]);
-      const selectedProviderId = configurations[0]?.id;
+      const providerIds = new Set(configurations.map((configuration) => configuration.id));
+      const selectedProviderId =
+        settings.selectedProviderId !== undefined && providerIds.has(settings.selectedProviderId)
+          ? settings.selectedProviderId
+          : configurations[0]?.id;
+      const selectedModels = Object.fromEntries(
+        configurations.map((configuration) => [
+          configuration.id,
+          settings.selectedModels[configuration.id] ?? configuration.defaultModel,
+        ]),
+      );
       set({
         configurations,
         descriptors,
         initialized: true,
         loading: false,
         ...(selectedProviderId === undefined ? {} : { selectedProviderId }),
-        selectedModels: Object.fromEntries(
-          configurations.map((configuration) => [configuration.id, configuration.defaultModel]),
-        ),
+        selectedModels,
       });
+      await get().persistSelection();
     } catch (error) {
       set({
         initialized: true,
@@ -103,6 +114,7 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
           [saved.id]: saved.defaultModel,
         },
       }));
+      await get().persistSelection();
       return saved;
     } catch (error) {
       const message = errorMessage(error);
@@ -131,6 +143,7 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
               : state.selectedProviderId,
         };
       });
+      await get().persistSelection();
     } catch (error) {
       const message = errorMessage(error);
       set({ loading: false, errorMessage: message });
@@ -167,6 +180,18 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
     }
   },
 
+  async persistSelection() {
+    const { selectedModels, selectedProviderId } = get();
+    try {
+      await window.openCodeDesk.settings.update({
+        ...(selectedProviderId === undefined ? {} : { selectedProviderId }),
+        selectedModels,
+      });
+    } catch (error) {
+      set({ errorMessage: errorMessage(error) });
+    }
+  },
+
   selectProvider(providerId) {
     const configuration = get().configurations.find((item) => item.id === providerId);
     if (configuration === undefined) {
@@ -179,11 +204,13 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
         [providerId]: state.selectedModels[providerId] ?? configuration.defaultModel,
       },
     }));
+    void get().persistSelection();
   },
 
   selectModel(providerId, model) {
     set((state) => ({
       selectedModels: { ...state.selectedModels, [providerId]: model },
     }));
+    void get().persistSelection();
   },
 }));

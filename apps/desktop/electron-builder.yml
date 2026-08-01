@@ -13,6 +13,18 @@ files:
   - out/**/*
   - package.json
 
+extraResources:
+  - from: vendor/js-debug-1.117.0
+    to: js-debug
+    filter:
+      - '**/*'
+
+publish:
+  provider: github
+  owner: lianzf
+  repo: open-code-desk
+  releaseType: release
+
 win:
   target:
     - target: nsis
@@ -34,6 +46,7 @@ mac:
     - zip
 
 linux:
+  executableName: open-code-desk
   category: Development
   target:
     - AppImage

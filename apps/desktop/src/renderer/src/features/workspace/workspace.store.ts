@@ -1,5 +1,7 @@
-import type { FileEntry, WorkspaceInfo } from '@open-code-desk/ipc-contracts';
+import type { FileEntry, TextSearchMatch, WorkspaceInfo } from '@open-code-desk/ipc-contracts';
 import { create } from 'zustand';
+
+type SearchMode = 'files' | 'content';
 
 interface WorkspaceState {
   readonly initialized: boolean;
@@ -9,6 +11,8 @@ interface WorkspaceState {
   readonly directories: Readonly<Record<string, ReadonlyArray<FileEntry>>>;
   readonly expandedDirectories: ReadonlySet<string>;
   readonly searchResults: ReadonlyArray<FileEntry>;
+  readonly textSearchResults: ReadonlyArray<TextSearchMatch>;
+  readonly searchMode: SearchMode;
   readonly searchQuery: string;
   readonly errorMessage: string | undefined;
   initialize(): Promise<void>;
@@ -18,9 +22,17 @@ interface WorkspaceState {
   toggleDirectory(relativePath: string): Promise<void>;
   refreshTree(): Promise<void>;
   search(query: string): Promise<void>;
+  cancelSearch(): Promise<void>;
+  setSearchMode(mode: SearchMode): void;
+  createFile(relativePath: string): Promise<boolean>;
+  createDirectory(relativePath: string): Promise<boolean>;
+  movePath(sourcePath: string, destinationPath: string): Promise<boolean>;
+  deletePath(relativePath: string): Promise<boolean>;
   handleFileChange(workspaceId: string, relativePath: string): Promise<void>;
   clearError(): void;
 }
+
+let activeSearchRequestId: string | undefined;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '工作区操作失败，请重试。';
@@ -34,6 +46,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   directories: {},
   expandedDirectories: new Set<string>(),
   searchResults: [],
+  textSearchResults: [],
+  searchMode: 'files',
   searchQuery: '',
   errorMessage: undefined,
 
@@ -74,6 +88,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         directories: {},
         expandedDirectories: new Set<string>(),
         searchResults: [],
+        textSearchResults: [],
         searchQuery: '',
       });
       await get().loadDirectory('');
@@ -94,6 +109,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         directories: {},
         expandedDirectories: new Set<string>(),
         searchResults: [],
+        textSearchResults: [],
         searchQuery: '',
       });
       await get().loadDirectory('');
@@ -147,22 +163,148 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const workspace = get().current;
     const trimmedQuery = query.trim();
     set({ searchQuery: query });
+    await get().cancelSearch();
 
     if (workspace === null || trimmedQuery === '') {
-      set({ searchResults: [] });
+      set({ searchResults: [], textSearchResults: [] });
       return;
     }
 
     set({ loading: true, errorMessage: undefined });
+    const searchMode = get().searchMode;
     try {
-      const searchResults = await window.openCodeDesk.files.searchFiles({
-        workspaceId: workspace.id,
-        query: trimmedQuery,
-        limit: 100,
-      });
-      set({ searchResults, loading: false });
+      if (searchMode === 'content') {
+        const requestId = crypto.randomUUID();
+        activeSearchRequestId = requestId;
+        const result = await window.openCodeDesk.files.searchText({
+          requestId,
+          workspaceId: workspace.id,
+          query: trimmedQuery,
+          path: '',
+          caseSensitive: false,
+          limit: 100,
+        });
+        if (activeSearchRequestId === requestId) {
+          activeSearchRequestId = undefined;
+          set({ textSearchResults: result.matches, searchResults: [], loading: false });
+        }
+      } else {
+        const searchResults = await window.openCodeDesk.files.searchFiles({
+          workspaceId: workspace.id,
+          query: trimmedQuery,
+          limit: 100,
+        });
+        set({ searchResults, textSearchResults: [], loading: false });
+      }
     } catch (error) {
+      if (searchMode === 'content' && activeSearchRequestId === undefined) {
+        return;
+      }
+      activeSearchRequestId = undefined;
       set({ loading: false, errorMessage: errorMessage(error) });
+    }
+  },
+
+  async cancelSearch() {
+    const requestId = activeSearchRequestId;
+    activeSearchRequestId = undefined;
+    if (requestId !== undefined) {
+      await window.openCodeDesk.files.cancelSearch({ requestId }).catch(() => undefined);
+    }
+    set({ loading: false });
+  },
+
+  setSearchMode(mode) {
+    void get().cancelSearch();
+    set({ searchMode: mode, searchResults: [], textSearchResults: [] });
+  },
+
+  async createFile(relativePath) {
+    const workspace = get().current;
+    if (workspace === null) {
+      return false;
+    }
+    try {
+      await window.openCodeDesk.files.createFile({
+        workspaceId: workspace.id,
+        relativePath,
+        content: '',
+      });
+      await get().refreshTree();
+      return true;
+    } catch (error) {
+      set({ errorMessage: errorMessage(error) });
+      return false;
+    }
+  },
+
+  async createDirectory(relativePath) {
+    const workspace = get().current;
+    if (workspace === null) {
+      return false;
+    }
+    try {
+      await window.openCodeDesk.files.createDirectory({
+        workspaceId: workspace.id,
+        relativePath,
+      });
+      await get().refreshTree();
+      return true;
+    } catch (error) {
+      set({ errorMessage: errorMessage(error) });
+      return false;
+    }
+  },
+
+  async movePath(sourcePath, destinationPath) {
+    const workspace = get().current;
+    if (workspace === null) {
+      return false;
+    }
+    try {
+      await window.openCodeDesk.files.movePath({
+        workspaceId: workspace.id,
+        sourcePath,
+        destinationPath,
+      });
+      const expandedDirectories = new Set(
+        [...get().expandedDirectories].map((path) =>
+          path === sourcePath || path.startsWith(`${sourcePath}/`)
+            ? `${destinationPath}${path.slice(sourcePath.length)}`
+            : path,
+        ),
+      );
+      set({ expandedDirectories });
+      await get().refreshTree();
+      return true;
+    } catch (error) {
+      set({ errorMessage: errorMessage(error) });
+      return false;
+    }
+  },
+
+  async deletePath(relativePath) {
+    const workspace = get().current;
+    if (workspace === null) {
+      return false;
+    }
+    try {
+      await window.openCodeDesk.files.deletePath({
+        workspaceId: workspace.id,
+        relativePath,
+        confirmed: true,
+      });
+      const expandedDirectories = new Set(
+        [...get().expandedDirectories].filter(
+          (path) => path !== relativePath && !path.startsWith(`${relativePath}/`),
+        ),
+      );
+      set({ expandedDirectories });
+      await get().refreshTree();
+      return true;
+    } catch (error) {
+      set({ errorMessage: errorMessage(error) });
+      return false;
     }
   },
 

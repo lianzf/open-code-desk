@@ -7,6 +7,7 @@ export const commandChannels = {
   listForConversation: 'commands:list-for-conversation',
   listRules: 'commands:list-rules',
   setNetworkAccess: 'commands:set-network-access',
+  upsertExecutableRule: 'commands:upsert-executable-rule',
 } as const;
 
 export const commandExecutionStatusSchema = z.enum([
@@ -79,7 +80,14 @@ export const permissionRuleSchema = z
   .object({
     id: z.string().uuid(),
     workspaceId: z.string().uuid(),
-    kind: z.enum(['allow_executable', 'deny_executable', 'allow_network_commands']),
+    kind: z.enum([
+      'allow_executable',
+      'deny_executable',
+      'allow_network_commands',
+      'require_read_approval',
+      'blocked_path',
+      'external_directory',
+    ]),
     value: z.string().max(8_000),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
@@ -95,6 +103,14 @@ export const deletePermissionRuleResponseSchema = z.object({ deleted: z.boolean(
 export const setNetworkAccessRequestSchema = z
   .object({ workspaceId: z.string().uuid(), allowed: z.boolean() })
   .strict();
+export const upsertExecutableRuleRequestSchema = z
+  .object({
+    workspaceId: z.string().uuid(),
+    kind: z.enum(['allow_executable', 'deny_executable']),
+    executable: z.string().trim().min(1).max(1_000),
+    cwd: z.string().trim().max(2_000).default(''),
+  })
+  .strict();
 
 export type CommandExecution = z.infer<typeof commandExecutionSchema>;
 export type ListCommandsRequest = z.infer<typeof listCommandsRequestSchema>;
@@ -104,3 +120,4 @@ export type PermissionRule = z.infer<typeof permissionRuleSchema>;
 export type WorkspaceRulesRequest = z.infer<typeof workspaceRulesRequestSchema>;
 export type DeletePermissionRuleRequest = z.infer<typeof deletePermissionRuleRequestSchema>;
 export type SetNetworkAccessRequest = z.infer<typeof setNetworkAccessRequestSchema>;
+export type UpsertExecutableRuleRequest = z.infer<typeof upsertExecutableRuleRequestSchema>;

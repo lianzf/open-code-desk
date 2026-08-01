@@ -93,4 +93,66 @@ describe('WorkspaceFileService', () => {
     const matches = await service.searchFiles(workspaceId, 'index', 20);
     expect(matches.map((entry) => entry.relativePath)).toEqual(['src/index.ts']);
   });
+
+  it('creates, moves, and deletes files plus empty directories inside the workspace', async () => {
+    await expect(service.createDirectory(workspaceId, 'docs')).resolves.toEqual({
+      relativePath: 'docs',
+    });
+    await expect(
+      service.createFile(workspaceId, 'docs/notes.md', '# Notes\nsearchable phrase\n'),
+    ).resolves.toEqual({ relativePath: 'docs/notes.md' });
+    await expect(service.movePath(workspaceId, 'docs/notes.md', 'src/notes.md')).resolves.toEqual({
+      relativePath: 'src/notes.md',
+    });
+    await expect(readFile(join(temporaryDirectory, 'src', 'notes.md'), 'utf8')).resolves.toContain(
+      'searchable phrase',
+    );
+
+    await expect(service.deletePath(workspaceId, 'src/notes.md')).resolves.toEqual({
+      relativePath: 'src/notes.md',
+    });
+    await expect(service.deletePath(workspaceId, 'docs')).resolves.toEqual({
+      relativePath: 'docs',
+    });
+    await expect(service.readFile(workspaceId, 'src/notes.md')).rejects.toThrow();
+  });
+
+  it('rejects path traversal, sensitive mutations, collisions, and non-empty directory deletion', async () => {
+    await expect(service.createFile(workspaceId, '../outside.txt', '')).rejects.toThrow();
+    await expect(service.createFile(workspaceId, '.env', 'replacement')).rejects.toThrow(
+      '敏感路径',
+    );
+    await expect(service.movePath(workspaceId, 'src/index.ts', '.env')).rejects.toThrow('敏感路径');
+    await expect(service.movePath(workspaceId, 'src/index.ts', 'src/index.ts')).rejects.toThrow(
+      '不能相同',
+    );
+    await expect(service.deletePath(workspaceId, 'src')).rejects.toThrow();
+  });
+
+  it('searches source text with bounded line metadata and supports cancellation', async () => {
+    await writeFile(
+      join(temporaryDirectory, 'src', 'other.ts'),
+      'const first = true;\nconst searchableValue = 42;\n',
+    );
+
+    await expect(
+      service.searchText(workspaceId, 'searchableValue', '', false, 20),
+    ).resolves.toMatchObject({
+      matches: [
+        {
+          path: 'src/other.ts',
+          line: 2,
+          column: 7,
+          preview: 'const searchableValue = 42;',
+        },
+      ],
+      truncated: false,
+    });
+
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      service.searchText(workspaceId, 'value', '', false, 20, controller.signal),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+  });
 });

@@ -4,18 +4,20 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
+import { expect, test, type ElectronApplication } from '@playwright/test';
+
+import { launchDesktop } from './desktop-fixture';
 
 const apiKey = 'sk-e2e-change-review';
 const proposedContent = '# AI reviewed update\n';
 
-function launchDesktop(userDataDirectory: string): Promise<ElectronApplication> {
-  return electron.launch({
-    args: [
-      join(process.cwd(), 'apps/desktop/out/main/main.js'),
-      `--user-data-dir=${userDataDirectory}`,
-    ],
-  });
+async function readDuringAtomicReplacement(filePath: string): Promise<string | undefined> {
+  try {
+    return await readFile(filePath, 'utf8');
+  } catch (error: unknown) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined;
+    throw error;
+  }
 }
 
 async function startProviderFixture(): Promise<{ baseUrl: string; server: Server }> {
@@ -105,12 +107,12 @@ test('reviews, applies, persists, and rolls back an Agent file proposal', async 
 
     window.once('dialog', (dialog) => void dialog.accept());
     await window.getByTestId('apply-approved-changes').click();
-    await expect.poll(async () => readFile(readmePath, 'utf8')).toBe(proposedContent);
+    await expect.poll(() => readDuringAtomicReplacement(readmePath)).toBe(proposedContent);
     await expect(window.getByTestId('rollback-change-set')).toBeVisible();
 
     window.once('dialog', (dialog) => void dialog.accept());
     await window.getByTestId('rollback-change-set').click();
-    await expect.poll(async () => readFile(readmePath, 'utf8')).toBe(originalContent);
+    await expect.poll(() => readDuringAtomicReplacement(readmePath)).toBe(originalContent);
     await window.getByLabel('关闭变更审核').click();
 
     await application.close();

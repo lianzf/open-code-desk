@@ -16,6 +16,7 @@ import { createAppDatabase } from '../database/database';
 import { WorkspaceFileService } from '../filesystem/workspace-file.service';
 import { OpenAICompatibleProvider } from '../providers/openai-compatible/openai-compatible.provider';
 import { ProviderConfigRepository } from '../providers/provider-config.repository';
+import { ModelConfigRepository } from '../providers/model-config.repository';
 import { ProviderService } from '../providers/provider.service';
 import type { SecretStore } from '../security/secret-store';
 import { ProposalAwarePermissionPolicy } from '../tools/file-proposal-tools';
@@ -113,6 +114,7 @@ describe('Agent file proposal flow', () => {
     registry.register(new OpenAICompatibleProvider());
     const providers = new ProviderService(
       new ProviderConfigRepository(database),
+      new ModelConfigRepository(database),
       new MemorySecretStore(),
       registry,
     );
@@ -166,6 +168,10 @@ describe('Agent file proposal flow', () => {
     );
     expect(events).not.toContainEqual(expect.objectContaining({ type: 'completed' }));
     expect(tasks.latestForConversation(conversation.id)?.status).toBe('waiting_for_approval');
+    expect(tasks.latestForConversation(conversation.id)?.checkpoint?.steps.at(-1)).toMatchObject({
+      label: '等待用户审核代码 Diff',
+      status: 'in_progress',
+    });
     expect(changes.listForConversation(conversation.id)[0]?.changes[0]).toMatchObject({
       operation: 'update',
       filePath: 'example.txt',

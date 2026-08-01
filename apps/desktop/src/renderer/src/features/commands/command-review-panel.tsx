@@ -1,5 +1,5 @@
 import type { CommandExecution } from '@open-code-desk/ipc-contracts';
-import { Ban, Check, CircleStop, ShieldAlert, TerminalSquare, Trash2 } from 'lucide-react';
+import { Ban, Check, CircleStop, Plus, ShieldAlert, TerminalSquare, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -138,12 +138,19 @@ export function CommandReviewPanel() {
   const rules = useCommandStore((state) => state.rules);
   const errorMessage = useCommandStore((state) => state.errorMessage);
   const setNetworkAccess = useCommandStore((state) => state.setNetworkAccess);
+  const setReadAutoAllow = useCommandStore((state) => state.setReadAutoAllow);
+  const addExecutableRule = useCommandStore((state) => state.addExecutableRule);
+  const addBlockedPath = useCommandStore((state) => state.addBlockedPath);
+  const grantExternalDirectory = useCommandStore((state) => state.grantExternalDirectory);
   const deleteRule = useCommandStore((state) => state.deleteRule);
   const networkAllowed = rules.some((rule) => rule.kind === 'allow_network_commands');
-
-  if (commands.length === 0 && rules.length === 0 && errorMessage === undefined) {
-    return null;
-  }
+  const readAutoAllowed = !rules.some((rule) => rule.kind === 'require_read_approval');
+  const [ruleKind, setRuleKind] = useState<'allow_executable' | 'deny_executable'>(
+    'allow_executable',
+  );
+  const [ruleExecutable, setRuleExecutable] = useState('');
+  const [ruleCwd, setRuleCwd] = useState('');
+  const [blockedPath, setBlockedPath] = useState('');
 
   const pending = commands.filter((command) =>
     ['pending_approval', 'approved', 'running'].includes(command.status),
@@ -179,18 +186,66 @@ export function CommandReviewPanel() {
         </details>
       ) : null}
       <details>
-        <summary className="cursor-pointer text-[10px] text-zinc-500">命令权限规则</summary>
+        <summary className="cursor-pointer text-[10px] text-zinc-500">工作区权限规则</summary>
         <div className="mt-2 space-y-2">
           <label className="flex items-center justify-between gap-3 text-[10px] text-zinc-400">
-            允许 Agent 提议网络命令
+            工作区内只读工具自动允许
+            <input
+              type="checkbox"
+              checked={readAutoAllowed}
+              onChange={(event) => void setReadAutoAllow(event.target.checked)}
+              data-testid="auto-allow-read-tools"
+            />
+          </label>
+          <label className="flex items-center justify-between gap-3 text-[10px] text-zinc-400">
+            允许白名单网络命令自动执行
             <input
               type="checkbox"
               checked={networkAllowed}
               onChange={(event) => void setNetworkAccess(event.target.checked)}
             />
           </label>
+          <div className="grid grid-cols-[92px_1fr_1fr_auto] gap-1">
+            <select
+              className="rounded border border-zinc-800 bg-zinc-950 px-1.5 text-[10px] text-zinc-400"
+              value={ruleKind}
+              onChange={(event) =>
+                setRuleKind(event.target.value as 'allow_executable' | 'deny_executable')
+              }
+              aria-label="命令规则类型"
+            >
+              <option value="allow_executable">允许</option>
+              <option value="deny_executable">拒绝</option>
+            </select>
+            <input
+              className="h-7 min-w-0 rounded border border-zinc-800 bg-zinc-950 px-2 text-[10px] text-zinc-300 outline-none"
+              value={ruleExecutable}
+              onChange={(event) => setRuleExecutable(event.target.value)}
+              placeholder="可执行文件，如 pnpm"
+              aria-label="规则可执行文件"
+            />
+            <input
+              className="h-7 min-w-0 rounded border border-zinc-800 bg-zinc-950 px-2 text-[10px] text-zinc-300 outline-none"
+              value={ruleCwd}
+              onChange={(event) => setRuleCwd(event.target.value)}
+              placeholder="工作区相对目录，留空为根目录"
+              aria-label="规则工作目录"
+            />
+            <button
+              className="rounded border border-zinc-800 px-2 text-zinc-500 hover:bg-zinc-800 hover:text-cyan-300 disabled:opacity-40"
+              disabled={ruleExecutable.trim() === ''}
+              onClick={() => {
+                void addExecutableRule(ruleKind, ruleExecutable, ruleCwd).then(() => {
+                  setRuleExecutable('');
+                });
+              }}
+              aria-label="添加命令规则"
+            >
+              <Plus className="size-3.5" />
+            </button>
+          </div>
           {rules
-            .filter((rule) => rule.kind !== 'allow_network_commands')
+            .filter((rule) => rule.kind === 'allow_executable' || rule.kind === 'deny_executable')
             .map((rule) => (
               <div
                 key={rule.id}
@@ -211,6 +266,77 @@ export function CommandReviewPanel() {
                 </button>
               </div>
             ))}
+          <div className="border-t border-zinc-800 pt-2">
+            <p className="text-[10px] text-zinc-500">禁止访问的工作区相对路径</p>
+            <div className="mt-1 flex gap-1">
+              <input
+                className="h-7 min-w-0 flex-1 rounded border border-zinc-800 bg-zinc-950 px-2 text-[10px] text-zinc-300 outline-none"
+                value={blockedPath}
+                onChange={(event) => setBlockedPath(event.target.value)}
+                placeholder="例如 secrets 或 private/config.json"
+                aria-label="禁止访问的相对路径"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={blockedPath.trim() === ''}
+                onClick={() => {
+                  void addBlockedPath(blockedPath).then(() => setBlockedPath(''));
+                }}
+              >
+                添加
+              </Button>
+            </div>
+            {rules
+              .filter((rule) => rule.kind === 'blocked_path')
+              .map((rule) => (
+                <div
+                  key={rule.id}
+                  className="mt-1 flex items-center gap-2 rounded border border-zinc-800 px-2 py-1 text-[10px]"
+                >
+                  <Ban className="size-3 text-red-400" />
+                  <code className="min-w-0 flex-1 truncate text-zinc-500">{rule.value}</code>
+                  <button
+                    className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-red-300"
+                    onClick={() => void deleteRule(rule.id)}
+                    aria-label="删除禁止路径规则"
+                  >
+                    <Trash2 className="size-3" />
+                  </button>
+                </div>
+              ))}
+          </div>
+          <div className="border-t border-zinc-800 pt-2">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-[10px] text-zinc-500">工作区外目录授权</p>
+                <p className="text-[9px] text-zinc-600">
+                  仅可通过系统目录选择器添加；Agent 每次访问仍需单独批准。
+                </p>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => void grantExternalDirectory()}>
+                选择目录
+              </Button>
+            </div>
+            {rules
+              .filter((rule) => rule.kind === 'external_directory')
+              .map((rule) => (
+                <div
+                  key={rule.id}
+                  className="mt-1 flex items-center gap-2 rounded border border-zinc-800 px-2 py-1 text-[10px]"
+                >
+                  <ShieldAlert className="size-3 text-amber-400" />
+                  <code className="min-w-0 flex-1 truncate text-zinc-500">{rule.value}</code>
+                  <button
+                    className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-red-300"
+                    onClick={() => void deleteRule(rule.id)}
+                    aria-label="撤销外部目录授权"
+                  >
+                    <Trash2 className="size-3" />
+                  </button>
+                </div>
+              ))}
+          </div>
         </div>
       </details>
     </section>

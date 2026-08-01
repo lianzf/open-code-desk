@@ -1,4 +1,8 @@
-import type { Conversation, ToolCallRecord } from '@open-code-desk/ipc-contracts';
+import type {
+  AgentTaskCheckpoint,
+  Conversation,
+  ToolCallRecord,
+} from '@open-code-desk/ipc-contracts';
 import { create } from 'zustand';
 
 import { useProviderStore } from '@/features/providers/provider.store';
@@ -25,6 +29,9 @@ export interface DisplayToolActivity {
   readonly input?: unknown;
   readonly outputPreview?: string;
   readonly errorMessage?: string;
+  readonly permissionLevel?: ToolCallRecord['permissionLevel'];
+  readonly approvalDigest?: string;
+  readonly approvalReason?: string;
 }
 
 export interface ContextStats {
@@ -32,6 +39,9 @@ export interface ContextStats {
   readonly usedTokens: number;
   readonly droppedMessages: number;
   readonly summarizedMessages: number;
+  readonly selectedContextItems: number;
+  readonly droppedContextItems: number;
+  readonly truncatedContextItems: number;
 }
 
 export interface ChatState {
@@ -50,7 +60,10 @@ export interface ChatState {
     | 'failed'
     | 'cancelled';
   readonly conversations: ReadonlyArray<Conversation>;
+  readonly conversationQuery: string;
   readonly contextStats: ContextStats | undefined;
+  readonly taskPlan: AgentTaskCheckpoint | undefined;
+  readonly taskAttempt: number | undefined;
   readonly errorMessage: string | undefined;
   readonly messages: ReadonlyArray<DisplayChatMessage>;
   readonly toolActivity: ReadonlyArray<DisplayToolActivity>;
@@ -62,6 +75,7 @@ export interface ChatState {
   deleteActive(): Promise<void>;
   exportActive(): Promise<void>;
   regenerate(): Promise<void>;
+  searchConversations(query: string): Promise<void>;
   send(content: string): Promise<void>;
   stop(): Promise<void>;
 }
@@ -89,6 +103,8 @@ function toToolActivity(toolCall: ToolCallRecord): DisplayToolActivity {
     input: toolCall.input,
     ...(outputPreview === undefined ? {} : { outputPreview }),
     ...(toolCall.error === undefined ? {} : { errorMessage: toolCall.error.message }),
+    permissionLevel: toolCall.permissionLevel,
+    ...(toolCall.approvalDigest === undefined ? {} : { approvalDigest: toolCall.approvalDigest }),
   };
 }
 
@@ -117,7 +133,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   activeConversationId: undefined,
   agentStatus: 'idle',
   conversations: [],
+  conversationQuery: '',
   contextStats: undefined,
+  taskPlan: undefined,
+  taskAttempt: undefined,
   errorMessage: undefined,
   messages: [],
   toolActivity: [],
@@ -140,9 +159,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       activeRequestId: undefined,
       agentStatus: 'idle',
       conversations: [],
+      conversationQuery: '',
       messages: [],
       toolActivity: [],
       contextStats: undefined,
+      taskPlan: undefined,
+      taskAttempt: undefined,
       errorMessage: undefined,
     });
     try {
@@ -184,6 +206,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           : { providerConfigId: provider.providerId, modelId: provider.model }),
       });
       set((state) => ({ conversations: [conversation, ...state.conversations] }));
+      set({ conversationQuery: '' });
       await get().selectConversation(conversation.id);
     } catch (error) {
       set({ errorMessage: readableError(error) });
@@ -204,6 +227,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         toolActivity: detail.toolCalls.map(toToolActivity),
         agentStatus: detail.latestTask?.status ?? 'idle',
         contextStats: undefined,
+        taskPlan: detail.latestTask?.checkpoint,
+        taskAttempt: detail.latestTask?.attempt,
         errorMessage: detail.latestTask?.error?.message,
       });
     } catch (error) {
@@ -247,7 +272,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
         workspaceId,
         query: '',
       });
-      set({ conversations, activeConversationId: undefined, messages: [], toolActivity: [] });
+      set({
+        conversations,
+        conversationQuery: '',
+        activeConversationId: undefined,
+        messages: [],
+        toolActivity: [],
+      });
       const next = conversations[0];
       if (next === undefined) {
         await get().newConversation();
@@ -303,6 +334,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: [...state.messages, localUserMessage],
       errorMessage: undefined,
       contextStats: undefined,
+      taskPlan: undefined,
+      taskAttempt: undefined,
     }));
     try {
       const response = await window.openCodeDesk.chat.start({
@@ -339,6 +372,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const lastUser = [...get().messages].reverse().find((message) => message.role === 'user');
     if (lastUser !== undefined) {
       await get().send(lastUser.content);
+    }
+  },
+
+  async searchConversations(query) {
+    const workspaceId = get().workspaceId;
+    if (workspaceId === undefined) {
+      return;
+    }
+    try {
+      const results = await window.openCodeDesk.conversations.list({ workspaceId, query });
+      const active = get().conversations.find(
+        (conversation) => conversation.id === get().activeConversationId,
+      );
+      const conversations =
+        active !== undefined && !results.some((conversation) => conversation.id === active.id)
+          ? [active, ...results]
+          : results;
+      set({ conversations, conversationQuery: query, errorMessage: undefined });
+    } catch (error) {
+      set({ errorMessage: readableError(error) });
     }
   },
 }));

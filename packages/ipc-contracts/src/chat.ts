@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { conversationMessageSchema } from './conversations';
+import { agentTaskSchema } from './conversations';
 import { commandExecutionSchema } from './commands';
 
 const requestIdSchema = z.string().uuid();
@@ -89,11 +90,22 @@ export const chatStreamPayloadSchema = z.discriminatedUnion('type', [
     .strict(),
   z
     .object({
+      type: z.literal('task_plan'),
+      taskId: z.string().uuid(),
+      attempt: z.number().int().positive(),
+      checkpoint: agentTaskSchema.shape.checkpoint.unwrap(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal('context_built'),
       budget: z.number().int().positive(),
       usedTokens: z.number().int().nonnegative(),
       droppedMessages: z.number().int().nonnegative(),
       summarizedMessages: z.number().int().nonnegative(),
+      selectedContextItems: z.number().int().nonnegative(),
+      droppedContextItems: z.number().int().nonnegative(),
+      truncatedContextItems: z.number().int().nonnegative(),
     })
     .strict(),
   z
@@ -139,6 +151,18 @@ export const chatStreamPayloadSchema = z.discriminatedUnion('type', [
       input: z.unknown().optional(),
       outputPreview: z.string().max(2_000).optional(),
       error: toolErrorSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('tool_approval_requested'),
+      callId: z.string().uuid(),
+      modelCallId: z.string().max(500),
+      name: z.string().min(1).max(500),
+      permissionLevel: z.enum(['read', 'write', 'execute', 'dangerous']),
+      input: z.unknown(),
+      approvalDigest: z.string().length(64),
+      reason: z.string().min(1).max(4_000),
     })
     .strict(),
   z

@@ -9,11 +9,12 @@ import type {
 
 import type { FileChangeAggregate } from '../changes/file-change.repository';
 import type { FileChangeService } from '../changes/file-change.service';
+import type { PermissionRuleRepository } from '../commands/permission-rule.repository';
 
 const filePathSchema = z.string().trim().min(1).max(2_000);
 const contentSchema = z.string().max(2_000_000);
 
-const proposalToolNames = new Set([
+const guardedToolNames = new Set([
   'create_file',
   'update_file',
   'delete_file',
@@ -22,6 +23,8 @@ const proposalToolNames = new Set([
   'run_command',
   'run_tests',
 ]);
+
+const externalReadToolNames = new Set(['list_external_directory', 'read_external_file']);
 
 function proposalResult(aggregate: FileChangeAggregate) {
   return {
@@ -146,13 +149,30 @@ export class ApplyPatchProposalTool extends ProposalTool<z.infer<typeof applyPat
  * write authorization boundary.
  */
 export class ProposalAwarePermissionPolicy implements PermissionPolicy {
-  public decide(tool: AgentTool): PermissionDecision {
+  public constructor(private readonly rules?: PermissionRuleRepository) {}
+
+  public decide(tool: AgentTool, context: ToolExecutionContext): PermissionDecision {
     if (tool.permissionLevel === 'read') {
+      if (externalReadToolNames.has(tool.name)) {
+        return {
+          outcome: 'require_approval',
+          reason: 'Every access to a user-granted external directory requires explicit approval.',
+        };
+      }
+      const requiresApproval = this.rules
+        ?.list(context.workspaceId)
+        .some((rule) => rule.kind === 'require_read_approval');
+      if (requiresApproval === true) {
+        return {
+          outcome: 'require_approval',
+          reason: 'Workspace read tools require approval under the current permission settings.',
+        };
+      }
       return { outcome: 'allow', reason: 'Read-only workspace tool.' };
     }
     if (
       (tool.permissionLevel === 'write' || tool.permissionLevel === 'execute') &&
-      proposalToolNames.has(tool.name)
+      guardedToolNames.has(tool.name)
     ) {
       return {
         outcome: 'allow',

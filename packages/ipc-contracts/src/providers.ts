@@ -60,7 +60,7 @@ export const providerHeaderSchema = z
 export const saveProviderRequestSchema = z
   .object({
     id: uuidSchema.optional(),
-    kind: z.literal('openai-compatible'),
+    kind: providerKindSchema,
     displayName: z.string().trim().min(1).max(100),
     baseUrl: z.string().trim().min(1).max(2_048),
     apiKey: z.string().max(10_000).optional(),
@@ -106,6 +106,18 @@ export const modelInfoSchema = z
     id: z.string().min(1).max(500),
     name: z.string().min(1).max(500),
     ownedBy: z.string().max(500).optional(),
+    capabilities: z
+      .object({
+        streaming: z.boolean(),
+        toolCalling: z.boolean(),
+        vision: z.boolean(),
+        reasoning: z.boolean(),
+        structuredOutput: z.boolean(),
+        contextWindow: z.number().int().positive().optional(),
+        maxOutputTokens: z.number().int().positive().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

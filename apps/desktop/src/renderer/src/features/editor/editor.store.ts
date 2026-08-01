@@ -10,18 +10,33 @@ export interface EditorTab {
   readonly modifiedAt: string;
 }
 
+export interface EditorNavigationTarget {
+  readonly requestId: string;
+  readonly relativePath: string;
+  readonly line: number;
+  readonly column: number;
+}
+
 interface EditorState {
   readonly workspaceId: string | null;
   readonly tabs: ReadonlyArray<EditorTab>;
   readonly activePath: string | null;
+  readonly navigationTarget: EditorNavigationTarget | undefined;
   readonly loading: boolean;
   readonly saving: boolean;
   readonly errorMessage: string | undefined;
   reset(workspaceId: string): void;
   openFile(workspaceId: string, relativePath: string): Promise<void>;
+  openFileAt(
+    workspaceId: string,
+    relativePath: string,
+    line: number,
+    column?: number,
+  ): Promise<void>;
   setActive(relativePath: string): void;
   updateContent(content: string): void;
   closeFile(relativePath: string): void;
+  discardPath(relativePath: string): void;
   saveActive(): Promise<void>;
   handleFileChange(workspaceId: string, relativePath: string): Promise<void>;
   clearError(): void;
@@ -39,13 +54,34 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   workspaceId: null,
   tabs: [],
   activePath: null,
+  navigationTarget: undefined,
   loading: false,
   saving: false,
   errorMessage: undefined,
 
   reset(workspaceId) {
     if (get().workspaceId !== workspaceId) {
-      set({ workspaceId, tabs: [], activePath: null, errorMessage: undefined });
+      set({
+        workspaceId,
+        tabs: [],
+        activePath: null,
+        navigationTarget: undefined,
+        errorMessage: undefined,
+      });
+    }
+  },
+
+  async openFileAt(workspaceId, relativePath, line, column = 1) {
+    await get().openFile(workspaceId, relativePath);
+    if (get().workspaceId === workspaceId && get().activePath === relativePath) {
+      set({
+        navigationTarget: {
+          requestId: crypto.randomUUID(),
+          relativePath,
+          line,
+          column,
+        },
+      });
     }
   },
 
@@ -107,7 +143,30 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       state.activePath === relativePath
         ? (tabs[Math.min(tabIndex, tabs.length - 1)]?.relativePath ?? null)
         : state.activePath;
-    set({ tabs, activePath: nextActive });
+    set({
+      tabs,
+      activePath: nextActive,
+      navigationTarget:
+        state.navigationTarget?.relativePath === relativePath ? undefined : state.navigationTarget,
+    });
+  },
+
+  discardPath(relativePath) {
+    const state = get();
+    const matchesPath = (path: string) =>
+      path === relativePath || path.startsWith(`${relativePath}/`);
+    const tabs = state.tabs.filter((tab) => !matchesPath(tab.relativePath));
+    set({
+      tabs,
+      activePath:
+        state.activePath !== null && matchesPath(state.activePath)
+          ? (tabs[0]?.relativePath ?? null)
+          : state.activePath,
+      navigationTarget:
+        state.navigationTarget !== undefined && matchesPath(state.navigationTarget.relativePath)
+          ? undefined
+          : state.navigationTarget,
+    });
   },
 
   async saveActive() {

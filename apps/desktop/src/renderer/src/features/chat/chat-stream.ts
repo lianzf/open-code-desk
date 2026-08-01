@@ -54,6 +54,8 @@ export function handleStreamEvent(
   const event = streamEvent.event;
   if (event.type === 'agent_status') {
     set({ agentStatus: event.status });
+  } else if (event.type === 'task_plan') {
+    set({ taskPlan: event.checkpoint, taskAttempt: event.attempt });
   } else if (event.type === 'context_built') {
     set({
       contextStats: {
@@ -61,6 +63,9 @@ export function handleStreamEvent(
         usedTokens: event.usedTokens,
         droppedMessages: event.droppedMessages,
         summarizedMessages: event.summarizedMessages,
+        selectedContextItems: event.selectedContextItems,
+        droppedContextItems: event.droppedContextItems,
+        truncatedContextItems: event.truncatedContextItems,
       },
     });
   } else if (event.type === 'assistant_message_start') {
@@ -110,6 +115,26 @@ export function handleStreamEvent(
         ...(event.error === undefined ? {} : { errorMessage: event.error.message }),
       };
       return {
+        toolActivity:
+          existing === undefined
+            ? [...state.toolActivity, next]
+            : state.toolActivity.map((tool) => (tool.id === next.id ? next : tool)),
+      };
+    });
+  } else if (event.type === 'tool_approval_requested') {
+    set((state) => {
+      const existing = state.toolActivity.find((tool) => tool.id === event.callId);
+      const next: DisplayToolActivity = {
+        id: event.callId,
+        name: event.name,
+        status: 'pending',
+        input: event.input,
+        permissionLevel: event.permissionLevel,
+        approvalDigest: event.approvalDigest,
+        approvalReason: event.reason,
+      };
+      return {
+        agentStatus: 'waiting_for_approval',
         toolActivity:
           existing === undefined
             ? [...state.toolActivity, next]
