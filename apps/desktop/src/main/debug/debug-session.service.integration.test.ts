@@ -15,6 +15,7 @@ import { DebugAdapterRegistry } from './debug-adapter.registry';
 import { DebugBreakpointRepository } from './debug-breakpoint.repository';
 import { DebugSessionRepository } from './debug-session.repository';
 import { DebugSessionService } from './debug-session.service';
+import { DebugSettingsRepository } from './debug-settings.repository';
 import { DebugWatchRepository } from './debug-watch.repository';
 import { NodeDebugAdapterProvider } from './node/node-debug-adapter.provider';
 
@@ -112,19 +113,23 @@ describe('DebugSessionService integration', () => {
       configurationRepository,
       sessionRepository,
       breakpointRepository,
+      new DebugSettingsRepository(database),
       watchRepository,
       workspaceService,
       secrets,
       registry,
     );
     services.push(service);
-    await service.saveBreakpoint({
+    await service.configuration.breakpoints.save({
       workspaceId: workspace.id,
       relativePath: 'program.js',
       line: 3,
       enabled: true,
     });
-    const watch = service.saveWatch({ workspaceId: workspace.id, expression: 'total' });
+    const watch = service.configuration.watches.save({
+      workspaceId: workspace.id,
+      expression: 'total',
+    });
 
     const proposal = await service.proposeStart({
       workspaceId: workspace.id,
@@ -160,8 +165,10 @@ describe('DebugSessionService integration', () => {
         expect.objectContaining({ name: 'total', value: '15' }),
       ]),
     );
-    expect(service.listBreakpoints({ workspaceId: workspace.id })[0]?.status).toBe('verified');
-    expect(service.listWatches({ workspaceId: workspace.id })).toContainEqual(watch);
+    expect(service.configuration.breakpoints.list({ workspaceId: workspace.id })[0]?.status).toBe(
+      'verified',
+    );
+    expect(service.configuration.watches.list({ workspaceId: workspace.id })).toContainEqual(watch);
 
     const originalAdapterProcessId = paused.adapterProcessId;
     const restartedPause = waitForStatus(service, 'paused');

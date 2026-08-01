@@ -46,6 +46,7 @@ import {
   debugSessionListSchema,
   debugSessionRequestSchema,
   debugSessionSchema,
+  debugSettingsSchema,
   debugStackFrameListSchema,
   debugThreadListSchema,
   debugThreadRequestSchema,
@@ -57,6 +58,7 @@ import {
   deleteDebugBreakpointRequestSchema,
   deleteDebugWatchRequestSchema,
   evaluateDebugRequestSchema,
+  getDebugSettingsRequestSchema,
   listDebugBreakpointsRequestSchema,
   listDebugHistoryRequestSchema,
   listDebugWatchesRequestSchema,
@@ -64,6 +66,7 @@ import {
   previewDebugContextRequestSchema,
   runToCursorRequestSchema,
   saveDebugBreakpointRequestSchema,
+  saveDebugSettingsRequestSchema,
   saveDebugWatchRequestSchema,
   createDirectoryRequestSchema,
   createFileRequestSchema,
@@ -432,6 +435,18 @@ const desktopApi: DesktopApi = {
       const request = deleteDebugBreakpointRequestSchema.parse(input);
       return debugMutationResponseSchema.parse(
         await ipcRenderer.invoke(debugChannels.deleteBreakpoint, request),
+      );
+    },
+    async getSettings(input) {
+      const request = getDebugSettingsRequestSchema.parse(input);
+      return debugSettingsSchema.parse(
+        await ipcRenderer.invoke(debugChannels.getSettings, request),
+      );
+    },
+    async saveSettings(input) {
+      const request = saveDebugSettingsRequestSchema.parse(input);
+      return debugSettingsSchema.parse(
+        await ipcRenderer.invoke(debugChannels.saveSettings, request),
       );
     },
     async threads(input) {

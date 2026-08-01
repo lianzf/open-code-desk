@@ -117,6 +117,23 @@ select {
   border-color: #f59e0b;
 }
 
+.monaco-editor .debug-breakpoint-kind-conditional::before {
+  border-color: #f59e0b;
+  box-shadow: inset 0 0 0 2px #18181b;
+}
+
+.monaco-editor .debug-breakpoint-kind-logpoint::before {
+  background: #06b6d4;
+  border-color: #06b6d4;
+  border-radius: 1px;
+  transform: rotate(45deg) scale(0.8);
+}
+
+.monaco-editor .debug-breakpoint-kind-logpoint.debug-breakpoint-pending::before,
+.monaco-editor .debug-breakpoint-kind-logpoint.debug-breakpoint-unverified::before {
+  background: transparent;
+}
+
 .monaco-editor .debug-current-line {
   background: rgb(245 158 11 / 12%);
   border-top: 1px solid rgb(245 158 11 / 30%);

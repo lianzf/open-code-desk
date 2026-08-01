@@ -2,11 +2,13 @@ import { basename, isAbsolute } from 'node:path';
 
 import type {
   DebugAdapterCapabilities,
+  DebugExceptionPauseMode,
   DebugVariable,
   RunCommandSnapshot,
 } from '@open-code-desk/domain';
 
 import { toPlatformPath } from '../../filesystem/path-policy';
+import type { DapClient } from '../dap/dap-client';
 import { asRecord, booleanValue, numberValue, stringValue } from './dap-values';
 
 export const initializeArguments = {
@@ -33,9 +35,20 @@ export function mapCapabilities(value: unknown): DebugAdapterCapabilities {
     stepBack: booleanValue(body, 'supportsStepBack') ?? false,
     setVariable: booleanValue(body, 'supportsSetVariable') ?? false,
     conditionalBreakpoints: booleanValue(body, 'supportsConditionalBreakpoints') ?? false,
+    hitConditionalBreakpoints: booleanValue(body, 'supportsHitConditionalBreakpoints') ?? false,
+    logPoints: booleanValue(body, 'supportsLogPoints') ?? false,
     functionBreakpoints: booleanValue(body, 'supportsFunctionBreakpoints') ?? false,
     exceptionInfo: booleanValue(body, 'supportsExceptionInfoRequest') ?? false,
   };
+}
+
+export async function setNodeExceptionBreakpoints(
+  client: DapClient,
+  mode: DebugExceptionPauseMode,
+): Promise<void> {
+  await client.request('setExceptionBreakpoints', {
+    filters: mode === 'none' ? [] : [mode],
+  });
 }
 
 export function createLaunchArguments(

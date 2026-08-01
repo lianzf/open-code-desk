@@ -51,7 +51,7 @@ describe('AuditLogService', () => {
         limit: 20,
       }),
     ).toEqual([]);
-    expect(database.client.prepare('PRAGMA user_version').get()).toEqual({ user_version: 10 });
+    expect(database.client.prepare('PRAGMA user_version').get()).toEqual({ user_version: 11 });
     database.close();
   });
 

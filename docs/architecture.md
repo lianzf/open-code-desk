@@ -1,6 +1,6 @@
 # OpenCode Desk 系统架构
 
-> 状态：阶段 D（AI 辅助调试）实现基线
+> 状态：阶段 E（高级断点与异常策略）实现基线
 > 日期：2026-08-02
 > 适用范围：MVP、IDE 运行调试与后续 Provider/Debug Adapter 扩展
 
@@ -8,7 +8,8 @@
 
 OpenCode Desk 已在独立 monorepo `D:\电脑\open-code-desk` 中实现。当前基线包括 Electron 安全壳、
 工作区与 Monaco 编辑器、多 Provider、Agent 工具循环、Diff 审批事务、受控终端/Git、运行配置、
-受管项目运行、Node.js/TypeScript 的真实 DAP 调试，以及由用户审核驱动的 AI 辅助修复闭环。
+受管项目运行、Node.js/TypeScript 的真实 DAP 调试、由用户审核驱动的 AI 辅助修复闭环，以及高级
+断点与工作区异常暂停策略。
 架构文档既保留最初边界，也记录已落地的运行时组件和仍未完成的多语言调试范围。
 
 OpenCode Desk 是一个本地优先、用户审批驱动的跨平台 AI 编程桌面端。系统必须将模型输出视为
@@ -86,7 +87,8 @@ MVP 实现 OpenAI Compatible Provider，并为其他厂商保留注册表和独�
 - `WorkspaceService`：工作区生命周期、最近项目和项目规则发现。
 - `CommandService`：命令审批、受控执行、超时、取消和输出持久化。
 - `RunExecutionService`：项目运行提案、审批绑定、进程生命周期和历史恢复。
-- `DebugSessionService`：调试提案、DAP 会话、断点协调、单步控制、变量访问和调试历史。
+- `DebugSessionService`：调试提案、DAP 会话生命周期、单步控制、变量访问和调试历史。
+- `DebugConfigurationCoordinator`：组合断点、监视和异常暂停设置，并在活动 Adapter 中实时同步。
 - `DebugContextService`：从暂停会话收集有界数据、脱敏、生成短期预览、校验用户选择并附加会话上下文。
 
 Application 只依赖端口接口，例如 `WorkspaceFileSystem`、`SecretStore`、`ProviderRegistry`、
@@ -743,12 +745,15 @@ Renderer，并将尾部、退出码、风险和状态写入 `run_executions`。
 调试不复用普通运行输出模拟状态。`DebugSessionService` 在开始前创建审批提案并验证摘要，随后通过
 `DebugAdapterRegistry` 选择语言适配器。Node Adapter 启动独立 js-debug 进程，通过 DAP 完成
 initialize、launch、断点同步和 configurationDone，并把协议事件归一化为领域事件。所有查询与控制
-均由模块化 `debug.ipc.ts` 转发，输入输出经 Zod 校验；断点、监视和会话历史由 migration 10 持久化。
+均由模块化 `debug.ipc.ts` 转发，输入输出经 Zod 校验；断点、监视和会话历史由 migration 10 持久化，
+migration 11 增加条件、命中次数、日志消息和工作区异常暂停设置。
 
 阶段 C 支持普通行断点、启用/禁用/删除、线程、调用栈、局部与嵌套变量、监视、REPL 求值、继续、
 暂停、Step Over/Into/Out、运行到光标、重启、停止、异常信息和当前行高亮。阶段 D 通过独立
-`debug-context.ipc.ts` 增加脱敏预览和显式附加，不修改 Agent 或 FileChange 主流程。条件/日志/函数
-断点与其他语言 Adapter 仍在后续阶段，不以能力标记或静态 UI 冒充完成。
+`debug-context.ipc.ts` 增加脱敏预览和显式附加，不修改 Agent 或 FileChange 主流程。阶段 E 通过
+`DebugConfigurationCoordinator` 与独立 Repository 支持条件、命中次数、日志断点，以及
+none/uncaught/all 异常暂停策略；这些字段映射到真实 DAP 请求，并由 Adapter 能力标记反馈。
+函数/数据断点、特定异常类型和其他语言 Adapter 仍在后续阶段，不以静态 UI 冒充完成。
 
 ## 11. 关键非功能需求
 
@@ -790,7 +795,7 @@ initialize、launch、断点同步和 configurationDone，并把协议事件归�
 - [x] `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 全部通过。
 - [x] 关键 E2E 覆盖“配置模型 → 对话 → Diff 审批 → 应用 → 批准测试 → 恢复会话”。
 
-阶段 D 的 IDE 调试验收状态：
+阶段 E 的 IDE 调试验收状态：
 
 - [x] Node.js/TypeScript 使用真实 DAP Adapter 启动，开始前必须审核准确命令快照。
 - [x] Monaco 行号区可设置持久化断点，并显示 pending/verified/unverified/disabled/error 状态。
@@ -800,6 +805,8 @@ initialize、launch、断点同步和 configurationDone，并把协议事件归�
 - [x] 会话、断点、监视、暂停位置、受限输出和错误可持久化恢复。
 - [x] 停止、终止与应用退出会清理本应用拥有的调试器和被调试进程。
 - [x] 调试上下文脱敏后由用户逐分区审核，再走“分析 → 修复 Diff → 审批 → 显式重新验证”闭环。
+- [x] 条件、命中次数和日志断点通过真实 DAP 请求生效，并在 Monaco 与断点列表中区分展示。
+- [x] none/uncaught/all 异常策略按工作区持久化，活动会话可实时切换，重启应用后恢复。
 - [ ] Java、Python、C/C++、.NET、Go、Rust 与浏览器调试 Adapter。
 
 ## 13. 主要架构风险

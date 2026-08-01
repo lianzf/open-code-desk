@@ -1,12 +1,18 @@
 import { create } from 'zustand';
 
 import {
+  saveDebugBreakpointDefinition,
+  saveDebugExceptionPauseMode,
+  setDebugBreakpointEnabled,
+  toggleDebugBreakpoint,
+} from './debug-breakpoint-actions';
+import { attachDebugContext, previewDebugContext } from './debug-context-actions';
+import {
   createDebugConsoleEntry,
   deleteBreakpointGroup,
   isActiveDebugStatus,
   loadDebugScopes,
   loadDebugStack,
-  mergeDebugBreakpoint,
   mergeDebugSession,
   readableDebugError,
   refreshDebugWatches,
@@ -28,6 +34,8 @@ export const useDebugStore = create<DebugState>((set, get) => ({
   sessions: [],
   selectedSessionId: undefined,
   breakpoints: [],
+  settings: undefined,
+  breakpointEditor: undefined,
   watches: [],
   threads: [],
   selectedThreadId: undefined,
@@ -52,6 +60,8 @@ export const useDebugStore = create<DebugState>((set, get) => ({
       sessions: [],
       selectedSessionId: undefined,
       breakpoints: [],
+      settings: undefined,
+      breakpointEditor: undefined,
       watches: [],
       threads: [],
       selectedThreadId: undefined,
@@ -66,10 +76,11 @@ export const useDebugStore = create<DebugState>((set, get) => ({
       errorMessage: undefined,
     });
     try {
-      const [sessions, breakpoints, watches] = await Promise.all([
+      const [sessions, breakpoints, watches, settings] = await Promise.all([
         window.openCodeDesk.debug.listHistory({ workspaceId, limit: 100 }),
         window.openCodeDesk.debug.listBreakpoints({ workspaceId }),
         window.openCodeDesk.debug.listWatches({ workspaceId }),
+        window.openCodeDesk.debug.getSettings({ workspaceId }),
       ]);
       if (get().workspaceId !== workspaceId) return;
       const active = sessions.find((session) => isActiveDebugStatus(session.status));
@@ -77,6 +88,7 @@ export const useDebugStore = create<DebugState>((set, get) => ({
         sessions,
         selectedSessionId: active?.id ?? sessions[0]?.id,
         breakpoints,
+        settings,
         watches,
         initialized: true,
         loading: false,
@@ -166,51 +178,33 @@ export const useDebugStore = create<DebugState>((set, get) => ({
   },
 
   async toggleBreakpoint(relativePath, line) {
-    const workspaceId = get().workspaceId;
-    if (workspaceId === undefined) return;
-    const existing = get().breakpoints.find(
-      (breakpoint) => breakpoint.relativePath === relativePath && breakpoint.line === line,
-    );
-    try {
-      if (existing === undefined) {
-        const saved = await window.openCodeDesk.debug.saveBreakpoint({
-          workspaceId,
-          relativePath,
-          line,
-          enabled: true,
-        });
-        set((state) => ({ breakpoints: mergeDebugBreakpoint(state.breakpoints, saved) }));
-      } else {
-        await window.openCodeDesk.debug.deleteBreakpoint({
-          workspaceId,
-          breakpointId: existing.id,
-        });
-        set((state) => ({
-          breakpoints: state.breakpoints.filter((item) => item.id !== existing.id),
-        }));
-      }
-    } catch (error) {
-      set({ errorMessage: readableDebugError(error) });
-    }
+    await toggleDebugBreakpoint(get, set, relativePath, line);
+  },
+
+  openBreakpointEditor(relativePath, line, column) {
+    set({
+      breakpointEditor: {
+        relativePath,
+        line,
+        ...(column === undefined ? {} : { column }),
+      },
+    });
+  },
+
+  closeBreakpointEditor() {
+    set({ breakpointEditor: undefined });
+  },
+
+  async saveBreakpointDefinition(input) {
+    await saveDebugBreakpointDefinition(get, set, input);
   },
 
   async setBreakpointEnabled(breakpointId, enabled) {
-    const workspaceId = get().workspaceId;
-    const existing = get().breakpoints.find((breakpoint) => breakpoint.id === breakpointId);
-    if (workspaceId === undefined || existing === undefined) return;
-    try {
-      const saved = await window.openCodeDesk.debug.saveBreakpoint({
-        id: existing.id,
-        workspaceId,
-        relativePath: existing.relativePath,
-        line: existing.line,
-        ...(existing.column === undefined ? {} : { column: existing.column }),
-        enabled,
-      });
-      set((state) => ({ breakpoints: mergeDebugBreakpoint(state.breakpoints, saved) }));
-    } catch (error) {
-      set({ errorMessage: readableDebugError(error) });
-    }
+    await setDebugBreakpointEnabled(get, set, breakpointId, enabled);
+  },
+
+  async setExceptionPauseMode(mode) {
+    await saveDebugExceptionPauseMode(get, set, mode);
   },
 
   async deleteBreakpoint(breakpointId) {
@@ -322,39 +316,11 @@ export const useDebugStore = create<DebugState>((set, get) => ({
   },
 
   async previewContext(conversationId) {
-    const session = selectedDebugSession(get());
-    if (session?.status !== 'paused') return undefined;
-    set({ contextLoading: true, contextPreview: undefined, errorMessage: undefined });
-    try {
-      const snapshot = await window.openCodeDesk.debug.previewContext({
-        sessionId: session.id,
-        conversationId,
-      });
-      set({ contextLoading: false, contextPreview: snapshot });
-      return snapshot;
-    } catch (error) {
-      set({ contextLoading: false, errorMessage: readableDebugError(error) });
-      return undefined;
-    }
+    return previewDebugContext(get, set, conversationId);
   },
 
   async attachContext(conversationId, selectedSections) {
-    const preview = get().contextPreview;
-    if (preview === undefined || preview.conversationId !== conversationId) return undefined;
-    set({ contextLoading: true, errorMessage: undefined });
-    try {
-      const result = await window.openCodeDesk.debug.attachContext({
-        snapshotId: preview.id,
-        expectedDigest: preview.digest,
-        conversationId,
-        selectedSections: [...selectedSections],
-      });
-      set({ contextLoading: false, contextPreview: undefined });
-      return { prompt: result.prompt };
-    } catch (error) {
-      set({ contextLoading: false, errorMessage: readableDebugError(error) });
-      return undefined;
-    }
+    return attachDebugContext(get, set, conversationId, selectedSections);
   },
 
   clearContextPreview() {

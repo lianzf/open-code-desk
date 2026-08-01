@@ -15,6 +15,7 @@ export const debugChannels = {
   deleteWatch: 'debug:delete-watch',
   evaluate: 'debug:evaluate',
   event: 'debug:event',
+  getSettings: 'debug:get-settings',
   listBreakpoints: 'debug:list-breakpoints',
   listHistory: 'debug:list-history',
   listWatches: 'debug:list-watches',
@@ -24,6 +25,7 @@ export const debugChannels = {
   restart: 'debug:restart',
   runToCursor: 'debug:run-to-cursor',
   saveBreakpoint: 'debug:save-breakpoint',
+  saveSettings: 'debug:save-settings',
   saveWatch: 'debug:save-watch',
   scopes: 'debug:scopes',
   stackTrace: 'debug:stack-trace',
@@ -61,6 +63,8 @@ export const debugAdapterCapabilitiesSchema = z
     stepBack: z.boolean(),
     setVariable: z.boolean(),
     conditionalBreakpoints: z.boolean(),
+    hitConditionalBreakpoints: z.boolean().default(false),
+    logPoints: z.boolean().default(false),
     functionBreakpoints: z.boolean(),
     exceptionInfo: z.boolean(),
   })
@@ -131,6 +135,9 @@ export const debugBreakpointSchema = z
     line: z.number().int().positive(),
     column: z.number().int().positive().optional(),
     enabled: z.boolean(),
+    condition: z.string().max(4_000).optional(),
+    hitCondition: z.string().max(1_000).optional(),
+    logMessage: z.string().max(4_000).optional(),
     status: debugBreakpointStatusSchema,
     adapterBreakpointId: z.number().int().nonnegative().optional(),
     message: z.string().max(2_000).optional(),
@@ -231,12 +238,31 @@ export const saveDebugBreakpointRequestSchema = z
     line: z.number().int().positive(),
     column: z.number().int().positive().optional(),
     enabled: z.boolean().default(true),
+    condition: z.string().trim().min(1).max(4_000).optional(),
+    hitCondition: z.string().trim().min(1).max(1_000).optional(),
+    logMessage: z.string().trim().min(1).max(4_000).optional(),
   })
   .strict();
 export const deleteDebugBreakpointRequestSchema = z
   .object({ workspaceId: workspaceIdSchema, breakpointId: uuidSchema })
   .strict();
 export const debugMutationResponseSchema = z.object({ accepted: z.boolean() }).strict();
+
+export const debugExceptionPauseModeSchema = z.enum(['none', 'uncaught', 'all']);
+export const debugSettingsSchema = z
+  .object({
+    workspaceId: workspaceIdSchema,
+    exceptionPauseMode: debugExceptionPauseModeSchema,
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+export const getDebugSettingsRequestSchema = z.object({ workspaceId: workspaceIdSchema }).strict();
+export const saveDebugSettingsRequestSchema = z
+  .object({
+    workspaceId: workspaceIdSchema,
+    exceptionPauseMode: debugExceptionPauseModeSchema,
+  })
+  .strict();
 
 export const listDebugWatchesRequestSchema = z.object({ workspaceId: workspaceIdSchema }).strict();
 export const saveDebugWatchRequestSchema = z
@@ -312,6 +338,7 @@ export const debugWatchExpressionListSchema = z.array(debugWatchExpressionSchema
 export type DebugSession = z.infer<typeof debugSessionSchema>;
 export type DebugEvent = z.infer<typeof debugEventSchema>;
 export type DebugBreakpoint = z.infer<typeof debugBreakpointSchema>;
+export type DebugSettings = z.infer<typeof debugSettingsSchema>;
 export type DebugThread = z.infer<typeof debugThreadSchema>;
 export type DebugStackFrame = z.infer<typeof debugStackFrameSchema>;
 export type DebugScope = z.infer<typeof debugScopeSchema>;
@@ -328,6 +355,8 @@ export type ListDebugHistoryRequest = z.infer<typeof listDebugHistoryRequestSche
 export type ListDebugBreakpointsRequest = z.infer<typeof listDebugBreakpointsRequestSchema>;
 export type SaveDebugBreakpointRequest = z.infer<typeof saveDebugBreakpointRequestSchema>;
 export type DeleteDebugBreakpointRequest = z.infer<typeof deleteDebugBreakpointRequestSchema>;
+export type GetDebugSettingsRequest = z.infer<typeof getDebugSettingsRequestSchema>;
+export type SaveDebugSettingsRequest = z.infer<typeof saveDebugSettingsRequestSchema>;
 export type ListDebugWatchesRequest = z.infer<typeof listDebugWatchesRequestSchema>;
 export type SaveDebugWatchRequest = z.infer<typeof saveDebugWatchRequestSchema>;
 export type DeleteDebugWatchRequest = z.infer<typeof deleteDebugWatchRequestSchema>;

@@ -2,6 +2,7 @@ import type {
   DebugAdapterCapabilities,
   DebugBreakpoint,
   DebugEvaluationResult,
+  DebugExceptionPauseMode,
   DebugExceptionInfo,
   DebugScope,
   DebugStackFrame,
@@ -18,7 +19,12 @@ import type { DapEventMessage } from '../dap/dap-message';
 import { asArray, asRecord, booleanValue, numberValue, stringValue } from './dap-values';
 import { NodeDebugDataAccess } from './node-debug-data-access';
 import { NodeDebugAdapterProcess } from './node-debug-adapter-process';
-import { createLaunchArguments, initializeArguments, mapCapabilities } from './node-debug-launch';
+import {
+  createLaunchArguments,
+  initializeArguments,
+  mapCapabilities,
+  setNodeExceptionBreakpoints,
+} from './node-debug-launch';
 
 const outputCategories = ['console', 'stdout', 'stderr', 'telemetry', 'important'] as const;
 type OutputCategory = (typeof outputCategories)[number];
@@ -30,6 +36,7 @@ export interface CreateNodeDebugAdapterSessionInput {
   readonly environment: Readonly<Record<string, string>>;
   readonly sensitiveValues: ReadonlyArray<string>;
   readonly breakpoints: ReadonlyArray<DebugBreakpoint>;
+  readonly exceptionPauseMode: DebugExceptionPauseMode;
 }
 
 export class NodeDebugAdapterSession implements DebugAdapterSession {
@@ -49,6 +56,7 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
     public readonly capabilities: DebugAdapterCapabilities,
     sensitiveValues: ReadonlyArray<string>,
     breakpoints: ReadonlyArray<DebugBreakpoint>,
+    private exceptionPauseMode: DebugExceptionPauseMode,
   ) {
     this.#dataAccess = new NodeDebugDataAccess(
       process.client,
@@ -83,6 +91,7 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
       mapCapabilities(initializeBody),
       input.sensitiveValues,
       input.breakpoints,
+      input.exceptionPauseMode,
     );
     await initializedEvent;
     const launchPromise = input.process.client.request<unknown>(
@@ -97,7 +106,7 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
           input.breakpoints.filter((item) => item.relativePath === path),
         );
       }
-      await input.process.client.request('setExceptionBreakpoints', { filters: ['uncaught'] });
+      await setNodeExceptionBreakpoints(input.process.client, input.exceptionPauseMode);
       await input.process.client.request('configurationDone');
       await launchPromise;
       return session;
@@ -193,6 +202,9 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
         breakpoints: enabled.map((item) => ({
           line: item.line,
           ...(item.column === undefined ? {} : { column: item.column }),
+          ...(item.condition === undefined ? {} : { condition: item.condition }),
+          ...(item.hitCondition === undefined ? {} : { hitCondition: item.hitCondition }),
+          ...(item.logMessage === undefined ? {} : { logMessage: item.logMessage }),
         })),
         sourceModified: false,
       }),
@@ -211,6 +223,13 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
         ...(message === undefined ? {} : { message }),
       };
     });
+  }
+
+  public async setExceptionBreakpoints(mode: DebugExceptionPauseMode): Promise<void> {
+    await Promise.all(
+      [...this.#clients].map((client) => setNodeExceptionBreakpoints(client, mode)),
+    );
+    this.exceptionPauseMode = mode;
   }
 
   public async runToCursor(
@@ -285,7 +304,7 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
     for (const [relativePath, breakpoints] of this.#breakpointsByPath) {
       await this.sendBreakpoints(client, relativePath, breakpoints);
     }
-    await client.request('setExceptionBreakpoints', { filters: ['uncaught'] });
+    await setNodeExceptionBreakpoints(client, this.exceptionPauseMode);
     await client.request('configurationDone');
     await launchPromise;
     return {};
