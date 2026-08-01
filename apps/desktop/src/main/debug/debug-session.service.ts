@@ -1,5 +1,4 @@
 import type {
-  DebugBreakpoint,
   DebugEvaluationResult,
   DebugEvent,
   DebugScope,
@@ -11,16 +10,11 @@ import type {
 } from '@open-code-desk/domain';
 import type {
   DecideDebugStartRequest,
-  DeleteDebugBreakpointRequest,
-  DeleteDebugWatchRequest,
   EvaluateDebugRequest,
-  ListDebugBreakpointsRequest,
   ListDebugHistoryRequest,
   ListDebugWatchesRequest,
   ProposeDebugStartRequest,
   RunToCursorRequest,
-  SaveDebugBreakpointRequest,
-  SaveDebugWatchRequest,
 } from '@open-code-desk/ipc-contracts';
 
 import type { AuditLogService } from '../audit/audit-log.service';
@@ -31,12 +25,14 @@ import type { WorkspaceService } from '../workspace/workspace.service';
 import type { DebugAdapterEvent } from './debug-adapter';
 import type { DebugAdapterRegistry } from './debug-adapter.registry';
 import { handleDebugAdapterEvent, type ActiveDebugSession } from './debug-adapter-event-handler';
-import { DebugBreakpointCoordinator } from './debug-breakpoint-coordinator';
 import type { DebugBreakpointRepository } from './debug-breakpoint.repository';
+import { DebugConfigurationCoordinator } from './debug-configuration-coordinator';
+import { DebugOperationQueue } from './debug-operation-queue';
 import { DebugProposalService } from './debug-proposal.service';
 import { recordDebugSessionAudit } from './debug-session-audit';
 import { DebugSessionController } from './debug-session-controller';
 import type { DebugSessionRepository } from './debug-session.repository';
+import type { DebugSettingsRepository } from './debug-settings.repository';
 import type { DebugWatchRepository } from './debug-watch.repository';
 
 type DebugListener = (event: DebugEvent) => void;
@@ -44,24 +40,27 @@ type DebugListener = (event: DebugEvent) => void;
 export class DebugSessionService {
   readonly #active = new Map<string, ActiveDebugSession>();
   readonly #listeners = new Set<DebugListener>();
-  readonly #queues = new Map<string, Promise<void>>();
+  readonly #operations = new DebugOperationQueue();
   readonly #sequences = new Map<string, number>();
-  readonly #breakpointCoordinator: DebugBreakpointCoordinator;
   readonly #proposals: DebugProposalService;
   readonly #controller: DebugSessionController;
+  public readonly configuration: DebugConfigurationCoordinator;
 
   public constructor(
     private readonly configurations: RunConfigurationRepository,
     private readonly sessions: DebugSessionRepository,
     breakpoints: DebugBreakpointRepository,
-    private readonly watches: DebugWatchRepository,
+    debugSettings: DebugSettingsRepository,
+    watches: DebugWatchRepository,
     private readonly workspaces: WorkspaceService,
     private readonly secretStore: SecretStore,
     private readonly adapters: DebugAdapterRegistry,
     private readonly audit?: AuditLogService,
   ) {
-    this.#breakpointCoordinator = new DebugBreakpointCoordinator({
-      repository: breakpoints,
+    this.configuration = new DebugConfigurationCoordinator({
+      breakpoints,
+      settings: debugSettings,
+      watches,
       workspaces,
       activeAdapter: (workspaceId) => this.activeForWorkspace(workspaceId)?.adapter,
       emit: (event) => this.emit(event),
@@ -197,18 +196,6 @@ export class DebugSessionService {
     return this.#controller.runToCursor(input);
   }
 
-  public listBreakpoints(input: ListDebugBreakpointsRequest): ReadonlyArray<DebugBreakpoint> {
-    return this.#breakpointCoordinator.list(input);
-  }
-
-  public async saveBreakpoint(input: SaveDebugBreakpointRequest): Promise<DebugBreakpoint> {
-    return this.#breakpointCoordinator.save(input);
-  }
-
-  public async deleteBreakpoint(input: DeleteDebugBreakpointRequest): Promise<boolean> {
-    return this.#breakpointCoordinator.delete(input);
-  }
-
   public threads(sessionId: string): Promise<ReadonlyArray<DebugThread>> {
     return this.requireActiveSession(sessionId).adapter.threads();
   }
@@ -234,19 +221,7 @@ export class DebugSessionService {
   }
 
   public listWatches(input: ListDebugWatchesRequest): ReadonlyArray<DebugWatchExpression> {
-    return this.watches.list(input.workspaceId);
-  }
-
-  public saveWatch(input: SaveDebugWatchRequest): DebugWatchExpression {
-    return this.watches.save({
-      workspaceId: input.workspaceId,
-      expression: input.expression,
-      ...(input.id === undefined ? {} : { id: input.id }),
-    });
-  }
-
-  public deleteWatch(input: DeleteDebugWatchRequest): boolean {
-    return this.watches.delete(input.workspaceId, input.watchId);
+    return this.configuration.watches.list(input);
   }
 
   public async close(): Promise<void> {
@@ -290,7 +265,9 @@ export class DebugSessionService {
         command: session.command,
         environment: environment.values,
         sensitiveValues: environment.sensitiveValues,
-        breakpoints: this.#breakpointCoordinator.listWorkspace(session.workspaceId),
+        breakpoints: this.configuration.breakpoints.listWorkspace(session.workspaceId),
+        exceptionPauseMode: this.configuration.settings.current(session.workspaceId)
+          .exceptionPauseMode,
       });
       const active: ActiveDebugSession = {
         adapter,
@@ -309,7 +286,7 @@ export class DebugSessionService {
       });
       this.emitStatus(starting, running);
       recordDebugSessionAudit(this.audit, running, 'started');
-      await this.#breakpointCoordinator.refreshAll(session.workspaceId);
+      await this.configuration.breakpoints.refreshAll(session.workspaceId);
       return running;
     } catch (error) {
       return this.fail(
@@ -335,7 +312,7 @@ export class DebugSessionService {
       emit: (debugEvent) => this.emit(debugEvent),
       emitStatus: (previous, session) => this.emitStatus(previous, session),
       updateBreakpoint: (workspaceId, breakpointEvent) =>
-        this.#breakpointCoordinator.updateFromAdapter(workspaceId, breakpointEvent),
+        this.configuration.updateBreakpointFromAdapter(workspaceId, breakpointEvent),
     });
     if (result === 'completed') {
       const completed = this.requireSession(sessionId);
@@ -389,17 +366,7 @@ export class DebugSessionService {
   }
 
   private enqueue<T>(sessionId: string, action: () => Promise<T>): Promise<T> {
-    const previous = this.#queues.get(sessionId) ?? Promise.resolve();
-    const result = previous.catch(() => undefined).then(action);
-    const settled = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.#queues.set(sessionId, settled);
-    void settled.then(() => {
-      if (this.#queues.get(sessionId) === settled) this.#queues.delete(sessionId);
-    });
-    return result;
+    return this.#operations.enqueue(sessionId, action);
   }
 }
 

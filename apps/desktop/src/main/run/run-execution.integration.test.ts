@@ -228,7 +228,7 @@ describe('run execution persistence', () => {
       .all() as unknown as ReadonlyArray<{ readonly name: string }>;
     migrated.close();
 
-    expect(version.user_version).toBe(10);
+    expect(version.user_version).toBe(11);
     expect(indexes.map((index) => index.name)).toEqual([
       'run_executions_configuration_created_idx',
       'run_executions_workspace_created_idx',

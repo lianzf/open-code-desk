@@ -3,6 +3,7 @@ import type { AgentTaskCheckpoint } from '@open-code-desk/domain';
 import type {
   DebugAdapterCapabilities,
   DebugBreakpointStatus,
+  DebugExceptionPauseMode,
   DebugPauseLocation,
   DebugSessionError,
   DebugSessionStatus,
@@ -159,6 +160,9 @@ export const debugBreakpoints = sqliteTable(
     line: integer('line').notNull(),
     column: integer('column').notNull(),
     enabled: integer('enabled', { mode: 'boolean' }).notNull(),
+    condition: text('condition'),
+    hitCondition: text('hit_condition'),
+    logMessage: text('log_message'),
     status: text('status').$type<DebugBreakpointStatus>().notNull(),
     adapterBreakpointId: integer('adapter_breakpoint_id'),
     message: text('message'),
@@ -175,6 +179,14 @@ export const debugBreakpoints = sqliteTable(
     index('debug_breakpoints_workspace_path_idx').on(table.workspaceId, table.relativePath),
   ],
 );
+
+export const debugSettings = sqliteTable('debug_settings', {
+  workspaceId: text('workspace_id')
+    .primaryKey()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  exceptionPauseMode: text('exception_pause_mode').$type<DebugExceptionPauseMode>().notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
 
 export const debugWatches = sqliteTable(
   'debug_watches',

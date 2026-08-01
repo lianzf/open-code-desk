@@ -11,6 +11,7 @@ import {
   debugSessionListSchema,
   debugSessionRequestSchema,
   debugSessionSchema,
+  debugSettingsSchema,
   debugStackFrameListSchema,
   debugThreadListSchema,
   debugThreadRequestSchema,
@@ -22,12 +23,14 @@ import {
   deleteDebugBreakpointRequestSchema,
   deleteDebugWatchRequestSchema,
   evaluateDebugRequestSchema,
+  getDebugSettingsRequestSchema,
   listDebugBreakpointsRequestSchema,
   listDebugHistoryRequestSchema,
   listDebugWatchesRequestSchema,
   proposeDebugStartRequestSchema,
   runToCursorRequestSchema,
   saveDebugBreakpointRequestSchema,
+  saveDebugSettingsRequestSchema,
   saveDebugWatchRequestSchema,
 } from '@open-code-desk/ipc-contracts';
 
@@ -82,13 +85,21 @@ export function registerDebugIpc(
     debugSessionListSchema.parse(service.listHistory(input)),
   );
   handle(debugChannels.listBreakpoints, listDebugBreakpointsRequestSchema, async (input) =>
-    debugBreakpointListSchema.parse(service.listBreakpoints(input)),
+    debugBreakpointListSchema.parse(service.configuration.breakpoints.list(input)),
   );
   handle(debugChannels.saveBreakpoint, saveDebugBreakpointRequestSchema, async (input) =>
-    debugBreakpointSchema.parse(await service.saveBreakpoint(input)),
+    debugBreakpointSchema.parse(await service.configuration.breakpoints.save(input)),
   );
   handle(debugChannels.deleteBreakpoint, deleteDebugBreakpointRequestSchema, async (input) =>
-    debugMutationResponseSchema.parse({ accepted: await service.deleteBreakpoint(input) }),
+    debugMutationResponseSchema.parse({
+      accepted: await service.configuration.breakpoints.delete(input),
+    }),
+  );
+  handle(debugChannels.getSettings, getDebugSettingsRequestSchema, async (input) =>
+    debugSettingsSchema.parse(await service.configuration.settings.get(input)),
+  );
+  handle(debugChannels.saveSettings, saveDebugSettingsRequestSchema, async (input) =>
+    debugSettingsSchema.parse(await service.configuration.settings.save(input)),
   );
   handle(debugChannels.threads, debugSessionRequestSchema, async (input) =>
     debugThreadListSchema.parse(await service.threads(input.sessionId)),
@@ -108,13 +119,13 @@ export function registerDebugIpc(
     debugEvaluationResultSchema.parse(await service.evaluate(input)),
   );
   handle(debugChannels.listWatches, listDebugWatchesRequestSchema, async (input) =>
-    debugWatchExpressionListSchema.parse(service.listWatches(input)),
+    debugWatchExpressionListSchema.parse(service.configuration.watches.list(input)),
   );
   handle(debugChannels.saveWatch, saveDebugWatchRequestSchema, async (input) =>
-    debugWatchExpressionSchema.parse(service.saveWatch(input)),
+    debugWatchExpressionSchema.parse(service.configuration.watches.save(input)),
   );
   handle(debugChannels.deleteWatch, deleteDebugWatchRequestSchema, async (input) =>
-    debugMutationResponseSchema.parse({ accepted: service.deleteWatch(input) }),
+    debugMutationResponseSchema.parse({ accepted: service.configuration.watches.delete(input) }),
   );
 
   function handle<TInput, TOutput>(

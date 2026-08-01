@@ -2,6 +2,7 @@ import type {
   DebugAdapterCapabilities,
   DebugBreakpoint,
   DebugEvaluationResult,
+  DebugExceptionPauseMode,
   DebugExceptionInfo,
   DebugScope,
   DebugStackFrame,
@@ -18,6 +19,7 @@ export interface DebugAdapterLaunchInput {
   readonly environment: Readonly<Record<string, string>>;
   readonly sensitiveValues: ReadonlyArray<string>;
   readonly breakpoints: ReadonlyArray<DebugBreakpoint>;
+  readonly exceptionPauseMode: DebugExceptionPauseMode;
 }
 
 export type DebugAdapterEvent =
@@ -67,6 +69,7 @@ export interface DebugAdapterSession {
     relativePath: string,
     breakpoints: ReadonlyArray<DebugBreakpoint>,
   ): Promise<ReadonlyArray<DebugBreakpoint>>;
+  setExceptionBreakpoints(mode: DebugExceptionPauseMode): Promise<void>;
   runToCursor(threadId: number, relativePath: string, line: number, column?: number): Promise<void>;
   restart(): Promise<void>;
   disconnect(): Promise<void>;

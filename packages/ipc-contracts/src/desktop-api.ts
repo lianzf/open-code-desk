@@ -55,6 +55,7 @@ import type {
   DebugScope,
   DebugSession,
   DebugSessionRequest,
+  DebugSettings,
   DebugStackFrame,
   DebugThread,
   DebugThreadRequest,
@@ -65,12 +66,14 @@ import type {
   DeleteDebugBreakpointRequest,
   DeleteDebugWatchRequest,
   EvaluateDebugRequest,
+  GetDebugSettingsRequest,
   ListDebugBreakpointsRequest,
   ListDebugHistoryRequest,
   ListDebugWatchesRequest,
   ProposeDebugStartRequest,
   RunToCursorRequest,
   SaveDebugBreakpointRequest,
+  SaveDebugSettingsRequest,
   SaveDebugWatchRequest,
 } from './debug';
 import type {
@@ -210,6 +213,8 @@ export interface DesktopApi {
     listBreakpoints(input: ListDebugBreakpointsRequest): Promise<ReadonlyArray<DebugBreakpoint>>;
     saveBreakpoint(input: SaveDebugBreakpointRequest): Promise<DebugBreakpoint>;
     deleteBreakpoint(input: DeleteDebugBreakpointRequest): Promise<{ readonly accepted: boolean }>;
+    getSettings(input: GetDebugSettingsRequest): Promise<DebugSettings>;
+    saveSettings(input: SaveDebugSettingsRequest): Promise<DebugSettings>;
     threads(input: DebugSessionRequest): Promise<ReadonlyArray<DebugThread>>;
     stackTrace(input: DebugThreadRequest): Promise<ReadonlyArray<DebugStackFrame>>;
     scopes(input: DebugFrameRequest): Promise<ReadonlyArray<DebugScope>>;

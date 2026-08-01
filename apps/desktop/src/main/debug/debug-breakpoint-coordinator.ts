@@ -36,6 +36,9 @@ export class DebugBreakpointCoordinator {
       relativePath: input.relativePath,
       line: input.line,
       enabled: input.enabled,
+      ...(input.condition === undefined ? {} : { condition: input.condition }),
+      ...(input.hitCondition === undefined ? {} : { hitCondition: input.hitCondition }),
+      ...(input.logMessage === undefined ? {} : { logMessage: input.logMessage }),
       ...(input.id === undefined ? {} : { id: input.id }),
       ...(input.column === undefined ? {} : { column: input.column }),
     });

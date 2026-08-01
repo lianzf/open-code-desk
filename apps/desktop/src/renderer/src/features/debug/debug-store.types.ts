@@ -6,6 +6,7 @@ import type {
   DebugEvent,
   DebugScope,
   DebugSession,
+  DebugSettings,
   DebugStackFrame,
   DebugThread,
   DebugVariable,
@@ -19,6 +20,18 @@ export interface DebugConsoleEntry {
   readonly data: string;
 }
 
+export interface DebugBreakpointEditorTarget {
+  readonly relativePath: string;
+  readonly line: number;
+  readonly column?: number;
+}
+
+export interface DebugBreakpointDefinition extends DebugBreakpointEditorTarget {
+  readonly condition?: string;
+  readonly hitCondition?: string;
+  readonly logMessage?: string;
+}
+
 export interface DebugState {
   readonly workspaceId: string | undefined;
   readonly initialized: boolean;
@@ -26,6 +39,8 @@ export interface DebugState {
   readonly sessions: ReadonlyArray<DebugSession>;
   readonly selectedSessionId: string | undefined;
   readonly breakpoints: ReadonlyArray<DebugBreakpoint>;
+  readonly settings: DebugSettings | undefined;
+  readonly breakpointEditor: DebugBreakpointEditorTarget | undefined;
   readonly watches: ReadonlyArray<DebugWatchExpression>;
   readonly threads: ReadonlyArray<DebugThread>;
   readonly selectedThreadId: number | undefined;
@@ -47,7 +62,11 @@ export interface DebugState {
   control(action: 'pause' | 'continue' | 'next' | 'stepIn' | 'stepOut'): Promise<void>;
   runToCursor(relativePath: string, line: number, column?: number): Promise<void>;
   toggleBreakpoint(relativePath: string, line: number): Promise<void>;
+  openBreakpointEditor(relativePath: string, line: number, column?: number): void;
+  closeBreakpointEditor(): void;
+  saveBreakpointDefinition(input: DebugBreakpointDefinition): Promise<void>;
   setBreakpointEnabled(breakpointId: string, enabled: boolean): Promise<void>;
+  setExceptionPauseMode(mode: DebugSettings['exceptionPauseMode']): Promise<void>;
   deleteBreakpoint(breakpointId: string): Promise<void>;
   deleteBreakpointsForFile(relativePath: string): Promise<void>;
   deleteAllBreakpoints(): Promise<void>;
