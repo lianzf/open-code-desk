@@ -52,6 +52,8 @@ import { ProviderService } from './providers/provider.service';
 import { registerModelProviders } from './providers/register-model-providers';
 import { RunConfigurationRepository } from './run/run-configuration.repository';
 import { RunConfigurationService } from './run/run-configuration.service';
+import { RunExecutionRepository } from './run/run-execution.repository';
+import { RunExecutionService } from './run/run-execution.service';
 import { SecretRepository } from './security/secret.repository';
 import { ElectronSafeStorageCryptography, SecureSecretStore } from './security/secret-store';
 import { AppSettingsRepository } from './settings/app-settings.repository';
@@ -79,6 +81,9 @@ let toolApprovalService: ToolApprovalService | null = null;
 let terminalService: TerminalSessionService | null = null;
 let crashReportService: CrashReportService | null = null;
 let updateService: UpdateService | null = null;
+let runExecutionService: RunExecutionService | null = null;
+let runCleanupInProgress = false;
+let runCleanupCompleted = false;
 let startupUpdateTimer: ReturnType<typeof setTimeout> | null = null;
 
 function recordCrashSafely(input: RecordCrashReportInput): void {
@@ -179,9 +184,20 @@ void app
       secretStore,
       providerRegistry,
     );
+    const runConfigurationRepository = new RunConfigurationRepository(database);
     const runConfigurationService = new RunConfigurationService(
-      new RunConfigurationRepository(database),
+      runConfigurationRepository,
       secretStore,
+    );
+    const runExecutionRepository = new RunExecutionRepository(database);
+    runExecutionRepository.recoverInterrupted();
+    runExecutionService = new RunExecutionService(
+      runConfigurationRepository,
+      runExecutionRepository,
+      workspaceService,
+      secretStore,
+      undefined,
+      auditLog,
     );
     const settingsService = new AppSettingsService(
       new AppSettingsRepository(database),
@@ -276,7 +292,12 @@ void app
     registerFilesIpc(trustedRendererOptions, fileService);
     registerGitIpc(trustedRendererOptions, gitService);
     registerProvidersIpc(trustedRendererOptions, providerService);
-    registerRunIpc(trustedRendererOptions, workspaceService, runConfigurationService);
+    registerRunIpc(
+      trustedRendererOptions,
+      workspaceService,
+      runConfigurationService,
+      runExecutionService,
+    );
     registerSettingsIpc(trustedRendererOptions, settingsService, (settings) => {
       nativeTheme.themeSource = settings.theme;
       crashReportService?.setEnabled(settings.crashReporting, crashReporter);
@@ -337,7 +358,23 @@ void app
     app.exit(1);
   });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (runExecutionService !== null && !runCleanupCompleted) {
+    event.preventDefault();
+    if (!runCleanupInProgress) {
+      runCleanupInProgress = true;
+      void runExecutionService
+        .close()
+        .catch(() => undefined)
+        .finally(() => {
+          runExecutionService = null;
+          runCleanupCompleted = true;
+          runCleanupInProgress = false;
+          app.quit();
+        });
+    }
+    return;
+  }
   if (chatIpcController !== null) {
     unregisterChatIpc(chatIpcController);
     chatIpcController = null;

@@ -108,11 +108,20 @@ import {
   startChatResponseSchema,
   deleteRunConfigurationRequestSchema,
   deleteRunConfigurationResponseSchema,
+  decideRunStartRequestSchema,
   detectProjectRequestSchema,
+  listRunHistoryRequestSchema,
   listRunConfigurationsRequestSchema,
+  pendingRunExecutionSchema,
+  proposeRunStartRequestSchema,
+  restartRunExecutionRequestSchema,
   runChannels,
   runConfigurationListSchema,
   runConfigurationSchema,
+  runEventSchema,
+  runExecutionListSchema,
+  runExecutionSchema,
+  stopRunExecutionRequestSchema,
   deleteConversationResponseSchema,
   exportConversationResponseSchema,
   type DesktopApi,
@@ -288,6 +297,40 @@ const desktopApi: DesktopApi = {
         request,
       );
       return setDefaultRunConfigurationResponseSchema.parse(response);
+    },
+    async proposeStart(input) {
+      const request = proposeRunStartRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.proposeStart, request);
+      return pendingRunExecutionSchema.parse(response);
+    },
+    async decideStart(input) {
+      const request = decideRunStartRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.decideStart, request);
+      return runExecutionSchema.parse(response);
+    },
+    async stop(input) {
+      const request = stopRunExecutionRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.stop, request);
+      return runExecutionSchema.parse(response);
+    },
+    async restart(input) {
+      const request = restartRunExecutionRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.restart, request);
+      return pendingRunExecutionSchema.parse(response);
+    },
+    async listHistory(input) {
+      const request = listRunHistoryRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.listHistory, request);
+      return runExecutionListSchema.parse(response);
+    },
+    onEvent(listener) {
+      const wrappedListener = (_event: Electron.IpcRendererEvent, untrustedEvent: unknown) => {
+        listener(runEventSchema.parse(untrustedEvent));
+      };
+      ipcRenderer.on(runChannels.event, wrappedListener);
+      return () => {
+        ipcRenderer.removeListener(runChannels.event, wrappedListener);
+      };
     },
   },
   settings: {

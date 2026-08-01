@@ -206,7 +206,7 @@ describe('run configuration persistence', () => {
       .all() as unknown as ReadonlyArray<{ readonly name: string }>;
     migrated.close();
 
-    expect(version.user_version).toBe(8);
+    expect(version.user_version).toBe(9);
     expect(tables.map((table) => table.name)).toEqual([
       'run_configurations',
       'workspace_run_settings',

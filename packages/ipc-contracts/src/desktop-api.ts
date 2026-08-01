@@ -57,15 +57,23 @@ import type {
   SaveProviderRequest,
 } from './providers';
 import type {
+  DecideRunStartRequest,
   DeleteRunConfigurationRequest,
   DetectProjectRequest,
+  ListRunHistoryRequest,
   ListRunConfigurationsRequest,
+  PendingRunExecution,
   ProjectDetection,
+  ProposeRunStartRequest,
+  RestartRunExecutionRequest,
   RunConfiguration,
   RunConfigurationList,
+  RunEvent,
+  RunExecution,
   SaveRunConfigurationRequest,
   SetDefaultRunConfigurationRequest,
   SetDefaultRunConfigurationResponse,
+  StopRunExecutionRequest,
 } from './run';
 import type { AppSettings, UpdateAppSettingsRequest } from './settings';
 import type {
@@ -148,6 +156,12 @@ export interface DesktopApi {
     setDefault(
       input: SetDefaultRunConfigurationRequest,
     ): Promise<SetDefaultRunConfigurationResponse>;
+    proposeStart(input: ProposeRunStartRequest): Promise<PendingRunExecution>;
+    decideStart(input: DecideRunStartRequest): Promise<RunExecution>;
+    stop(input: StopRunExecutionRequest): Promise<RunExecution>;
+    restart(input: RestartRunExecutionRequest): Promise<PendingRunExecution>;
+    listHistory(input: ListRunHistoryRequest): Promise<ReadonlyArray<RunExecution>>;
+    onEvent(listener: (event: RunEvent) => void): () => void;
   };
   readonly settings: {
     get(): Promise<AppSettings>;
