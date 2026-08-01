@@ -52,7 +52,7 @@ jobs:
       - name: Install Linux keyring dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes gnome-keyring
+          sudo apt-get install --yes gnome-keyring libsecret-tools
 
       - name: End-to-end tests
         env:
@@ -61,8 +61,13 @@ jobs:
         run: |
           dbus-run-session -- bash -euo pipefail -c '
             keyring_password="$(openssl rand -hex 32)"
-            eval "$(printf "%s" "$keyring_password" | gnome-keyring-daemon --unlock --components=secrets)"
+            eval "$(printf "%s" "$keyring_password" | gnome-keyring-daemon --daemonize --unlock --components=secrets)"
             unset keyring_password
+            probe_value="$(openssl rand -hex 32)"
+            printf "%s" "$probe_value" | timeout 15s secret-tool store --label="OpenCode Desk CI probe" application open-code-desk-ci
+            test "$(timeout 15s secret-tool lookup application open-code-desk-ci)" = "$probe_value"
+            timeout 15s secret-tool clear application open-code-desk-ci
+            unset probe_value
             xvfb-run --auto-servernum pnpm exec playwright test
           '
 
