@@ -2,6 +2,34 @@
 
 本文档记录 OpenCode Desk 各阶段版本的用户可见变化。版本遵循语义化版本规范；正式版发布前使用预发布标识。
 
+## [0.3.0-alpha.1] - 2026-08-01
+
+### 新增
+
+- 增加独立的受管项目运行服务、运行配置编辑器、顶部运行工具栏和运行输出面板。
+- 每次运行先生成不可变命令快照和风险说明，经用户批准后才使用结构化 executable/args 启动。
+- 支持项目启动、实时 stdout/stderr、停止、重新运行、PID、退出码、错误和历史恢复。
+- 增加 `run_executions` SQLite migration 9，持久化审批摘要、状态、输出尾部和退出结果。
+- 支持普通与敏感运行环境变量；敏感值只通过系统安全凭据存储引用进入运行时。
+
+### 安全与可靠性
+
+- 运行进程使用 `shell: false`，校验工作区边界、环境文件摘要和配置版本，阻断提权与高风险模式。
+- 输出流在显示和落库前执行 Secret 脱敏与字节上限，应用退出时清理仍在运行的子进程树。
+- Linux CI 使用真实 GNOME Secret Service，并验证 Electron 实际选择 `gnome_libsecret`，不接受 Playwright 的 `basic_text` 测试后端。
+
+### 验证
+
+- 格式检查、ESLint、TypeScript 严格类型检查、生产构建和 Vitest 全部通过。
+- Vitest：54 个测试文件、181 个测试通过。
+- Playwright Electron E2E：9 个场景通过。
+- GitHub Actions 已通过 Windows x64、macOS 和 Linux x64 安装包构建。
+
+### 已知限制
+
+- 本版本完成项目运行闭环，不包含 DAP client、真实断点、调用栈、变量、监视或单步调试。
+- Windows 代码签名、macOS 签名/notarization 和干净设备安装验收仍是正式发布门槛。
+
 ## [0.2.0-alpha.1] - 2026-08-01
 
 ### 新增
@@ -31,3 +59,4 @@
 - 正式 Windows/macOS 安装包仍需要代码签名、notarization 和干净设备验收。
 
 [0.2.0-alpha.1]: docs/releases/0.2.0-alpha.1.md
+[0.3.0-alpha.1]: docs/releases/0.3.0-alpha.1.md
