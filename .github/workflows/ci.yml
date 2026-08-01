@@ -49,8 +49,32 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Install Linux keyring dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes gnome-keyring
+
       - name: End-to-end tests
-        run: xvfb-run --auto-servernum pnpm exec playwright test
+        env:
+          XDG_CURRENT_DESKTOP: GNOME
+        run: |
+          dbus-run-session -- bash -euo pipefail -c '
+            keyring_password="$(openssl rand -hex 32)"
+            eval "$(printf "%s" "$keyring_password" | gnome-keyring-daemon --unlock --components=secrets)"
+            unset keyring_password
+            xvfb-run --auto-servernum pnpm exec playwright test
+          '
+
+      - name: Upload end-to-end diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-diagnostics
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 7
 
   package:
     name: Package ${{ matrix.name }}
