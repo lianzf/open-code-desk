@@ -307,6 +307,49 @@ const databaseMigrations = [
     CREATE INDEX crash_reports_acknowledged_idx
       ON crash_reports(acknowledged_at, created_at);
   `,
+  `
+    CREATE TABLE run_configurations (
+      id TEXT PRIMARY KEY NOT NULL,
+      workspace_id TEXT NOT NULL
+        REFERENCES workspaces(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      executable TEXT NOT NULL,
+      args TEXT NOT NULL,
+      runtime_args TEXT NOT NULL,
+      working_directory TEXT NOT NULL,
+      environment_variables TEXT NOT NULL,
+      environment_file TEXT,
+      pre_launch_task_id TEXT,
+      post_run_task_id TEXT,
+      console TEXT NOT NULL,
+      auto_generated INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      CONSTRAINT run_configurations_auto_generated_check
+        CHECK (auto_generated IN (0, 1)),
+      CONSTRAINT run_configurations_console_check
+        CHECK (console IN ('integratedTerminal', 'runOutput')),
+      CONSTRAINT run_configurations_type_check
+        CHECK (type IN (
+          'node', 'typescript', 'react', 'vue', 'nextjs', 'java-maven',
+          'java-gradle', 'spring-boot', 'python', 'c', 'cpp', 'dotnet',
+          'go', 'rust', 'script', 'custom'
+        ))
+    );
+    CREATE UNIQUE INDEX run_configurations_workspace_name_idx
+      ON run_configurations(workspace_id, name);
+    CREATE INDEX run_configurations_workspace_updated_idx
+      ON run_configurations(workspace_id, updated_at);
+
+    CREATE TABLE workspace_run_settings (
+      workspace_id TEXT PRIMARY KEY NOT NULL
+        REFERENCES workspaces(id) ON DELETE CASCADE,
+      default_configuration_id TEXT
+        REFERENCES run_configurations(id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL
+    );
+  `,
 ] as const;
 
 function migrateDatabase(client: DatabaseSync): void {

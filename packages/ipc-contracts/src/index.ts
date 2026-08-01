@@ -10,6 +10,7 @@ export * from './git';
 export * from './health';
 export * from './permissions';
 export * from './providers';
+export * from './run';
 export * from './settings';
 export * from './terminal';
 export * from './updates';

@@ -56,6 +56,17 @@ import type {
   ProviderIdRequest,
   SaveProviderRequest,
 } from './providers';
+import type {
+  DeleteRunConfigurationRequest,
+  DetectProjectRequest,
+  ListRunConfigurationsRequest,
+  ProjectDetection,
+  RunConfiguration,
+  RunConfigurationList,
+  SaveRunConfigurationRequest,
+  SetDefaultRunConfigurationRequest,
+  SetDefaultRunConfigurationResponse,
+} from './run';
 import type { AppSettings, UpdateAppSettingsRequest } from './settings';
 import type {
   CancelFileSearchRequest,
@@ -128,6 +139,15 @@ export interface DesktopApi {
     delete(input: DeleteProviderRequest): Promise<{ readonly deleted: true }>;
     testConnection(input: ProviderIdRequest): Promise<ConnectionTestResult>;
     listModels(input: ProviderIdRequest): Promise<ReadonlyArray<ModelInfo>>;
+  };
+  readonly run: {
+    detect(input: DetectProjectRequest): Promise<ProjectDetection>;
+    list(input: ListRunConfigurationsRequest): Promise<RunConfigurationList>;
+    save(input: SaveRunConfigurationRequest): Promise<RunConfiguration>;
+    delete(input: DeleteRunConfigurationRequest): Promise<{ readonly deleted: boolean }>;
+    setDefault(
+      input: SetDefaultRunConfigurationRequest,
+    ): Promise<SetDefaultRunConfigurationResponse>;
   };
   readonly settings: {
     get(): Promise<AppSettings>;

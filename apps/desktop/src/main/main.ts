@@ -40,6 +40,7 @@ import { registerContextIpc, unregisterContextIpc } from './ipc/context.ipc';
 import { registerConversationsIpc, unregisterConversationsIpc } from './ipc/conversations.ipc';
 import { registerCrashReportsIpc, unregisterCrashReportsIpc } from './ipc/crash-reports.ipc';
 import { registerProvidersIpc, unregisterProvidersIpc } from './ipc/providers.ipc';
+import { registerRunIpc, unregisterRunIpc } from './ipc/run.ipc';
 import { registerPermissionsIpc, unregisterPermissionsIpc } from './ipc/permissions.ipc';
 import { registerSettingsIpc, unregisterSettingsIpc } from './ipc/settings.ipc';
 import { registerWorkspaceIpc, unregisterWorkspaceIpc } from './ipc/workspace.ipc';
@@ -49,6 +50,8 @@ import { ProviderConfigRepository } from './providers/provider-config.repository
 import { ModelConfigRepository } from './providers/model-config.repository';
 import { ProviderService } from './providers/provider.service';
 import { registerModelProviders } from './providers/register-model-providers';
+import { RunConfigurationRepository } from './run/run-configuration.repository';
+import { RunConfigurationService } from './run/run-configuration.service';
 import { SecretRepository } from './security/secret.repository';
 import { ElectronSafeStorageCryptography, SecureSecretStore } from './security/secret-store';
 import { AppSettingsRepository } from './settings/app-settings.repository';
@@ -176,6 +179,10 @@ void app
       secretStore,
       providerRegistry,
     );
+    const runConfigurationService = new RunConfigurationService(
+      new RunConfigurationRepository(database),
+      secretStore,
+    );
     const settingsService = new AppSettingsService(
       new AppSettingsRepository(database),
       providerConfigRepository,
@@ -269,6 +276,7 @@ void app
     registerFilesIpc(trustedRendererOptions, fileService);
     registerGitIpc(trustedRendererOptions, gitService);
     registerProvidersIpc(trustedRendererOptions, providerService);
+    registerRunIpc(trustedRendererOptions, workspaceService, runConfigurationService);
     registerSettingsIpc(trustedRendererOptions, settingsService, (settings) => {
       nativeTheme.themeSource = settings.theme;
       crashReportService?.setEnabled(settings.crashReporting, crashReporter);
@@ -344,6 +352,7 @@ app.on('before-quit', () => {
   unregisterPermissionsIpc();
   unregisterTerminalIpc();
   unregisterProvidersIpc();
+  unregisterRunIpc();
   unregisterSettingsIpc();
   unregisterGitIpc();
   unregisterFilesIpc();

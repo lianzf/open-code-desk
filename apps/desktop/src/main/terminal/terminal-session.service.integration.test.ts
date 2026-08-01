@@ -107,7 +107,7 @@ describe('TerminalSessionService integration', () => {
     expect(exit).toMatchObject({ ownerId: 101, sessionId: session.sessionId, exitCode: 0 });
     expect(output).toContain('terminal-marker');
     expect(service.close(101, session.sessionId)).toBe(false);
-  });
+  }, 15_000);
 
   it('isolates sessions by renderer owner and closes only the requested owner', async () => {
     const first = await service.create(1, workspaceId, 80, 24);

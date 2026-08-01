@@ -75,6 +75,7 @@ import {
   providerConfigSchema,
   providerDescriptorListSchema,
   providerIdRequestSchema,
+  projectDetectionSchema,
   permissionRuleListSchema,
   permissionRuleSchema,
   permissionActionResponseSchema,
@@ -89,8 +90,11 @@ import {
   searchTextRequestSchema,
   textSearchResponseSchema,
   saveProviderRequestSchema,
+  saveRunConfigurationRequestSchema,
   saveConversationContextRequestSchema,
   settingsChannels,
+  setDefaultRunConfigurationRequestSchema,
+  setDefaultRunConfigurationResponseSchema,
   appSettingsSchema,
   updateAppSettingsRequestSchema,
   updateActionRequestSchema,
@@ -102,6 +106,13 @@ import {
   installUpdateResponseSchema,
   startChatRequestSchema,
   startChatResponseSchema,
+  deleteRunConfigurationRequestSchema,
+  deleteRunConfigurationResponseSchema,
+  detectProjectRequestSchema,
+  listRunConfigurationsRequestSchema,
+  runChannels,
+  runConfigurationListSchema,
+  runConfigurationSchema,
   deleteConversationResponseSchema,
   exportConversationResponseSchema,
   type DesktopApi,
@@ -247,6 +258,36 @@ const desktopApi: DesktopApi = {
       const request = providerIdRequestSchema.parse(input);
       const response: unknown = await ipcRenderer.invoke(providerChannels.listModels, request);
       return modelInfoListSchema.parse(response);
+    },
+  },
+  run: {
+    async detect(input) {
+      const request = detectProjectRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.detectProject, request);
+      return projectDetectionSchema.parse(response);
+    },
+    async list(input) {
+      const request = listRunConfigurationsRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.listConfigurations, request);
+      return runConfigurationListSchema.parse(response);
+    },
+    async save(input) {
+      const request = saveRunConfigurationRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.saveConfiguration, request);
+      return runConfigurationSchema.parse(response);
+    },
+    async delete(input) {
+      const request = deleteRunConfigurationRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.deleteConfiguration, request);
+      return deleteRunConfigurationResponseSchema.parse(response);
+    },
+    async setDefault(input) {
+      const request = setDefaultRunConfigurationRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(
+        runChannels.setDefaultConfiguration,
+        request,
+      );
+      return setDefaultRunConfigurationResponseSchema.parse(response);
     },
   },
   settings: {
