@@ -1,5 +1,6 @@
 import {
   ChevronRight,
+  Bug,
   Code2,
   FilePlus2,
   FolderPlus,
@@ -19,6 +20,9 @@ import { Button } from '@/components/ui/button';
 import { AuditPanel } from '@/features/audit/audit-panel';
 import { ChatPanel } from '@/features/chat/chat-panel';
 import { ChangeReviewDialog } from '@/features/changes/change-review-panel';
+import { DebugPanel } from '@/features/debug/debug-panel';
+import { DebugToolbar } from '@/features/debug/debug-toolbar';
+import { useDebugStore } from '@/features/debug/debug.store';
 import { EditorWorkbench } from '@/features/editor/editor-workbench';
 import { useEditorStore } from '@/features/editor/editor.store';
 import { useProviderStore } from '@/features/providers/provider.store';
@@ -49,11 +53,17 @@ export function WorkspacePage() {
     textSearchResults,
   } = useWorkspaceStore();
   const editor = useEditorStore();
+  const openEditorFileAt = useEditorStore((state) => state.openFileAt);
   const resetEditor = useEditorStore((state) => state.reset);
   const handleEditorFileChange = useEditorStore((state) => state.handleFileChange);
   const handleWorkspaceFileChange = useWorkspaceStore((state) => state.handleFileChange);
   const [query, setQuery] = useState(searchQuery);
-  const [bottomPanel, setBottomPanel] = useState<'terminal' | 'git' | 'audit' | 'run' | null>(null);
+  const [bottomPanel, setBottomPanel] = useState<
+    'terminal' | 'git' | 'audit' | 'run' | 'debug' | null
+  >(null);
+  const pausedSession = useDebugStore((state) =>
+    state.sessions.find((session) => session.status === 'paused'),
+  );
   const provider = useProviderStore();
   const openAppSettings = useAppSettingsStore((state) => state.openDialog);
   const settings = useAppSettingsStore((state) => state.settings);
@@ -83,6 +93,23 @@ export function WorkspacePage() {
     });
   }, [handleEditorFileChange, handleWorkspaceFileChange]);
 
+  useEffect(() => {
+    const relativePath = pausedSession?.pause?.relativePath;
+    const line = pausedSession?.pause?.line;
+    if (current !== null && relativePath !== undefined && line !== undefined) {
+      void openEditorFileAt(current.id, relativePath, line, pausedSession?.pause?.column);
+      const frame = window.requestAnimationFrame(() => setBottomPanel('debug'));
+      return () => window.cancelAnimationFrame(frame);
+    }
+    return undefined;
+  }, [
+    current,
+    openEditorFileAt,
+    pausedSession?.pause?.column,
+    pausedSession?.pause?.line,
+    pausedSession?.pause?.relativePath,
+  ]);
+
   if (current === null) {
     return null;
   }
@@ -94,8 +121,8 @@ export function WorkspacePage() {
       className="flex h-screen min-h-0 flex-col overflow-hidden bg-zinc-950 text-zinc-100"
       data-testid="workspace-page"
     >
-      <header className="flex h-12 shrink-0 items-center border-b border-zinc-800 px-3">
-        <div className="flex min-w-0 items-center gap-2 text-sm">
+      <header className="flex shrink-0 flex-col border-b border-zinc-800 2xl:h-12 2xl:flex-row 2xl:items-center">
+        <div className="flex h-10 min-w-0 shrink-0 items-center gap-2 px-3 text-sm 2xl:h-auto 2xl:flex-1">
           <div className="grid size-7 place-items-center rounded-lg bg-cyan-400 text-zinc-950">
             <ChevronRight className="size-4" aria-hidden="true" />
           </div>
@@ -106,8 +133,9 @@ export function WorkspacePage() {
             {current.rootPath}
           </span>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex h-12 w-full shrink-0 items-center gap-2 overflow-x-auto border-t border-zinc-800 px-3 [&>*]:shrink-0 2xl:ml-auto 2xl:h-auto 2xl:w-auto 2xl:border-t-0 2xl:pl-0">
           <RunToolbar workspaceId={current.id} onShowOutput={() => setBottomPanel('run')} />
+          <DebugToolbar workspaceId={current.id} onShowDebug={() => setBottomPanel('debug')} />
           <button
             className="rounded border border-zinc-800 p-1.5 text-zinc-500 hover:border-zinc-700 hover:text-zinc-200"
             onClick={openAppSettings}
@@ -281,8 +309,21 @@ export function WorkspacePage() {
             <AuditPanel workspaceId={current.id} onClose={() => setBottomPanel(null)} />
           ) : null}
           {bottomPanel === 'run' ? <RunOutputPanel onClose={() => setBottomPanel(null)} /> : null}
+          {bottomPanel === 'debug' ? (
+            <DebugPanel workspaceId={current.id} onClose={() => setBottomPanel(null)} />
+          ) : null}
 
           <div className="flex h-8 shrink-0 items-center gap-2 border-t border-zinc-800 bg-zinc-950 px-2 text-[11px] text-zinc-500">
+            <button
+              className={`flex items-center gap-1.5 rounded px-2 py-1 hover:bg-zinc-800 hover:text-zinc-200 ${
+                bottomPanel === 'debug' ? 'bg-zinc-800 text-zinc-200' : ''
+              }`}
+              onClick={() => setBottomPanel((value) => (value === 'debug' ? null : 'debug'))}
+              data-testid="toggle-debug"
+            >
+              <Bug className="size-3" />
+              调试
+            </button>
             <button
               className={`flex items-center gap-1.5 rounded px-2 py-1 hover:bg-zinc-800 hover:text-zinc-200 ${
                 bottomPanel === 'run' ? 'bg-zinc-800 text-zinc-200' : ''

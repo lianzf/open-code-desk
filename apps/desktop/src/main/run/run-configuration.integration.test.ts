@@ -174,7 +174,7 @@ describe('run configuration persistence', () => {
     database.close();
   });
 
-  it('upgrades a version 7 database by appending the run configuration migration', async () => {
+  it('upgrades a version 7 database through the current migrations', async () => {
     const temporaryDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-run-migration-'));
     temporaryPaths.push(temporaryDirectory);
     const databasePath = join(temporaryDirectory, 'application.sqlite');
@@ -206,7 +206,7 @@ describe('run configuration persistence', () => {
       .all() as unknown as ReadonlyArray<{ readonly name: string }>;
     migrated.close();
 
-    expect(version.user_version).toBe(9);
+    expect(version.user_version).toBe(10);
     expect(tables.map((table) => table.name)).toEqual([
       'run_configurations',
       'workspace_run_settings',

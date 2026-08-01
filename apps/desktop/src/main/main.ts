@@ -26,10 +26,18 @@ import { ConversationRepository } from './conversations/conversation.repository'
 import { ConversationService } from './conversations/conversation.service';
 import { CrashReportService, type RecordCrashReportInput } from './crash/crash-report.service';
 import { createAppDatabase, type AppDatabase } from './database/database';
+import { DebugAdapterRegistry } from './debug/debug-adapter.registry';
+import { DebugBreakpointRepository } from './debug/debug-breakpoint.repository';
+import { DebugSessionRepository } from './debug/debug-session.repository';
+import { DebugSessionService } from './debug/debug-session.service';
+import { DebugWatchRepository } from './debug/debug-watch.repository';
+import { NodeDebugAdapterProvider } from './debug/node/node-debug-adapter.provider';
+import { resolveNodeDebugAdapterServerPath } from './debug/node/node-debug-adapter-path';
 import { WorkspaceFileService } from './filesystem/workspace-file.service';
 import { WorkspaceWatchService } from './filesystem/workspace-watch.service';
 import { GitService } from './git/git.service';
 import { registerFilesIpc, unregisterFilesIpc } from './ipc/files.ipc';
+import { registerDebugIpc, unregisterDebugIpc } from './ipc/debug.ipc';
 import { registerAuditIpc, unregisterAuditIpc } from './ipc/audit.ipc';
 import { registerGitIpc, unregisterGitIpc } from './ipc/git.ipc';
 import { registerHealthIpc, unregisterHealthIpc } from './ipc/health.ipc';
@@ -93,6 +101,7 @@ let terminalService: TerminalSessionService | null = null;
 let crashReportService: CrashReportService | null = null;
 let updateService: UpdateService | null = null;
 let runExecutionService: RunExecutionService | null = null;
+let debugSessionService: DebugSessionService | null = null;
 let runCleanupInProgress = false;
 let runCleanupCompleted = false;
 let startupUpdateTimer: ReturnType<typeof setTimeout> | null = null;
@@ -210,6 +219,29 @@ void app
       undefined,
       auditLog,
     );
+    const debugAdapterRegistry = new DebugAdapterRegistry();
+    debugAdapterRegistry.register(
+      new NodeDebugAdapterProvider({
+        executable: process.execPath,
+        serverPath: resolveNodeDebugAdapterServerPath({
+          appPath: app.getAppPath(),
+          resourcesPath: process.resourcesPath,
+          packaged: app.isPackaged,
+        }),
+      }),
+    );
+    const debugSessionRepository = new DebugSessionRepository(database);
+    debugSessionRepository.recoverInterrupted();
+    debugSessionService = new DebugSessionService(
+      runConfigurationRepository,
+      debugSessionRepository,
+      new DebugBreakpointRepository(database),
+      new DebugWatchRepository(database),
+      workspaceService,
+      secretStore,
+      debugAdapterRegistry,
+      auditLog,
+    );
     const settingsService = new AppSettingsService(
       new AppSettingsRepository(database),
       providerConfigRepository,
@@ -309,6 +341,7 @@ void app
       runConfigurationService,
       runExecutionService,
     );
+    registerDebugIpc(trustedRendererOptions, debugSessionService);
     registerSettingsIpc(trustedRendererOptions, settingsService, (settings) => {
       nativeTheme.themeSource = settings.theme;
       crashReportService?.setEnabled(settings.crashReporting, crashReporter);
@@ -370,19 +403,20 @@ void app
   });
 
 app.on('before-quit', (event) => {
-  if (runExecutionService !== null && !runCleanupCompleted) {
+  if ((runExecutionService !== null || debugSessionService !== null) && !runCleanupCompleted) {
     event.preventDefault();
     if (!runCleanupInProgress) {
       runCleanupInProgress = true;
-      void runExecutionService
-        .close()
-        .catch(() => undefined)
-        .finally(() => {
-          runExecutionService = null;
-          runCleanupCompleted = true;
-          runCleanupInProgress = false;
-          app.quit();
-        });
+      void Promise.allSettled([
+        runExecutionService?.close() ?? Promise.resolve(),
+        debugSessionService?.close() ?? Promise.resolve(),
+      ]).finally(() => {
+        runExecutionService = null;
+        debugSessionService = null;
+        runCleanupCompleted = true;
+        runCleanupInProgress = false;
+        app.quit();
+      });
     }
     return;
   }
@@ -400,6 +434,7 @@ app.on('before-quit', (event) => {
   unregisterPermissionsIpc();
   unregisterTerminalIpc();
   unregisterProvidersIpc();
+  unregisterDebugIpc();
   unregisterRunIpc();
   unregisterSettingsIpc();
   unregisterGitIpc();

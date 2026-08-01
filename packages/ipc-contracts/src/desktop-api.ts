@@ -48,6 +48,32 @@ import type {
   ListCrashReportsRequest,
 } from './crash-reports';
 import type {
+  DebugBreakpoint,
+  DebugEvaluationResult,
+  DebugEvent,
+  DebugFrameRequest,
+  DebugScope,
+  DebugSession,
+  DebugSessionRequest,
+  DebugStackFrame,
+  DebugThread,
+  DebugThreadRequest,
+  DebugVariable,
+  DebugVariablesRequest,
+  DebugWatchExpression,
+  DecideDebugStartRequest,
+  DeleteDebugBreakpointRequest,
+  DeleteDebugWatchRequest,
+  EvaluateDebugRequest,
+  ListDebugBreakpointsRequest,
+  ListDebugHistoryRequest,
+  ListDebugWatchesRequest,
+  ProposeDebugStartRequest,
+  RunToCursorRequest,
+  SaveDebugBreakpointRequest,
+  SaveDebugWatchRequest,
+} from './debug';
+import type {
   ConnectionTestResult,
   DeleteProviderRequest,
   ModelInfo,
@@ -162,6 +188,31 @@ export interface DesktopApi {
     restart(input: RestartRunExecutionRequest): Promise<PendingRunExecution>;
     listHistory(input: ListRunHistoryRequest): Promise<ReadonlyArray<RunExecution>>;
     onEvent(listener: (event: RunEvent) => void): () => void;
+  };
+  readonly debug: {
+    proposeStart(input: ProposeDebugStartRequest): Promise<DebugSession>;
+    decideStart(input: DecideDebugStartRequest): Promise<DebugSession>;
+    stop(input: DebugSessionRequest): Promise<DebugSession>;
+    restart(input: DebugSessionRequest): Promise<DebugSession>;
+    pause(input: DebugThreadRequest): Promise<DebugSession>;
+    continue(input: DebugThreadRequest): Promise<DebugSession>;
+    next(input: DebugThreadRequest): Promise<DebugSession>;
+    stepIn(input: DebugThreadRequest): Promise<DebugSession>;
+    stepOut(input: DebugThreadRequest): Promise<DebugSession>;
+    runToCursor(input: RunToCursorRequest): Promise<DebugSession>;
+    listHistory(input: ListDebugHistoryRequest): Promise<ReadonlyArray<DebugSession>>;
+    listBreakpoints(input: ListDebugBreakpointsRequest): Promise<ReadonlyArray<DebugBreakpoint>>;
+    saveBreakpoint(input: SaveDebugBreakpointRequest): Promise<DebugBreakpoint>;
+    deleteBreakpoint(input: DeleteDebugBreakpointRequest): Promise<{ readonly accepted: boolean }>;
+    threads(input: DebugSessionRequest): Promise<ReadonlyArray<DebugThread>>;
+    stackTrace(input: DebugThreadRequest): Promise<ReadonlyArray<DebugStackFrame>>;
+    scopes(input: DebugFrameRequest): Promise<ReadonlyArray<DebugScope>>;
+    variables(input: DebugVariablesRequest): Promise<ReadonlyArray<DebugVariable>>;
+    evaluate(input: EvaluateDebugRequest): Promise<DebugEvaluationResult>;
+    listWatches(input: ListDebugWatchesRequest): Promise<ReadonlyArray<DebugWatchExpression>>;
+    saveWatch(input: SaveDebugWatchRequest): Promise<DebugWatchExpression>;
+    deleteWatch(input: DeleteDebugWatchRequest): Promise<{ readonly accepted: boolean }>;
+    onEvent(listener: (event: DebugEvent) => void): () => void;
   };
   readonly settings: {
     get(): Promise<AppSettings>;

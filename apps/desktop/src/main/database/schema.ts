@@ -1,6 +1,11 @@
 import { blob, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import type { AgentTaskCheckpoint } from '@open-code-desk/domain';
 import type {
+  DebugAdapterCapabilities,
+  DebugBreakpointStatus,
+  DebugPauseLocation,
+  DebugSessionError,
+  DebugSessionStatus,
   ProjectType,
   RunApprovalDecision,
   RunCommandSnapshot,
@@ -105,6 +110,86 @@ export const runExecutions = sqliteTable(
   (table) => [
     index('run_executions_workspace_created_idx').on(table.workspaceId, table.createdAt),
     index('run_executions_configuration_created_idx').on(table.configurationId, table.createdAt),
+  ],
+);
+
+export const debugSessions = sqliteTable(
+  'debug_sessions',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    configurationId: text('configuration_id').notNull(),
+    adapterType: text('adapter_type').notNull(),
+    commandSnapshot: text('command_snapshot', { mode: 'json' })
+      .$type<RunCommandSnapshot>()
+      .notNull(),
+    status: text('status').$type<DebugSessionStatus>().notNull(),
+    riskLevel: text('risk_level').$type<RunRiskLevel>().notNull(),
+    riskReasons: text('risk_reasons', { mode: 'json' }).$type<ReadonlyArray<string>>().notNull(),
+    approvalDigest: text('approval_digest').notNull(),
+    approvalDecision: text('approval_decision').$type<RunApprovalDecision>(),
+    adapterProcessId: integer('adapter_process_id'),
+    capabilities: text('capabilities', { mode: 'json' }).$type<DebugAdapterCapabilities>(),
+    pause: text('pause', { mode: 'json' }).$type<DebugPauseLocation>(),
+    outputTail: text('output_tail').notNull(),
+    outputBytes: integer('output_bytes').notNull(),
+    error: text('error', { mode: 'json' }).$type<DebugSessionError>(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    approvalDecidedAt: text('approval_decided_at'),
+    startedAt: text('started_at'),
+    completedAt: text('completed_at'),
+  },
+  (table) => [
+    index('debug_sessions_workspace_created_idx').on(table.workspaceId, table.createdAt),
+    index('debug_sessions_configuration_created_idx').on(table.configurationId, table.createdAt),
+  ],
+);
+
+export const debugBreakpoints = sqliteTable(
+  'debug_breakpoints',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    relativePath: text('relative_path').notNull(),
+    line: integer('line').notNull(),
+    column: integer('column').notNull(),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull(),
+    status: text('status').$type<DebugBreakpointStatus>().notNull(),
+    adapterBreakpointId: integer('adapter_breakpoint_id'),
+    message: text('message'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('debug_breakpoints_location_idx').on(
+      table.workspaceId,
+      table.relativePath,
+      table.line,
+      table.column,
+    ),
+    index('debug_breakpoints_workspace_path_idx').on(table.workspaceId, table.relativePath),
+  ],
+);
+
+export const debugWatches = sqliteTable(
+  'debug_watches',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    expression: text('expression').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('debug_watches_workspace_expression_idx').on(table.workspaceId, table.expression),
+    index('debug_watches_workspace_updated_idx').on(table.workspaceId, table.updatedAt),
   ],
 );
 

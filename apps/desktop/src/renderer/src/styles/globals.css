@@ -85,3 +85,54 @@ select {
   padding-left: 0.75rem;
   color: rgb(161 161 170);
 }
+
+.monaco-editor .debug-breakpoint {
+  background-position: center;
+  background-repeat: no-repeat;
+  border-radius: 9999px;
+}
+
+.monaco-editor .debug-breakpoint::before {
+  background: #ef4444;
+  border: 2px solid #ef4444;
+  border-radius: 9999px;
+  content: '';
+  display: block;
+  height: 10px;
+  margin: 3px auto 0;
+  width: 10px;
+}
+
+.monaco-editor .debug-breakpoint-pending::before,
+.monaco-editor .debug-breakpoint-unverified::before {
+  background: transparent;
+}
+
+.monaco-editor .debug-breakpoint-disabled::before {
+  opacity: 0.35;
+}
+
+.monaco-editor .debug-breakpoint-error::before {
+  background: #f59e0b;
+  border-color: #f59e0b;
+}
+
+.monaco-editor .debug-current-line {
+  background: rgb(245 158 11 / 12%);
+  border-top: 1px solid rgb(245 158 11 / 30%);
+  border-bottom: 1px solid rgb(245 158 11 / 30%);
+}
+
+.monaco-editor .debug-current-line-number {
+  border-left: 3px solid #f59e0b;
+  margin-left: 2px;
+}
+
+.monaco-editor .debug-current-line-glyph::before {
+  color: #f59e0b;
+  content: '\25B6';
+  display: block;
+  font-size: 11px;
+  margin-left: 4px;
+  margin-top: 2px;
+}

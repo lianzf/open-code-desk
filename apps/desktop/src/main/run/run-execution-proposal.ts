@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { RunExecution } from '@open-code-desk/domain';
+import type { RunCommandSnapshot, RunExecution, RunRiskLevel } from '@open-code-desk/domain';
 
 import { assessCommandRisk } from '../commands/command-risk-policy';
 import type { WorkspaceService } from '../workspace/workspace.service';
@@ -23,6 +23,40 @@ export async function createRunProposal(input: {
   readonly executions: RunExecutionRepository;
   readonly workspaces: WorkspaceService;
 }): Promise<RunExecution> {
+  const prepared = await prepareRunProposal(input);
+  const executionId = randomUUID();
+  return input.executions.create({
+    id: executionId,
+    workspaceId: input.workspaceId,
+    configurationId: input.configurationId,
+    ...(input.restartOfExecutionId === undefined
+      ? {}
+      : { restartOfExecutionId: input.restartOfExecutionId }),
+    command: prepared.command,
+    riskLevel: prepared.riskLevel,
+    riskReasons: prepared.riskReasons,
+    approvalDigest: runApprovalDigest({
+      executionId,
+      workspaceId: input.workspaceId,
+      command: prepared.command,
+      riskLevel: prepared.riskLevel,
+      riskReasons: prepared.riskReasons,
+    }),
+  });
+}
+
+export interface PreparedRunProposal {
+  readonly command: RunCommandSnapshot;
+  readonly riskLevel: RunRiskLevel;
+  readonly riskReasons: ReadonlyArray<string>;
+}
+
+export async function prepareRunProposal(input: {
+  readonly workspaceId: string;
+  readonly configurationId: string;
+  readonly configurations: RunConfigurationRepository;
+  readonly workspaces: WorkspaceService;
+}): Promise<PreparedRunProposal> {
   const configuration = input.configurations.findStoredById(input.configurationId);
   if (configuration === null || configuration.workspaceId !== input.workspaceId) {
     throw new RunExecutionServiceError(
@@ -77,23 +111,5 @@ export async function createRunProposal(input: {
   if (risk.level === 'blocked') {
     throw new RunExecutionServiceError('RUN_COMMAND_BLOCKED', risk.reasons.join(' '));
   }
-  const executionId = randomUUID();
-  return input.executions.create({
-    id: executionId,
-    workspaceId: input.workspaceId,
-    configurationId: input.configurationId,
-    ...(input.restartOfExecutionId === undefined
-      ? {}
-      : { restartOfExecutionId: input.restartOfExecutionId }),
-    command,
-    riskLevel: risk.level,
-    riskReasons: risk.reasons,
-    approvalDigest: runApprovalDigest({
-      executionId,
-      workspaceId: input.workspaceId,
-      command,
-      riskLevel: risk.level,
-      riskReasons: risk.reasons,
-    }),
-  });
+  return { command, riskLevel: risk.level, riskReasons: risk.reasons };
 }

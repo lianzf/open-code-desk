@@ -1,4 +1,5 @@
 export * from './run';
+export * from './debug';
 
 export type AgentStatus =
   | 'idle'

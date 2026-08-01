@@ -13,6 +13,12 @@ files:
   - out/**/*
   - package.json
 
+extraResources:
+  - from: vendor/js-debug-1.117.0
+    to: js-debug
+    filter:
+      - '**/*'
+
 publish:
   provider: github
   owner: lianzf
