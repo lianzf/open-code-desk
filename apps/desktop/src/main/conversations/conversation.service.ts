@@ -1,4 +1,5 @@
 import type { ConversationDetail, CreateConversationRequest } from '@open-code-desk/ipc-contracts';
+import type { AgentTask } from '@open-code-desk/domain';
 
 import type { AgentTaskRepository } from '../agent/agent-task.repository';
 import type { ToolCallRepository } from '../agent/tool-call.repository';
@@ -20,6 +21,22 @@ function markdownHeading(role: 'system' | 'user' | 'assistant' | 'tool'): string
     tool: 'Tool result',
   } as const;
   return `## ${labels[role]}`;
+}
+
+function toPublicTask(task: AgentTask | null): ConversationDetail['latestTask'] {
+  if (task === null) {
+    return null;
+  }
+  const { checkpoint, ...plainTask } = task;
+  return checkpoint === undefined
+    ? plainTask
+    : {
+        ...plainTask,
+        checkpoint: {
+          ...checkpoint,
+          steps: checkpoint.steps.map((step) => ({ ...step })),
+        },
+      };
 }
 
 export class ConversationService {
@@ -48,13 +65,14 @@ export class ConversationService {
       this.conversations.findById(conversationId),
       'Conversation not found.',
     );
+    const latestTask = this.tasks.latestForConversation(conversationId);
     return {
       conversation,
       messages: this.conversations.listMessages(conversationId).map((message) => ({
         ...message,
         toolCalls: [...message.toolCalls],
       })),
-      latestTask: this.tasks.latestForConversation(conversationId),
+      latestTask: toPublicTask(latestTask),
       toolCalls: this.toolCalls.listForConversation(conversationId).map((toolCall) => ({
         ...toolCall,
       })),

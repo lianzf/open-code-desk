@@ -1,8 +1,9 @@
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
-import { CircleStop, RefreshCw, TerminalSquare, X } from 'lucide-react';
+import { CircleStop, Paperclip, RefreshCw, TerminalSquare, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import { useConversationContextStore } from '@/features/context/context.store';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalPanelProps {
@@ -19,15 +20,26 @@ function readableError(error: unknown): string {
   return '无法启动集成终端。';
 }
 
+const ansiSequence = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');
+
+function cleanTerminalOutput(output: string): string {
+  return output.replaceAll(ansiSequence, '').replaceAll('\r', '').trim();
+}
+
 export function TerminalPanel({ workspaceId, onClose }: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sessionIdRef = useRef<string | undefined>(undefined);
+  const contextSourceRef = useRef<string | undefined>(undefined);
+  const outputRef = useRef('');
   const [generation, setGeneration] = useState(0);
   const [state, setState] = useState<TerminalState>('starting');
   const [shell, setShell] = useState('');
   const [cwd, setCwd] = useState('');
   const [exitCode, setExitCode] = useState<number>();
   const [errorMessage, setErrorMessage] = useState<string>();
+  const [outputSize, setOutputSize] = useState(0);
+  const contextConversationId = useConversationContextStore((state) => state.conversationId);
+  const saveContext = useConversationContextStore((state) => state.save);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -57,9 +69,13 @@ export function TerminalPanel({ workspaceId, onClose }: TerminalPanelProps) {
     setState('starting');
     setExitCode(undefined);
     setErrorMessage(undefined);
+    outputRef.current = '';
+    setOutputSize(0);
 
     const removeDataListener = window.openCodeDesk.terminal.onData((event) => {
       if (event.sessionId === sessionIdRef.current) {
+        outputRef.current = `${outputRef.current}${event.data}`.slice(-200_000);
+        setOutputSize(outputRef.current.length);
         terminal.write(event.data);
       }
     });
@@ -102,6 +118,7 @@ export function TerminalPanel({ workspaceId, onClose }: TerminalPanelProps) {
           return;
         }
         sessionIdRef.current = session.sessionId;
+        contextSourceRef.current = session.sessionId;
         setShell(session.shell);
         setCwd(session.cwd);
         setState('running');
@@ -155,6 +172,29 @@ export function TerminalPanel({ workspaceId, onClose }: TerminalPanelProps) {
                 ? '启动失败'
                 : `已退出${exitCode === undefined ? '' : ` (${exitCode})`}`}
         </span>
+        <button
+          className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-cyan-300 disabled:opacity-40"
+          onClick={() => {
+            const content = cleanTerminalOutput(outputRef.current);
+            if (content !== '') {
+              void saveContext({
+                type: 'terminal',
+                title: `终端输出 · ${cwd || '工作区'}`,
+                content,
+                priority: 75,
+                ...(contextSourceRef.current === undefined
+                  ? {}
+                  : { sourceKey: `terminal:${contextSourceRef.current}` }),
+              });
+            }
+          }}
+          disabled={contextConversationId === undefined || outputSize === 0}
+          aria-label="将终端输出加入上下文"
+          title="将当前终端输出加入 AI 上下文"
+          data-testid="add-terminal-context"
+        >
+          <Paperclip className="size-3.5" />
+        </button>
         {state === 'running' ? (
           <button
             className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-amber-300"

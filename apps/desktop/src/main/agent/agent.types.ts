@@ -1,5 +1,6 @@
 import type {
   AgentStatus,
+  AgentTaskCheckpoint,
   AppError,
   CommandExecution,
   ConversationMessage,
@@ -23,11 +24,20 @@ export type AgentStreamEvent =
       readonly status: AgentStatus;
     }
   | {
+      readonly type: 'task_plan';
+      readonly taskId: string;
+      readonly attempt: number;
+      readonly checkpoint: AgentTaskCheckpoint;
+    }
+  | {
       readonly type: 'context_built';
       readonly budget: number;
       readonly usedTokens: number;
       readonly droppedMessages: number;
       readonly summarizedMessages: number;
+      readonly selectedContextItems: number;
+      readonly droppedContextItems: number;
+      readonly truncatedContextItems: number;
     }
   | {
       readonly type: 'assistant_message_start';
@@ -65,6 +75,16 @@ export type AgentStreamEvent =
         message: string;
         retryable: boolean;
       }>;
+    }
+  | {
+      readonly type: 'tool_approval_requested';
+      readonly callId: string;
+      readonly modelCallId: string;
+      readonly name: string;
+      readonly permissionLevel: 'read' | 'write' | 'execute' | 'dangerous';
+      readonly input: unknown;
+      readonly approvalDigest: string;
+      readonly reason: string;
     }
   | {
       readonly type: 'change_set_ready';

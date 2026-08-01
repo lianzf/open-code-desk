@@ -1,31 +1,43 @@
-import { Blocks, Clock3, FolderOpen, KeyRound, LoaderCircle, ShieldCheck } from 'lucide-react';
+import {
+  Blocks,
+  Clock3,
+  FolderOpen,
+  KeyRound,
+  LoaderCircle,
+  MonitorCog,
+  ShieldCheck,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { AppHealthCard } from '@/features/app-health/app-health-card';
 import { useProviderStore } from '@/features/providers/provider.store';
+import { useAppSettingsStore } from '@/features/settings/app-settings.store';
+import { translate } from '@/features/settings/i18n';
 import { useWorkspaceStore } from '@/features/workspace/workspace.store';
-
-const foundations = [
-  {
-    icon: FolderOpen,
-    title: '本地工作区',
-    description: '文件能力在主进程中经过路径边界、真实路径和敏感文件校验。',
-  },
-  {
-    icon: KeyRound,
-    title: '用户自带密钥',
-    description: '模型凭据由操作系统安全能力加密，数据库只保存不可读密文和引用。',
-  },
-  {
-    icon: ShieldCheck,
-    title: '审批驱动',
-    description: 'AI 写入与命令执行必须先展示目标和风险。',
-  },
-];
 
 export function WelcomePage() {
   const { errorMessage, loading, openDialog, openRecent, recent } = useWorkspaceStore();
   const openProviderSettings = useProviderStore((state) => state.openSettings);
+  const openAppSettings = useAppSettingsStore((state) => state.openDialog);
+  const locale = useAppSettingsStore((state) => state.settings.locale);
+  const t = (key: Parameters<typeof translate>[1]) => translate(locale, key);
+  const foundations = [
+    {
+      icon: FolderOpen,
+      title: t('localWorkspace'),
+      description: t('localWorkspaceDescription'),
+    },
+    {
+      icon: KeyRound,
+      title: t('bringYourOwnKey'),
+      description: t('bringYourOwnKeyDescription'),
+    },
+    {
+      icon: ShieldCheck,
+      title: t('approvalDriven'),
+      description: t('approvalDrivenDescription'),
+    },
+  ];
 
   return (
     <main className="min-h-screen bg-zinc-950 px-6 py-10 text-zinc-100" data-testid="app-shell">
@@ -40,20 +52,24 @@ export function WelcomePage() {
               <p className="text-xs text-zinc-500">Local-first AI coding workspace</p>
             </div>
           </div>
-          <span className="rounded-full border border-zinc-800 px-3 py-1 text-xs text-zinc-400">
-            阶段 4 · Model Provider
-          </span>
+          <button
+            className="rounded-lg border border-zinc-800 p-2 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200"
+            onClick={openAppSettings}
+            aria-label={t('appSettings')}
+            data-testid="open-app-settings"
+          >
+            <MonitorCog className="size-4" />
+          </button>
         </header>
 
         <section className="grid gap-8 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
           <div>
-            <p className="text-sm font-medium text-cyan-400">安全、可审阅、可扩展</p>
+            <p className="text-sm font-medium text-cyan-400">{t('welcomeEyebrow')}</p>
             <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-tight text-zinc-50 sm:text-5xl">
-              你的代码留在本地，<span className="text-zinc-500">模型由你选择。</span>
+              {t('welcomeTitle')}
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-zinc-400">
-              选择一个本地代码项目，按需展开文件树并使用 Monaco
-              查看与编辑文本文件。所有文件访问都通过安全 IPC 进入主进程。
+              {t('welcomeDescription')}
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Button
@@ -66,14 +82,14 @@ export function WelcomePage() {
                 ) : (
                   <FolderOpen className="size-4" />
                 )}
-                打开本地项目
+                {t('openProject')}
               </Button>
               <Button
                 variant="outline"
                 onClick={openProviderSettings}
                 data-testid="open-provider-settings"
               >
-                配置模型
+                {t('configureModel')}
               </Button>
             </div>
             {errorMessage !== undefined ? (
@@ -89,7 +105,7 @@ export function WelcomePage() {
           <section>
             <div className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-300">
               <Clock3 className="size-4 text-zinc-500" aria-hidden="true" />
-              最近项目
+              {t('recentProjects')}
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               {recent.map((workspace) => (

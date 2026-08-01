@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/features/chat/chat.store';
 import { useWorkspaceStore } from '@/features/workspace/workspace.store';
+import { useResolvedTheme } from '@/features/settings/use-resolved-theme';
 import { cn } from '@/lib/utils';
 import { useChangeReviewStore } from './change-review.store';
 import '../editor/monaco-environment';
@@ -87,6 +88,7 @@ export function ChangeReviewSummary() {
 }
 
 export function ChangeReviewDialog() {
+  const resolvedTheme = useResolvedTheme();
   const review = useChangeReviewStore();
   const refreshTree = useWorkspaceStore((state) => state.refreshTree);
   const refreshConversation = useChatStore((state) => state.selectConversation);
@@ -244,7 +246,7 @@ export function ChangeReviewDialog() {
                 original={review.contents.originalContent}
                 modified={review.proposedDraft}
                 language={languageFor(activeChange.destinationPath ?? activeChange.filePath)}
-                theme="vs-dark"
+                theme={resolvedTheme === 'dark' ? 'vs-dark' : 'light'}
                 originalModelPath={`opencode-review://original/${activeChange.id}`}
                 modifiedModelPath={`opencode-review://proposed/${activeChange.id}/${activeChange.reviewDigest}`}
                 onMount={(editor) => {

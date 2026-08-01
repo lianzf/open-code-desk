@@ -74,7 +74,10 @@ const packageManagerExecutables = new Set([
 ]);
 
 export function normalizedExecutableName(executable: string): string {
-  return basename(executable)
+  // `node:path.basename` follows the host platform. Normalize separators first
+  // so persisted or model-proposed Windows paths are classified consistently
+  // when tests and packaging run on macOS or Linux.
+  return basename(executable.replaceAll('\\', '/'))
     .toLocaleLowerCase('en-US')
     .replace(/\.(?:bat|cmd|com|exe)$/u, '');
 }

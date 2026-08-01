@@ -5,6 +5,7 @@ import {
   Pencil,
   Plus,
   RotateCcw,
+  Search,
   Send,
   Settings2,
   Square,
@@ -18,6 +19,8 @@ import { ChangeReviewSummary } from '@/features/changes/change-review-panel';
 import { useChangeReviewStore } from '@/features/changes/change-review.store';
 import { CommandReviewPanel } from '@/features/commands/command-review-panel';
 import { useCommandStore } from '@/features/commands/command.store';
+import { ContextTray } from '@/features/context/context-tray';
+import { useConversationContextStore } from '@/features/context/context.store';
 import { useProviderStore } from '@/features/providers/provider.store';
 import { useWorkspaceStore } from '@/features/workspace/workspace.store';
 import { useChatStore } from './chat.store';
@@ -39,6 +42,7 @@ const statusLabels = {
 
 export function ChatPanel() {
   const [draft, setDraft] = useState('');
+  const [historyQuery, setHistoryQuery] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
   const currentWorkspace = useWorkspaceStore((state) => state.current);
   const chat = useChatStore();
@@ -47,6 +51,7 @@ export function ChatPanel() {
   const provider = useProviderStore();
   const initializeChanges = useChangeReviewStore((state) => state.initialize);
   const initializeCommands = useCommandStore((state) => state.initialize);
+  const initializeContext = useConversationContextStore((state) => state.initialize);
 
   useEffect(() => bindStream(), [bindStream]);
 
@@ -60,8 +65,15 @@ export function ChatPanel() {
     if (chat.activeConversationId !== undefined && currentWorkspace !== null) {
       void initializeChanges(chat.activeConversationId);
       void initializeCommands(chat.activeConversationId, currentWorkspace.id);
+      void initializeContext(chat.activeConversationId);
     }
-  }, [chat.activeConversationId, currentWorkspace, initializeChanges, initializeCommands]);
+  }, [
+    chat.activeConversationId,
+    currentWorkspace,
+    initializeChanges,
+    initializeCommands,
+    initializeContext,
+  ]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -112,6 +124,36 @@ export function ChatPanel() {
             <Settings2 className="size-4" />
           </button>
         </div>
+
+        <form
+          className="flex items-center rounded border border-zinc-800 bg-zinc-900 px-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void chat.searchConversations(historyQuery);
+          }}
+        >
+          <Search className="size-3.5 text-zinc-600" aria-hidden="true" />
+          <input
+            className="h-7 min-w-0 flex-1 bg-transparent px-1.5 text-xs text-zinc-300 outline-none placeholder:text-zinc-600"
+            value={historyQuery}
+            onChange={(event) => setHistoryQuery(event.target.value)}
+            placeholder="搜索历史会话"
+            aria-label="搜索历史会话"
+            data-testid="conversation-search"
+          />
+          {chat.conversationQuery !== '' ? (
+            <button
+              type="button"
+              className="text-[10px] text-zinc-500 hover:text-zinc-200"
+              onClick={() => {
+                setHistoryQuery('');
+                void chat.searchConversations('');
+              }}
+            >
+              清除
+            </button>
+          ) : null}
+        </form>
 
         <div className="flex items-center gap-1">
           <select
@@ -287,6 +329,42 @@ export function ChatPanel() {
           ))
         )}
 
+        {chat.taskPlan === undefined || chat.taskPlan.steps.length === 0 ? null : (
+          <details
+            className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-2"
+            open={chat.agentStatus !== 'completed'}
+            data-testid="task-plan"
+          >
+            <summary className="cursor-pointer text-[11px] text-zinc-400">
+              任务计划 · 第 {chat.taskAttempt ?? 1} 次尝试 · 第 {chat.taskPlan.round} 轮
+            </summary>
+            <ol className="mt-2 space-y-1">
+              {chat.taskPlan.steps.map((step) => (
+                <li key={step.id} className="flex items-center gap-2 text-[10px]">
+                  <span
+                    className={`size-1.5 shrink-0 rounded-full ${
+                      step.status === 'completed'
+                        ? 'bg-emerald-500'
+                        : step.status === 'in_progress'
+                          ? 'animate-pulse bg-cyan-400'
+                          : step.status === 'failed'
+                            ? 'bg-red-500'
+                            : step.status === 'cancelled'
+                              ? 'bg-amber-500'
+                              : 'bg-zinc-700'
+                    }`}
+                  />
+                  <span
+                    className={step.status === 'in_progress' ? 'text-zinc-300' : 'text-zinc-500'}
+                  >
+                    {step.label}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </details>
+        )}
+
         {chat.toolActivity.length > 0 ? (
           <details className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-2" open>
             <summary className="cursor-pointer text-[11px] text-zinc-400">
@@ -311,6 +389,12 @@ export function ChatPanel() {
             {chat.contextStats.summarizedMessages > 0
               ? ` · 已摘要 ${chat.contextStats.summarizedMessages} 条历史消息`
               : ''}
+            {chat.contextStats.selectedContextItems > 0
+              ? ` · 已使用 ${chat.contextStats.selectedContextItems} 项附件`
+              : ''}
+            {chat.contextStats.droppedContextItems > 0
+              ? ` · 裁减 ${chat.contextStats.droppedContextItems} 项`
+              : ''}
           </p>
         ) : null}
         {chat.errorMessage !== undefined ? (
@@ -318,6 +402,7 @@ export function ChatPanel() {
             {chat.errorMessage}
           </p>
         ) : null}
+        <ContextTray />
         <div className="rounded-xl border border-zinc-700 bg-zinc-900 focus-within:border-cyan-700">
           <textarea
             className="max-h-40 min-h-20 w-full resize-none bg-transparent p-3 text-sm text-zinc-200 outline-none placeholder:text-zinc-600"

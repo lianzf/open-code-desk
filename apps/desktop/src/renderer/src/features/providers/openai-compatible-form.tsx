@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type {
   ProviderConfig,
   ProviderHeaderInput,
+  ProviderKind,
   SaveProviderRequest,
 } from '@open-code-desk/ipc-contracts';
 
@@ -11,6 +12,7 @@ import { Button } from '@/components/ui/button';
 interface OpenAICompatibleFormProps {
   readonly configuration: ProviderConfig | null;
   readonly loading: boolean;
+  readonly providerKind: ProviderKind;
   onSave(input: SaveProviderRequest): Promise<ProviderConfig>;
 }
 
@@ -36,23 +38,81 @@ interface FormState {
   headers: HeaderDraft[];
 }
 
-const emptyForm: FormState = {
-  displayName: 'OpenAI Compatible',
-  baseUrl: 'https://api.example.com/v1',
-  apiKey: '',
-  defaultModel: '',
-  fastModel: '',
-  reasoningModel: '',
-  contextWindow: '128000',
-  toolCalling: true,
-  vision: false,
-  streaming: true,
-  headers: [],
+const providerPresets: Readonly<
+  Record<ProviderKind, Pick<FormState, 'displayName' | 'baseUrl' | 'contextWindow'>>
+> = {
+  'openai-compatible': {
+    displayName: 'OpenAI Compatible',
+    baseUrl: 'https://api.example.com/v1',
+    contextWindow: '128000',
+  },
+  openai: {
+    displayName: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+    contextWindow: '128000',
+  },
+  anthropic: {
+    displayName: 'Anthropic Claude',
+    baseUrl: 'https://api.anthropic.com/v1',
+    contextWindow: '200000',
+  },
+  gemini: {
+    displayName: 'Google Gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    contextWindow: '1000000',
+  },
+  openrouter: {
+    displayName: 'OpenRouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    contextWindow: '128000',
+  },
+  deepseek: {
+    displayName: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com',
+    contextWindow: '128000',
+  },
+  qwen: {
+    displayName: 'Alibaba Cloud Qwen',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    contextWindow: '128000',
+  },
+  glm: {
+    displayName: 'Zhipu GLM',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    contextWindow: '128000',
+  },
+  moonshot: {
+    displayName: 'Moonshot / Kimi',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    contextWindow: '128000',
+  },
+  ollama: {
+    displayName: 'Ollama',
+    baseUrl: 'http://localhost:11434/v1',
+    contextWindow: '32768',
+  },
 };
 
-function fromConfiguration(configuration: ProviderConfig | null): FormState {
+function emptyForm(providerKind: ProviderKind): FormState {
+  return {
+    ...providerPresets[providerKind],
+    apiKey: '',
+    defaultModel: '',
+    fastModel: '',
+    reasoningModel: '',
+    toolCalling: true,
+    vision: false,
+    streaming: true,
+    headers: [],
+  };
+}
+
+function fromConfiguration(
+  configuration: ProviderConfig | null,
+  providerKind: ProviderKind,
+): FormState {
   if (configuration === null) {
-    return emptyForm;
+    return emptyForm(providerKind);
   }
   return {
     displayName: configuration.displayName,
@@ -86,9 +146,10 @@ const capabilityToggles = [
 export function OpenAICompatibleForm({
   configuration,
   loading,
+  providerKind,
   onSave,
 }: OpenAICompatibleFormProps) {
-  const [form, setForm] = useState<FormState>(() => fromConfiguration(configuration));
+  const [form, setForm] = useState<FormState>(() => fromConfiguration(configuration, providerKind));
   const [showApiKey, setShowApiKey] = useState(false);
 
   const updateHeader = (id: string, patch: Partial<HeaderDraft>) => {
@@ -113,7 +174,7 @@ export function OpenAICompatibleForm({
         }));
         void onSave({
           ...(configuration === null ? {} : { id: configuration.id }),
-          kind: 'openai-compatible',
+          kind: providerKind,
           displayName: form.displayName,
           baseUrl: form.baseUrl,
           ...(form.apiKey === '' ? {} : { apiKey: form.apiKey }),

@@ -6,10 +6,12 @@ import type {
   ModelProvider,
   ProviderConfig,
   ProviderContext,
+  ProviderKind,
   ValidationResult,
 } from '@open-code-desk/provider-core';
 
 import { ProviderServiceError } from '../core/provider-error';
+import { resolveModelCapabilities } from '../core/model-capabilities';
 import {
   assertSuccessful,
   buildHeaders,
@@ -26,10 +28,28 @@ import { parseServerSentEvents } from './sse-parser';
 
 const maximumStreamBytes = 10_000_000;
 
+export interface OpenAIProtocolProviderOptions {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: ProviderKind;
+}
+
 export class OpenAICompatibleProvider implements ModelProvider {
-  public readonly id = 'openai-compatible';
-  public readonly name = 'OpenAI Compatible';
-  public readonly kind = 'openai-compatible' as const;
+  public readonly id: string;
+  public readonly name: string;
+  public readonly kind: ProviderKind;
+
+  public constructor(
+    options: OpenAIProtocolProviderOptions = {
+      id: 'openai-compatible',
+      name: 'OpenAI Compatible',
+      kind: 'openai-compatible',
+    },
+  ) {
+    this.id = options.id;
+    this.name = options.name;
+    this.kind = options.kind;
+  }
 
   public async validateConfig(
     config: ProviderConfig,
@@ -70,6 +90,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       id: model.id,
       name: model.id,
       ...(model.owned_by === undefined ? {} : { ownedBy: model.owned_by }),
+      capabilities: resolveModelCapabilities(config, model.id),
     }));
   }
 
@@ -222,8 +243,8 @@ export class OpenAICompatibleProvider implements ModelProvider {
     }
   }
 
-  public async getCapabilities(config: ProviderConfig): Promise<ModelCapabilities> {
-    return config.capabilities;
+  public async getCapabilities(config: ProviderConfig, model: string): Promise<ModelCapabilities> {
+    return resolveModelCapabilities(config, model);
   }
 
   private async *completeChat(

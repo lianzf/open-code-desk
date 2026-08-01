@@ -42,6 +42,7 @@ export interface ModelInfo {
   readonly id: string;
   readonly name: string;
   readonly ownedBy?: string;
+  readonly capabilities?: ModelCapabilities;
 }
 
 export type ChatMessageRole = 'system' | 'user' | 'assistant' | 'tool';
@@ -52,9 +53,23 @@ export interface ChatToolCall {
   readonly arguments: string;
 }
 
+export interface ChatTextContentPart {
+  readonly type: 'text';
+  readonly text: string;
+}
+
+export interface ChatImageContentPart {
+  readonly type: 'image';
+  readonly mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+  readonly data: string;
+}
+
+export type ChatContentPart = ChatTextContentPart | ChatImageContentPart;
+export type ChatMessageContent = string | ReadonlyArray<ChatContentPart>;
+
 export interface ChatMessage {
   readonly role: ChatMessageRole;
-  readonly content: string;
+  readonly content: ChatMessageContent;
   readonly toolCallId?: string;
   readonly toolCalls?: ReadonlyArray<ChatToolCall>;
 }

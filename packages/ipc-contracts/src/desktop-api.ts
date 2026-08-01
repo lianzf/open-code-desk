@@ -1,4 +1,5 @@
 import type { HealthRequest, HealthResponse } from './health';
+import type { AuditEvent, ListAuditEventsRequest } from './audit';
 import type {
   CancelChatRequest,
   ChatStreamEvent,
@@ -24,8 +25,15 @@ import type {
   ListCommandsRequest,
   PermissionRule,
   SetNetworkAccessRequest,
+  UpsertExecutableRuleRequest,
   WorkspaceRulesRequest,
 } from './commands';
+import type {
+  ContextConversationRequest,
+  ConversationContextItem,
+  DeleteConversationContextRequest,
+  SaveConversationContextRequest,
+} from './context';
 import type {
   Conversation,
   ConversationDetail,
@@ -34,6 +42,11 @@ import type {
   ListConversationsRequest,
   RenameConversationRequest,
 } from './conversations';
+import type {
+  AcknowledgeCrashReportRequest,
+  CrashReport,
+  ListCrashReportsRequest,
+} from './crash-reports';
 import type {
   ConnectionTestResult,
   DeleteProviderRequest,
@@ -44,13 +57,41 @@ import type {
   SaveProviderRequest,
 } from './providers';
 import type {
+  DecideRunStartRequest,
+  DeleteRunConfigurationRequest,
+  DetectProjectRequest,
+  ListRunHistoryRequest,
+  ListRunConfigurationsRequest,
+  PendingRunExecution,
+  ProjectDetection,
+  ProposeRunStartRequest,
+  RestartRunExecutionRequest,
+  RunConfiguration,
+  RunConfigurationList,
+  RunEvent,
+  RunExecution,
+  SaveRunConfigurationRequest,
+  SetDefaultRunConfigurationRequest,
+  SetDefaultRunConfigurationResponse,
+  StopRunExecutionRequest,
+} from './run';
+import type { AppSettings, UpdateAppSettingsRequest } from './settings';
+import type {
+  CancelFileSearchRequest,
+  CreateDirectoryRequest,
+  CreateFileRequest,
+  DeletePathRequest,
   FileChangedEvent,
   FileEntry,
+  FileMutationResponse,
   ListDirectoryRequest,
+  MovePathRequest,
   OpenRecentWorkspaceRequest,
   ReadFileRequest,
   ReadFileResponse,
   SearchFilesRequest,
+  SearchTextRequest,
+  TextSearchResponse,
   WorkspaceInfo,
   WriteFileRequest,
   WriteFileResponse,
@@ -64,8 +105,19 @@ import type {
   TerminalSessionRequest,
   TerminalWriteRequest,
 } from './terminal';
+import type { UpdateStatus } from './updates';
+import type { GitDiff, GitDiffRequest, GitStatus, GitStatusRequest } from './git';
+import type {
+  AddBlockedPathRequest,
+  DecideToolApprovalRequest,
+  GrantExternalDirectoryRequest,
+  SetReadAutoAllowRequest,
+} from './permissions';
 
 export interface DesktopApi {
+  readonly audit: {
+    list(input: ListAuditEventsRequest): Promise<ReadonlyArray<AuditEvent>>;
+  };
   readonly app: {
     health(input: HealthRequest): Promise<HealthResponse>;
   };
@@ -77,9 +129,15 @@ export interface DesktopApi {
   };
   readonly files: {
     onChanged(listener: (event: FileChangedEvent) => void): () => void;
+    cancelSearch(input: CancelFileSearchRequest): Promise<{ readonly cancelled: boolean }>;
+    createDirectory(input: CreateDirectoryRequest): Promise<FileMutationResponse>;
+    createFile(input: CreateFileRequest): Promise<FileMutationResponse>;
+    deletePath(input: DeletePathRequest): Promise<FileMutationResponse>;
     listDirectory(input: ListDirectoryRequest): Promise<ReadonlyArray<FileEntry>>;
+    movePath(input: MovePathRequest): Promise<FileMutationResponse>;
     readFile(input: ReadFileRequest): Promise<ReadFileResponse>;
     searchFiles(input: SearchFilesRequest): Promise<ReadonlyArray<FileEntry>>;
+    searchText(input: SearchTextRequest): Promise<TextSearchResponse>;
     writeFile(input: WriteFileRequest): Promise<WriteFileResponse>;
   };
   readonly providers: {
@@ -90,6 +148,25 @@ export interface DesktopApi {
     testConnection(input: ProviderIdRequest): Promise<ConnectionTestResult>;
     listModels(input: ProviderIdRequest): Promise<ReadonlyArray<ModelInfo>>;
   };
+  readonly run: {
+    detect(input: DetectProjectRequest): Promise<ProjectDetection>;
+    list(input: ListRunConfigurationsRequest): Promise<RunConfigurationList>;
+    save(input: SaveRunConfigurationRequest): Promise<RunConfiguration>;
+    delete(input: DeleteRunConfigurationRequest): Promise<{ readonly deleted: boolean }>;
+    setDefault(
+      input: SetDefaultRunConfigurationRequest,
+    ): Promise<SetDefaultRunConfigurationResponse>;
+    proposeStart(input: ProposeRunStartRequest): Promise<PendingRunExecution>;
+    decideStart(input: DecideRunStartRequest): Promise<RunExecution>;
+    stop(input: StopRunExecutionRequest): Promise<RunExecution>;
+    restart(input: RestartRunExecutionRequest): Promise<PendingRunExecution>;
+    listHistory(input: ListRunHistoryRequest): Promise<ReadonlyArray<RunExecution>>;
+    onEvent(listener: (event: RunEvent) => void): () => void;
+  };
+  readonly settings: {
+    get(): Promise<AppSettings>;
+    update(input: UpdateAppSettingsRequest): Promise<AppSettings>;
+  };
   readonly conversations: {
     list(input: ListConversationsRequest): Promise<ReadonlyArray<Conversation>>;
     create(input: CreateConversationRequest): Promise<Conversation>;
@@ -99,6 +176,10 @@ export interface DesktopApi {
     exportMarkdown(
       input: ConversationIdRequest,
     ): Promise<{ readonly saved: boolean; readonly path?: string | undefined }>;
+  };
+  readonly crashReports: {
+    list(input: ListCrashReportsRequest): Promise<ReadonlyArray<CrashReport>>;
+    acknowledge(input: AcknowledgeCrashReportRequest): Promise<{ readonly acknowledged: boolean }>;
   };
   readonly chat: {
     start(input: StartChatRequest): Promise<StartChatResponse>;
@@ -122,6 +203,21 @@ export interface DesktopApi {
     listRules(input: WorkspaceRulesRequest): Promise<ReadonlyArray<PermissionRule>>;
     deleteRule(input: DeletePermissionRuleRequest): Promise<{ readonly deleted: boolean }>;
     setNetworkAccess(input: SetNetworkAccessRequest): Promise<ReadonlyArray<PermissionRule>>;
+    upsertExecutableRule(input: UpsertExecutableRuleRequest): Promise<PermissionRule>;
+  };
+  readonly permissions: {
+    addBlockedPath(input: AddBlockedPathRequest): Promise<PermissionRule>;
+    decideTool(input: DecideToolApprovalRequest): Promise<{ readonly accepted: boolean }>;
+    deleteRule(input: DeletePermissionRuleRequest): Promise<{ readonly deleted: boolean }>;
+    grantExternalDirectory(input: GrantExternalDirectoryRequest): Promise<PermissionRule | null>;
+    listRules(input: WorkspaceRulesRequest): Promise<ReadonlyArray<PermissionRule>>;
+    setReadAutoAllow(input: SetReadAutoAllowRequest): Promise<ReadonlyArray<PermissionRule>>;
+  };
+  readonly context: {
+    list(input: ContextConversationRequest): Promise<ReadonlyArray<ConversationContextItem>>;
+    pickImage(input: ContextConversationRequest): Promise<ConversationContextItem | null>;
+    save(input: SaveConversationContextRequest): Promise<ConversationContextItem>;
+    delete(input: DeleteConversationContextRequest): Promise<{ readonly deleted: boolean }>;
   };
   readonly terminal: {
     create(input: CreateTerminalRequest): Promise<TerminalSessionInfo>;
@@ -130,5 +226,16 @@ export interface DesktopApi {
     close(input: TerminalSessionRequest): Promise<{ readonly accepted: boolean }>;
     onData(listener: (event: TerminalDataEvent) => void): () => void;
     onExit(listener: (event: TerminalExitEvent) => void): () => void;
+  };
+  readonly updates: {
+    getStatus(): Promise<UpdateStatus>;
+    check(): Promise<UpdateStatus>;
+    download(): Promise<UpdateStatus>;
+    install(): Promise<{ readonly accepted: true }>;
+    onStatusChanged(listener: (status: UpdateStatus) => void): () => void;
+  };
+  readonly git: {
+    status(input: GitStatusRequest): Promise<GitStatus>;
+    diff(input: GitDiffRequest): Promise<GitDiff>;
   };
 }

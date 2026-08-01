@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { ModelProvider } from '@open-code-desk/provider-core';
+import type { ModelInfo, ModelProvider } from '@open-code-desk/provider-core';
 import { ProviderRegistry } from '@open-code-desk/provider-core';
 
 import { createAppDatabase } from '../database/database';
 import type { SecretStore } from '../security/secret-store';
 import { ProviderConfigRepository } from './provider-config.repository';
+import { ModelConfigRepository } from './model-config.repository';
 import { ProviderService } from './provider.service';
 
 class MemorySecretStore implements SecretStore {
@@ -27,7 +28,10 @@ class MemorySecretStore implements SecretStore {
   }
 }
 
-function createProvider(observedApiKeys: string[]): ModelProvider {
+function createProvider(
+  observedApiKeys: string[],
+  models: ReadonlyArray<ModelInfo> = [],
+): ModelProvider {
   return {
     id: 'openai-compatible',
     name: 'OpenAI Compatible',
@@ -37,7 +41,7 @@ function createProvider(observedApiKeys: string[]): ModelProvider {
       return { valid: true, message: 'ok' };
     },
     async listModels() {
-      return [];
+      return models;
     },
     async *streamChat() {
       yield { type: 'message_end', finishReason: 'stop' };
@@ -54,8 +58,30 @@ describe('ProviderService', () => {
     const secrets = new MemorySecretStore();
     const observedApiKeys: string[] = [];
     const registry = new ProviderRegistry();
-    registry.register(createProvider(observedApiKeys));
-    const service = new ProviderService(new ProviderConfigRepository(database), secrets, registry);
+    registry.register(
+      createProvider(observedApiKeys, [
+        {
+          id: 'model-1',
+          name: 'Model One',
+          ownedBy: 'fixture',
+          capabilities: {
+            streaming: true,
+            toolCalling: true,
+            vision: false,
+            reasoning: false,
+            structuredOutput: true,
+            contextWindow: 32_000,
+            maxOutputTokens: 4_096,
+          },
+        },
+      ]),
+    );
+    const service = new ProviderService(
+      new ProviderConfigRepository(database),
+      new ModelConfigRepository(database),
+      secrets,
+      registry,
+    );
 
     const saved = await service.save({
       kind: 'openai-compatible',
@@ -87,6 +113,22 @@ describe('ProviderService', () => {
     expect(row.custom_headers).not.toContain('private-token');
     expect(row.sensitive_header_names).toContain('X-API-Token');
 
+    await expect(service.listModels(saved.id)).resolves.toHaveLength(1);
+    const modelRow = database.client
+      .prepare(
+        'SELECT model_id, context_window, structured_output FROM model_configs WHERE provider_config_id = ?',
+      )
+      .get(saved.id) as {
+      readonly context_window: number;
+      readonly model_id: string;
+      readonly structured_output: number;
+    };
+    expect(modelRow).toEqual({
+      context_window: 32_000,
+      model_id: 'model-1',
+      structured_output: 1,
+    });
+
     await expect(service.testConnection(saved.id)).resolves.toEqual({
       valid: true,
       message: 'ok',
@@ -100,7 +142,12 @@ describe('ProviderService', () => {
     const secrets = new MemorySecretStore();
     const registry = new ProviderRegistry();
     registry.register(createProvider([]));
-    const service = new ProviderService(new ProviderConfigRepository(database), secrets, registry);
+    const service = new ProviderService(
+      new ProviderConfigRepository(database),
+      new ModelConfigRepository(database),
+      secrets,
+      registry,
+    );
     const initial = await service.save({
       kind: 'openai-compatible',
       displayName: 'Initial',

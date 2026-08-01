@@ -224,6 +224,176 @@ const databaseMigrations = [
     CREATE INDEX permission_rules_workspace_kind_idx
       ON permission_rules(workspace_id, kind);
   `,
+  `
+    CREATE TABLE context_items (
+      id TEXT PRIMARY KEY NOT NULL,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      token_estimate INTEGER NOT NULL,
+      priority INTEGER NOT NULL,
+      source_key TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX context_items_conversation_priority_idx
+      ON context_items(conversation_id, priority, created_at);
+    CREATE UNIQUE INDEX context_items_conversation_source_idx
+      ON context_items(conversation_id, source_key);
+  `,
+  `
+    CREATE TABLE model_configs (
+      id TEXT PRIMARY KEY NOT NULL,
+      provider_config_id TEXT NOT NULL
+        REFERENCES provider_configs(id) ON DELETE CASCADE,
+      model_id TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      owned_by TEXT,
+      context_window INTEGER,
+      max_output_tokens INTEGER,
+      streaming INTEGER,
+      tool_calling INTEGER,
+      vision INTEGER,
+      reasoning INTEGER,
+      structured_output INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(provider_config_id, model_id)
+    );
+    CREATE INDEX model_configs_provider_updated_idx
+      ON model_configs(provider_config_id, updated_at);
+
+    CREATE TABLE app_settings (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `,
+  `
+    CREATE TABLE audit_events (
+      id TEXT PRIMARY KEY NOT NULL,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+      task_id TEXT REFERENCES agent_tasks(id) ON DELETE SET NULL,
+      actor TEXT NOT NULL,
+      category TEXT NOT NULL,
+      action TEXT NOT NULL,
+      outcome TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      metadata TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX audit_events_workspace_created_idx
+      ON audit_events(workspace_id, created_at);
+    CREATE INDEX audit_events_conversation_created_idx
+      ON audit_events(conversation_id, created_at);
+    CREATE INDEX audit_events_category_created_idx
+      ON audit_events(category, created_at);
+  `,
+  `
+    CREATE TABLE crash_reports (
+      id TEXT PRIMARY KEY NOT NULL,
+      process_type TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      exit_code INTEGER,
+      app_version TEXT NOT NULL,
+      details TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      acknowledged_at TEXT
+    );
+    CREATE INDEX crash_reports_created_idx
+      ON crash_reports(created_at);
+    CREATE INDEX crash_reports_acknowledged_idx
+      ON crash_reports(acknowledged_at, created_at);
+  `,
+  `
+    CREATE TABLE run_configurations (
+      id TEXT PRIMARY KEY NOT NULL,
+      workspace_id TEXT NOT NULL
+        REFERENCES workspaces(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      executable TEXT NOT NULL,
+      args TEXT NOT NULL,
+      runtime_args TEXT NOT NULL,
+      working_directory TEXT NOT NULL,
+      environment_variables TEXT NOT NULL,
+      environment_file TEXT,
+      pre_launch_task_id TEXT,
+      post_run_task_id TEXT,
+      console TEXT NOT NULL,
+      auto_generated INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      CONSTRAINT run_configurations_auto_generated_check
+        CHECK (auto_generated IN (0, 1)),
+      CONSTRAINT run_configurations_console_check
+        CHECK (console IN ('integratedTerminal', 'runOutput')),
+      CONSTRAINT run_configurations_type_check
+        CHECK (type IN (
+          'node', 'typescript', 'react', 'vue', 'nextjs', 'java-maven',
+          'java-gradle', 'spring-boot', 'python', 'c', 'cpp', 'dotnet',
+          'go', 'rust', 'script', 'custom'
+        ))
+    );
+    CREATE UNIQUE INDEX run_configurations_workspace_name_idx
+      ON run_configurations(workspace_id, name);
+    CREATE INDEX run_configurations_workspace_updated_idx
+      ON run_configurations(workspace_id, updated_at);
+
+    CREATE TABLE workspace_run_settings (
+      workspace_id TEXT PRIMARY KEY NOT NULL
+        REFERENCES workspaces(id) ON DELETE CASCADE,
+      default_configuration_id TEXT
+        REFERENCES run_configurations(id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL
+    );
+  `,
+  `
+    CREATE TABLE run_executions (
+      id TEXT PRIMARY KEY NOT NULL,
+      workspace_id TEXT NOT NULL
+        REFERENCES workspaces(id) ON DELETE CASCADE,
+      configuration_id TEXT NOT NULL,
+      restart_of_execution_id TEXT,
+      command_snapshot TEXT NOT NULL,
+      status TEXT NOT NULL,
+      risk_level TEXT NOT NULL,
+      risk_reasons TEXT NOT NULL,
+      approval_digest TEXT NOT NULL,
+      approval_decision TEXT,
+      process_id INTEGER,
+      output_tail TEXT NOT NULL,
+      output_bytes INTEGER NOT NULL,
+      output_truncated INTEGER NOT NULL,
+      exit_code INTEGER,
+      termination_signal TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      approval_decided_at TEXT,
+      started_at TEXT,
+      completed_at TEXT,
+      CONSTRAINT run_executions_status_check
+        CHECK (status IN (
+          'pending_approval', 'starting', 'running', 'stopping',
+          'stopped', 'completed', 'failed', 'rejected'
+        )),
+      CONSTRAINT run_executions_risk_level_check
+        CHECK (risk_level IN ('low', 'medium', 'high', 'blocked')),
+      CONSTRAINT run_executions_approval_decision_check
+        CHECK (approval_decision IS NULL OR approval_decision IN ('approve', 'reject')),
+      CONSTRAINT run_executions_output_bytes_check
+        CHECK (output_bytes >= 0),
+      CONSTRAINT run_executions_output_truncated_check
+        CHECK (output_truncated IN (0, 1))
+    );
+    CREATE INDEX run_executions_workspace_created_idx
+      ON run_executions(workspace_id, created_at);
+    CREATE INDEX run_executions_configuration_created_idx
+      ON run_executions(configuration_id, created_at);
+  `,
 ] as const;
 
 function migrateDatabase(client: DatabaseSync): void {

@@ -95,6 +95,7 @@ export class TerminalSessionService {
         TERM: 'xterm-256color',
       },
       useConpty: process.platform === 'win32',
+      useConptyDll: process.platform === 'win32',
     });
     this.#sessions.set(sessionId, { ownerId, workspaceId, pty });
     pty.onData((data) => {

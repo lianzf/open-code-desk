@@ -1,10 +1,29 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, open, readdir, readFile, realpath, rename, stat, unlink } from 'node:fs/promises';
+import {
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rmdir,
+  stat,
+  unlink,
+} from 'node:fs/promises';
 import { dirname, extname } from 'node:path';
 
-import type { FileEntry, ReadFileResponse, WriteFileResponse } from '@open-code-desk/ipc-contracts';
+import type {
+  FileEntry,
+  FileMutationResponse,
+  ReadFileResponse,
+  TextSearchResponse,
+  WriteFileResponse,
+} from '@open-code-desk/ipc-contracts';
 
 import type { WorkspaceService } from '../workspace/workspace.service';
+import type { AuditLogService } from '../audit/audit-log.service';
+import type { WorkspacePathPolicy } from '../permissions/workspace-path-policy';
 import {
   isIgnoredDirectoryName,
   isPathInside,
@@ -15,6 +34,33 @@ import {
 
 const maximumFileBytes = 2_000_000;
 const maximumSearchEntries = 10_000;
+const maximumTextSearchFiles = 2_000;
+
+const searchableExtensions = new Set([
+  '.c',
+  '.cpp',
+  '.css',
+  '.go',
+  '.h',
+  '.html',
+  '.java',
+  '.js',
+  '.json',
+  '.jsx',
+  '.md',
+  '.py',
+  '.rs',
+  '.scss',
+  '.sh',
+  '.sql',
+  '.toml',
+  '.ts',
+  '.tsx',
+  '.txt',
+  '.xml',
+  '.yaml',
+  '.yml',
+]);
 
 const languageByExtension: Readonly<Record<string, string>> = {
   '.css': 'css',
@@ -62,8 +108,18 @@ function joinRelative(parent: string, child: string): string {
   return parent === '' ? child : `${parent}/${child}`;
 }
 
+function isMissingPathError(error: unknown): boolean {
+  return (
+    error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT'
+  );
+}
+
 export class WorkspaceFileService {
-  public constructor(private readonly workspaces: WorkspaceService) {}
+  public constructor(
+    private readonly workspaces: WorkspaceService,
+    private readonly audit?: AuditLogService,
+    private readonly pathPolicy?: WorkspacePathPolicy,
+  ) {}
 
   public async listDirectory(
     workspaceId: string,
@@ -71,6 +127,7 @@ export class WorkspaceFileService {
   ): Promise<ReadonlyArray<FileEntry>> {
     const workspace = await this.workspaces.getById(workspaceId);
     const relativePath = normalizeRelativePath(requestedRelativePath);
+    this.pathPolicy?.assertAllowed(workspaceId, relativePath);
 
     if (isSensitiveRelativePath(relativePath)) {
       throw new Error('该目录受敏感路径策略保护。');
@@ -92,7 +149,9 @@ export class WorkspaceFileService {
           const entryRelativePath = joinRelative(relativePath, entry.name);
           const entryPath = toPlatformPath(workspace.rootPath, entryRelativePath);
           const symbolicLink = entry.isSymbolicLink();
-          let restricted = isSensitiveRelativePath(entryRelativePath);
+          let restricted =
+            isSensitiveRelativePath(entryRelativePath) ||
+            this.pathPolicy?.isBlocked(workspaceId, entryRelativePath) === true;
           let kind: FileEntry['kind'] = entry.isDirectory() ? 'directory' : 'file';
 
           if (symbolicLink) {
@@ -131,6 +190,7 @@ export class WorkspaceFileService {
   ): Promise<ReadFileResponse> {
     const workspace = await this.workspaces.getById(workspaceId);
     const relativePath = this.assertReadableRelativePath(requestedRelativePath);
+    this.pathPolicy?.assertAllowed(workspaceId, relativePath);
     const filePath = toPlatformPath(workspace.rootPath, relativePath);
     await this.assertExistingPathInside(workspace.rootPath, filePath);
     const fileStat = await stat(filePath);
@@ -164,6 +224,7 @@ export class WorkspaceFileService {
   ): Promise<WriteFileResponse> {
     const workspace = await this.workspaces.getById(workspaceId);
     const relativePath = this.assertReadableRelativePath(requestedRelativePath);
+    this.pathPolicy?.assertAllowed(workspaceId, relativePath);
     const filePath = toPlatformPath(workspace.rootPath, relativePath);
     const linkStat = await lstat(filePath);
 
@@ -208,12 +269,144 @@ export class WorkspaceFileService {
     }
 
     const updatedStat = await stat(filePath);
+    this.auditMutation(workspaceId, 'file.write', relativePath);
     return {
       relativePath,
       contentHash: contentHash(nextContent),
       size: nextContent.byteLength,
       modifiedAt: updatedStat.mtime.toISOString(),
     };
+  }
+
+  public async createFile(
+    workspaceId: string,
+    requestedRelativePath: string,
+    content: string,
+  ): Promise<FileMutationResponse> {
+    const workspace = await this.workspaces.getById(workspaceId);
+    const relativePath = this.assertMutableRelativePath(requestedRelativePath);
+    this.pathPolicy?.assertAllowed(workspaceId, relativePath);
+    const filePath = toPlatformPath(workspace.rootPath, relativePath);
+    await this.assertWritableParentInside(workspace.rootPath, filePath);
+    const encodedContent = Buffer.from(content, 'utf8');
+    if (encodedContent.byteLength > maximumFileBytes) {
+      throw new Error('新文件内容超过 2 MB 限制。');
+    }
+
+    const handle = await open(filePath, 'wx');
+    let completed = false;
+    try {
+      await handle.writeFile(encodedContent);
+      await handle.sync();
+      completed = true;
+    } finally {
+      await handle.close();
+      if (!completed) {
+        await unlink(filePath).catch(() => undefined);
+      }
+    }
+    this.auditMutation(workspaceId, 'file.create', relativePath);
+    return { relativePath };
+  }
+
+  public async createDirectory(
+    workspaceId: string,
+    requestedRelativePath: string,
+  ): Promise<FileMutationResponse> {
+    const workspace = await this.workspaces.getById(workspaceId);
+    const relativePath = this.assertMutableRelativePath(requestedRelativePath);
+    this.pathPolicy?.assertAllowed(workspaceId, relativePath);
+    const directoryPath = toPlatformPath(workspace.rootPath, relativePath);
+    await this.assertWritableParentInside(workspace.rootPath, directoryPath);
+    await mkdir(directoryPath);
+    this.auditMutation(workspaceId, 'directory.create', relativePath);
+    return { relativePath };
+  }
+
+  public async movePath(
+    workspaceId: string,
+    requestedSourcePath: string,
+    requestedDestinationPath: string,
+  ): Promise<FileMutationResponse> {
+    const workspace = await this.workspaces.getById(workspaceId);
+    const sourcePath = this.assertMutableRelativePath(requestedSourcePath);
+    const destinationPath = this.assertMutableRelativePath(requestedDestinationPath);
+    this.pathPolicy?.assertAllowed(workspaceId, sourcePath);
+    this.pathPolicy?.assertAllowed(workspaceId, destinationPath);
+    if (sourcePath === destinationPath) {
+      throw new Error('源路径和目标路径不能相同。');
+    }
+
+    const absoluteSource = toPlatformPath(workspace.rootPath, sourcePath);
+    const absoluteDestination = toPlatformPath(workspace.rootPath, destinationPath);
+    await this.assertExistingPathInside(workspace.rootPath, absoluteSource);
+    const sourceStat = await lstat(absoluteSource);
+    if (sourceStat.isSymbolicLink()) {
+      throw new Error('不允许移动符号链接。');
+    }
+    if (sourceStat.isDirectory() && isPathInside(absoluteSource, absoluteDestination)) {
+      throw new Error('不能把目录移动到其自身内部。');
+    }
+    await this.assertWritableParentInside(workspace.rootPath, absoluteDestination);
+
+    try {
+      await lstat(absoluteDestination);
+      throw new Error('目标路径已存在，请选择其他名称。');
+    } catch (error) {
+      if (!isMissingPathError(error)) {
+        throw error;
+      }
+    }
+
+    await rename(absoluteSource, absoluteDestination);
+    this.auditMutation(workspaceId, 'path.move', destinationPath, {
+      sourcePath,
+      destinationPath,
+    });
+    return { relativePath: destinationPath };
+  }
+
+  public async deletePath(
+    workspaceId: string,
+    requestedRelativePath: string,
+  ): Promise<FileMutationResponse> {
+    const workspace = await this.workspaces.getById(workspaceId);
+    const relativePath = this.assertMutableRelativePath(requestedRelativePath);
+    this.pathPolicy?.assertAllowed(workspaceId, relativePath);
+    const absolutePath = toPlatformPath(workspace.rootPath, relativePath);
+    await this.assertExistingPathInside(workspace.rootPath, absolutePath);
+    const pathStat = await lstat(absolutePath);
+    if (pathStat.isSymbolicLink()) {
+      throw new Error('不允许通过文件树删除符号链接。');
+    }
+    if (pathStat.isDirectory()) {
+      await rmdir(absolutePath);
+    } else if (pathStat.isFile()) {
+      await unlink(absolutePath);
+    } else {
+      throw new Error('只能删除普通文件或空目录。');
+    }
+    this.auditMutation(workspaceId, 'path.delete', relativePath, {
+      kind: pathStat.isDirectory() ? 'directory' : 'file',
+    });
+    return { relativePath };
+  }
+
+  private auditMutation(
+    workspaceId: string,
+    action: string,
+    relativePath: string,
+    metadata: Readonly<Record<string, string>> = {},
+  ): void {
+    this.audit?.record({
+      workspaceId,
+      actor: 'user',
+      category: 'file_system',
+      action,
+      outcome: 'succeeded',
+      summary: `${action} completed for ${relativePath}.`,
+      metadata: { relativePath, ...metadata },
+    });
   }
 
   public async searchFiles(
@@ -262,6 +455,76 @@ export class WorkspaceFileService {
     return matches;
   }
 
+  public async searchText(
+    workspaceId: string,
+    query: string,
+    requestedPath: string,
+    caseSensitive: boolean,
+    limit: number,
+    signal?: AbortSignal,
+  ): Promise<TextSearchResponse> {
+    const path = normalizeRelativePath(requestedPath);
+    const queue = [path];
+    const matches: TextSearchResponse['matches'][number][] = [];
+    const needle = caseSensitive ? query : query.toLocaleLowerCase('en-US');
+    let visitedFiles = 0;
+
+    while (queue.length > 0 && matches.length < limit && visitedFiles < maximumTextSearchFiles) {
+      signal?.throwIfAborted();
+      const directory = queue.shift();
+      if (directory === undefined) {
+        break;
+      }
+      const entries = await this.listDirectory(workspaceId, directory);
+      for (const entry of entries) {
+        signal?.throwIfAborted();
+        if (entry.restricted || entry.symbolicLink) {
+          continue;
+        }
+        if (entry.kind === 'directory') {
+          queue.push(entry.relativePath);
+          continue;
+        }
+        if (!searchableExtensions.has(extname(entry.name).toLocaleLowerCase('en-US'))) {
+          continue;
+        }
+        visitedFiles += 1;
+        try {
+          const file = await this.readFile(workspaceId, entry.relativePath);
+          const lines = file.content.split('\n');
+          for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+            const line = lines[lineIndex] ?? '';
+            const searchableLine = caseSensitive ? line : line.toLocaleLowerCase('en-US');
+            const column = searchableLine.indexOf(needle);
+            if (column !== -1) {
+              matches.push({
+                path: entry.relativePath,
+                line: lineIndex + 1,
+                column: column + 1,
+                preview: line.trim().slice(0, 500),
+              });
+              if (matches.length >= limit) {
+                break;
+              }
+            }
+          }
+        } catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') {
+            throw error;
+          }
+          // Binary, oversized, or concurrently removed files are safely skipped.
+        }
+      }
+    }
+
+    return {
+      query,
+      matches,
+      visitedFiles,
+      truncated: matches.length >= limit || visitedFiles >= maximumTextSearchFiles,
+    };
+  }
+
   private assertReadableRelativePath(requestedRelativePath: string): string {
     const relativePath = normalizeRelativePath(requestedRelativePath);
 
@@ -274,6 +537,17 @@ export class WorkspaceFileService {
     }
 
     return relativePath;
+  }
+
+  private assertMutableRelativePath(requestedRelativePath: string): string {
+    return this.assertReadableRelativePath(requestedRelativePath);
+  }
+
+  private async assertWritableParentInside(rootPath: string, candidatePath: string): Promise<void> {
+    const canonicalParent = await realpath(dirname(candidatePath));
+    if (!isPathInside(rootPath, canonicalParent)) {
+      throw new Error('目标父目录超出工作区边界。');
+    }
   }
 
   private async assertExistingPathInside(rootPath: string, candidatePath: string): Promise<void> {

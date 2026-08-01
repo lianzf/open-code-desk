@@ -4,19 +4,12 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
+import { expect, test, type ElectronApplication } from '@playwright/test';
+
+import { launchDesktop } from './desktop-fixture';
 
 const secretSentinel = 'e2e-secret-sentinel-must-not-persist';
 const workspaceSentinel = 'E2E_WORKSPACE_SENTINEL_42';
-
-function launchDesktop(userDataDirectory: string): Promise<ElectronApplication> {
-  return electron.launch({
-    args: [
-      join(process.cwd(), 'apps/desktop/out/main/main.js'),
-      `--user-data-dir=${userDataDirectory}`,
-    ],
-  });
-}
 
 interface FixtureMessage {
   readonly role?: string;
@@ -124,6 +117,17 @@ test('runs a real read-tool Agent loop and restores the conversation after resta
     let window = await application.firstWindow();
 
     await window.getByTestId('open-provider-settings').click();
+    const providerKind = window.getByTestId('provider-kind');
+    await expect(providerKind.locator('option')).toHaveCount(10);
+    await providerKind.selectOption('anthropic');
+    await expect(window.getByTestId('provider-base-url')).toHaveValue(
+      'https://api.anthropic.com/v1',
+    );
+    await providerKind.selectOption('gemini');
+    await expect(window.getByTestId('provider-base-url')).toHaveValue(
+      'https://generativelanguage.googleapis.com/v1beta',
+    );
+    await providerKind.selectOption('openai-compatible');
     await window.getByTestId('provider-name').fill('E2E Provider');
     await window.getByTestId('provider-base-url').fill(fixture.baseUrl);
     await window.getByTestId('provider-api-key').fill(secretSentinel);
@@ -150,6 +154,9 @@ test('runs a real read-tool Agent loop and restores the conversation after resta
     );
     await expect(window.getByTestId('context-stats')).toBeVisible();
     await expect(window.getByTestId('agent-status')).toContainText('已完成');
+    await expect(window.getByTestId('task-plan')).toBeVisible();
+    await window.getByTestId('task-plan').locator('summary').click();
+    await expect(window.getByTestId('task-plan')).toContainText('执行工具 read_file');
 
     const actualUserData = await application.evaluate(({ app }) => app.getPath('userData'));
     const databaseFiles = (await readdir(actualUserData)).filter((name) =>

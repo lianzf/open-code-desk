@@ -8,6 +8,7 @@ import {
   normalizeRelativePath,
   toPlatformPath,
 } from '../filesystem/path-policy';
+import type { WorkspacePathPolicy } from '../permissions/workspace-path-policy';
 
 const maximumFileBytes = 2_000_000;
 
@@ -28,7 +29,10 @@ function decodeUtf8(bytes: Buffer): string {
 }
 
 export class ChangePathResolver {
-  public constructor(private readonly workspaces: WorkspaceService) {}
+  public constructor(
+    private readonly workspaces: WorkspaceService,
+    private readonly pathPolicy?: WorkspacePathPolicy,
+  ) {}
 
   public async existing(
     workspaceId: string,
@@ -36,6 +40,7 @@ export class ChangePathResolver {
   ): Promise<ResolvedWorkspaceFile> {
     const workspace = await this.workspaces.getById(workspaceId);
     const relativePath = this.safeRelativePath(requestedPath);
+    this.pathPolicy?.assertAllowed(workspaceId, relativePath);
     const absolutePath = toPlatformPath(workspace.rootPath, relativePath);
     const linkInfo = await lstat(absolutePath);
     if (linkInfo.isSymbolicLink() || !linkInfo.isFile()) {
@@ -69,6 +74,7 @@ export class ChangePathResolver {
   }> {
     const workspace = await this.workspaces.getById(workspaceId);
     const relativePath = this.safeRelativePath(requestedPath);
+    this.pathPolicy?.assertAllowed(workspaceId, relativePath);
     const absolutePath = toPlatformPath(workspace.rootPath, relativePath);
     try {
       await lstat(absolutePath);

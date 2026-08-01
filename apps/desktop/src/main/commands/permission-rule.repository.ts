@@ -63,4 +63,13 @@ export class PermissionRuleRepository {
       ) > 0
     );
   }
+
+  public deleteByKind(workspaceId: string, kind: PermissionRuleKind): number {
+    return Number(
+      this.database.orm
+        .delete(permissionRules)
+        .where(and(eq(permissionRules.workspaceId, workspaceId), eq(permissionRules.kind, kind)))
+        .run().changes,
+    );
+  }
 }

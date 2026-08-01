@@ -1,13 +1,22 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   applyChangeSetRequestSchema,
+  addBlockedPathRequestSchema,
+  auditChannels,
+  auditEventListSchema,
   cancelChatRequestSchema,
   cancelChatResponseSchema,
+  cancelFileSearchRequestSchema,
+  cancelFileSearchResponseSchema,
   commandActionResponseSchema,
   commandChannels,
   commandExecutionListSchema,
   commandExecutionSchema,
   commandIdRequestSchema,
+  contextChannels,
+  contextConversationRequestSchema,
+  conversationContextItemSchema,
+  conversationContextListSchema,
   changeContentsRequestSchema,
   changeContentsSchema,
   changesChannels,
@@ -20,44 +29,99 @@ import {
   conversationListSchema,
   conversationSchema,
   conversationsChannels,
+  crashReportChannels,
+  crashReportListSchema,
+  createDirectoryRequestSchema,
+  createFileRequestSchema,
   createConversationRequestSchema,
   deleteProviderRequestSchema,
   deleteProviderResponseSchema,
+  deletePathRequestSchema,
   decideCommandRequestSchema,
+  decideToolApprovalRequestSchema,
   deletePermissionRuleRequestSchema,
   deletePermissionRuleResponseSchema,
+  deleteConversationContextRequestSchema,
+  deleteConversationContextResponseSchema,
   editChangeProposalRequestSchema,
   fileChangedEventSchema,
   fileEntryListSchema,
+  fileMutationResponseSchema,
   fileChangeSetListSchema,
   fileChangeSetSchema,
   filesChannels,
   healthRequestSchema,
   healthResponseSchema,
+  grantExternalDirectoryRequestSchema,
+  gitChannels,
+  gitDiffRequestSchema,
+  gitDiffSchema,
+  gitStatusRequestSchema,
+  gitStatusSchema,
   ipcChannels,
   listDirectoryRequestSchema,
+  listAuditEventsRequestSchema,
   listConversationsRequestSchema,
   listChangeSetsRequestSchema,
   listCommandsRequestSchema,
+  listCrashReportsRequestSchema,
   modelInfoListSchema,
+  movePathRequestSchema,
   nullableWorkspaceInfoSchema,
+  nullablePermissionRuleSchema,
   openRecentWorkspaceRequestSchema,
   providerChannels,
   providerConfigListSchema,
   providerConfigSchema,
   providerDescriptorListSchema,
   providerIdRequestSchema,
+  projectDetectionSchema,
   permissionRuleListSchema,
+  permissionRuleSchema,
+  permissionActionResponseSchema,
+  permissionChannels,
+  pickConversationImageResponseSchema,
   readFileRequestSchema,
   readFileResponseSchema,
   reviewChangeRequestSchema,
   reviewManyChangesRequestSchema,
   renameConversationRequestSchema,
   searchFilesRequestSchema,
+  searchTextRequestSchema,
+  textSearchResponseSchema,
   saveProviderRequestSchema,
+  saveRunConfigurationRequestSchema,
+  saveConversationContextRequestSchema,
+  settingsChannels,
+  setDefaultRunConfigurationRequestSchema,
+  setDefaultRunConfigurationResponseSchema,
+  appSettingsSchema,
+  updateAppSettingsRequestSchema,
+  updateActionRequestSchema,
+  updateChannels,
+  updateStatusSchema,
   setNetworkAccessRequestSchema,
+  setReadAutoAllowRequestSchema,
+  upsertExecutableRuleRequestSchema,
+  installUpdateResponseSchema,
   startChatRequestSchema,
   startChatResponseSchema,
+  deleteRunConfigurationRequestSchema,
+  deleteRunConfigurationResponseSchema,
+  decideRunStartRequestSchema,
+  detectProjectRequestSchema,
+  listRunHistoryRequestSchema,
+  listRunConfigurationsRequestSchema,
+  pendingRunExecutionSchema,
+  proposeRunStartRequestSchema,
+  restartRunExecutionRequestSchema,
+  runChannels,
+  runConfigurationListSchema,
+  runConfigurationSchema,
+  runEventSchema,
+  runExecutionListSchema,
+  runExecutionSchema,
+  stopRunExecutionRequestSchema,
   deleteConversationResponseSchema,
   exportConversationResponseSchema,
   type DesktopApi,
@@ -70,6 +134,8 @@ import {
   terminalSessionRequestSchema,
   terminalWriteRequestSchema,
   createTerminalRequestSchema,
+  acknowledgeCrashReportRequestSchema,
+  acknowledgeCrashReportResponseSchema,
   workspaceChannels,
   workspaceRulesRequestSchema,
   workspaceInfoListSchema,
@@ -79,6 +145,13 @@ import {
 } from '@open-code-desk/ipc-contracts';
 
 const desktopApi: DesktopApi = {
+  audit: {
+    async list(input) {
+      const request = listAuditEventsRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(auditChannels.list, request);
+      return auditEventListSchema.parse(response);
+    },
+  },
   app: {
     async health(input) {
       const request = healthRequestSchema.parse(input);
@@ -115,10 +188,35 @@ const desktopApi: DesktopApi = {
         ipcRenderer.removeListener(filesChannels.changed, wrappedListener);
       };
     },
+    async cancelSearch(input) {
+      const request = cancelFileSearchRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(filesChannels.cancelSearch, request);
+      return cancelFileSearchResponseSchema.parse(response);
+    },
+    async createDirectory(input) {
+      const request = createDirectoryRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(filesChannels.createDirectory, request);
+      return fileMutationResponseSchema.parse(response);
+    },
+    async createFile(input) {
+      const request = createFileRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(filesChannels.createFile, request);
+      return fileMutationResponseSchema.parse(response);
+    },
+    async deletePath(input) {
+      const request = deletePathRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(filesChannels.deletePath, request);
+      return fileMutationResponseSchema.parse(response);
+    },
     async listDirectory(input) {
       const request = listDirectoryRequestSchema.parse(input);
       const response: unknown = await ipcRenderer.invoke(filesChannels.listDirectory, request);
       return fileEntryListSchema.parse(response);
+    },
+    async movePath(input) {
+      const request = movePathRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(filesChannels.movePath, request);
+      return fileMutationResponseSchema.parse(response);
     },
     async readFile(input) {
       const request = readFileRequestSchema.parse(input);
@@ -129,6 +227,11 @@ const desktopApi: DesktopApi = {
       const request = searchFilesRequestSchema.parse(input);
       const response: unknown = await ipcRenderer.invoke(filesChannels.searchFiles, request);
       return fileEntryListSchema.parse(response);
+    },
+    async searchText(input) {
+      const request = searchTextRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(filesChannels.searchText, request);
+      return textSearchResponseSchema.parse(response);
     },
     async writeFile(input) {
       const request = writeFileRequestSchema.parse(input);
@@ -166,6 +269,81 @@ const desktopApi: DesktopApi = {
       return modelInfoListSchema.parse(response);
     },
   },
+  run: {
+    async detect(input) {
+      const request = detectProjectRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.detectProject, request);
+      return projectDetectionSchema.parse(response);
+    },
+    async list(input) {
+      const request = listRunConfigurationsRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.listConfigurations, request);
+      return runConfigurationListSchema.parse(response);
+    },
+    async save(input) {
+      const request = saveRunConfigurationRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.saveConfiguration, request);
+      return runConfigurationSchema.parse(response);
+    },
+    async delete(input) {
+      const request = deleteRunConfigurationRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.deleteConfiguration, request);
+      return deleteRunConfigurationResponseSchema.parse(response);
+    },
+    async setDefault(input) {
+      const request = setDefaultRunConfigurationRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(
+        runChannels.setDefaultConfiguration,
+        request,
+      );
+      return setDefaultRunConfigurationResponseSchema.parse(response);
+    },
+    async proposeStart(input) {
+      const request = proposeRunStartRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.proposeStart, request);
+      return pendingRunExecutionSchema.parse(response);
+    },
+    async decideStart(input) {
+      const request = decideRunStartRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.decideStart, request);
+      return runExecutionSchema.parse(response);
+    },
+    async stop(input) {
+      const request = stopRunExecutionRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.stop, request);
+      return runExecutionSchema.parse(response);
+    },
+    async restart(input) {
+      const request = restartRunExecutionRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.restart, request);
+      return pendingRunExecutionSchema.parse(response);
+    },
+    async listHistory(input) {
+      const request = listRunHistoryRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(runChannels.listHistory, request);
+      return runExecutionListSchema.parse(response);
+    },
+    onEvent(listener) {
+      const wrappedListener = (_event: Electron.IpcRendererEvent, untrustedEvent: unknown) => {
+        listener(runEventSchema.parse(untrustedEvent));
+      };
+      ipcRenderer.on(runChannels.event, wrappedListener);
+      return () => {
+        ipcRenderer.removeListener(runChannels.event, wrappedListener);
+      };
+    },
+  },
+  settings: {
+    async get() {
+      const response: unknown = await ipcRenderer.invoke(settingsChannels.get);
+      return appSettingsSchema.parse(response);
+    },
+    async update(input) {
+      const request = updateAppSettingsRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(settingsChannels.update, request);
+      return appSettingsSchema.parse(response);
+    },
+  },
   conversations: {
     async list(input) {
       const request = listConversationsRequestSchema.parse(input);
@@ -199,6 +377,18 @@ const desktopApi: DesktopApi = {
         request,
       );
       return exportConversationResponseSchema.parse(response);
+    },
+  },
+  crashReports: {
+    async list(input) {
+      const request = listCrashReportsRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(crashReportChannels.list, request);
+      return crashReportListSchema.parse(response);
+    },
+    async acknowledge(input) {
+      const request = acknowledgeCrashReportRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(crashReportChannels.acknowledge, request);
+      return acknowledgeCrashReportResponseSchema.parse(response);
     },
   },
   chat: {
@@ -301,6 +491,77 @@ const desktopApi: DesktopApi = {
       const response: unknown = await ipcRenderer.invoke(commandChannels.setNetworkAccess, request);
       return permissionRuleListSchema.parse(response);
     },
+    async upsertExecutableRule(input) {
+      const request = upsertExecutableRuleRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(
+        commandChannels.upsertExecutableRule,
+        request,
+      );
+      return permissionRuleSchema.parse(response);
+    },
+  },
+  permissions: {
+    async addBlockedPath(input) {
+      const request = addBlockedPathRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(
+        permissionChannels.addBlockedPath,
+        request,
+      );
+      return permissionRuleSchema.parse(response);
+    },
+    async decideTool(input) {
+      const request = decideToolApprovalRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(permissionChannels.decideTool, request);
+      return permissionActionResponseSchema.parse(response);
+    },
+    async deleteRule(input) {
+      const request = deletePermissionRuleRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(permissionChannels.deleteRule, request);
+      return deletePermissionRuleResponseSchema.parse(response);
+    },
+    async grantExternalDirectory(input) {
+      const request = grantExternalDirectoryRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(
+        permissionChannels.grantExternalDirectory,
+        request,
+      );
+      return nullablePermissionRuleSchema.parse(response);
+    },
+    async listRules(input) {
+      const request = workspaceRulesRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(permissionChannels.listRules, request);
+      return permissionRuleListSchema.parse(response);
+    },
+    async setReadAutoAllow(input) {
+      const request = setReadAutoAllowRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(
+        permissionChannels.setReadAutoAllow,
+        request,
+      );
+      return permissionRuleListSchema.parse(response);
+    },
+  },
+  context: {
+    async list(input) {
+      const request = contextConversationRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(contextChannels.list, request);
+      return conversationContextListSchema.parse(response);
+    },
+    async pickImage(input) {
+      const request = contextConversationRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(contextChannels.pickImage, request);
+      return pickConversationImageResponseSchema.parse(response);
+    },
+    async save(input) {
+      const request = saveConversationContextRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(contextChannels.save, request);
+      return conversationContextItemSchema.parse(response);
+    },
+    async delete(input) {
+      const request = deleteConversationContextRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(contextChannels.delete, request);
+      return deleteConversationContextResponseSchema.parse(response);
+    },
   },
   terminal: {
     async create(input) {
@@ -340,6 +601,47 @@ const desktopApi: DesktopApi = {
       return () => {
         ipcRenderer.removeListener(terminalChannels.exit, wrappedListener);
       };
+    },
+  },
+  updates: {
+    async getStatus() {
+      const request = updateActionRequestSchema.parse({});
+      const response: unknown = await ipcRenderer.invoke(updateChannels.getStatus, request);
+      return updateStatusSchema.parse(response);
+    },
+    async check() {
+      const request = updateActionRequestSchema.parse({});
+      const response: unknown = await ipcRenderer.invoke(updateChannels.check, request);
+      return updateStatusSchema.parse(response);
+    },
+    async download() {
+      const request = updateActionRequestSchema.parse({});
+      const response: unknown = await ipcRenderer.invoke(updateChannels.download, request);
+      return updateStatusSchema.parse(response);
+    },
+    async install() {
+      const request = updateActionRequestSchema.parse({});
+      const response: unknown = await ipcRenderer.invoke(updateChannels.install, request);
+      return installUpdateResponseSchema.parse(response);
+    },
+    onStatusChanged(listener) {
+      const wrappedListener = (_event: Electron.IpcRendererEvent, untrustedStatus: unknown) => {
+        listener(updateStatusSchema.parse(untrustedStatus));
+      };
+      ipcRenderer.on(updateChannels.statusChanged, wrappedListener);
+      return () => ipcRenderer.removeListener(updateChannels.statusChanged, wrappedListener);
+    },
+  },
+  git: {
+    async status(input) {
+      const request = gitStatusRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(gitChannels.status, request);
+      return gitStatusSchema.parse(response);
+    },
+    async diff(input) {
+      const request = gitDiffRequestSchema.parse(input);
+      const response: unknown = await ipcRenderer.invoke(gitChannels.diff, request);
+      return gitDiffSchema.parse(response);
     },
   },
 };

@@ -1,11 +1,12 @@
 import { join } from 'node:path';
 
-import { BrowserWindow, shell } from 'electron';
+import { BrowserWindow, shell, type RenderProcessGoneDetails } from 'electron';
 
 export interface CreateMainWindowOptions {
   readonly preloadPath: string;
   readonly rendererHtmlPath: string;
   readonly devServerUrl?: string;
+  readonly onRendererGone?: (details: RenderProcessGoneDetails) => boolean;
 }
 
 export async function createMainWindow(options: CreateMainWindowOptions): Promise<BrowserWindow> {
@@ -39,6 +40,17 @@ export async function createMainWindow(options: CreateMainWindowOptions): Promis
 
   window.webContents.on('will-navigate', (event) => {
     event.preventDefault();
+  });
+
+  window.webContents.on('render-process-gone', (_event, details) => {
+    if (options.onRendererGone?.(details) !== true) {
+      return;
+    }
+    setTimeout(() => {
+      if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+        window.webContents.reload();
+      }
+    }, 500);
   });
 
   window.once('ready-to-show', () => {

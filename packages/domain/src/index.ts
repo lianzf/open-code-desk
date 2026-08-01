@@ -1,3 +1,5 @@
+export * from './run';
+
 export type AgentStatus =
   | 'idle'
   | 'analyzing'
@@ -93,11 +95,27 @@ export interface AgentTask {
   readonly requestId: string;
   readonly status: AgentStatus;
   readonly attempt: number;
-  readonly checkpoint?: Readonly<Record<string, unknown>>;
+  readonly checkpoint?: AgentTaskCheckpoint;
   readonly error?: AppError;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly completedAt?: string;
+}
+
+export type AgentTaskStepStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
+
+export interface AgentTaskStep {
+  readonly id: string;
+  readonly label: string;
+  readonly status: AgentTaskStepStatus;
+  readonly startedAt?: string;
+  readonly completedAt?: string;
+}
+
+export interface AgentTaskCheckpoint {
+  readonly round: number;
+  readonly steps: ReadonlyArray<AgentTaskStep>;
+  readonly updatedAt: string;
 }
 
 export type ToolCallStatus =
@@ -111,6 +129,7 @@ export interface ToolCallRecord {
   readonly permissionLevel: 'read' | 'write' | 'execute' | 'dangerous';
   readonly input: unknown;
   readonly status: ToolCallStatus;
+  readonly approvalDigest?: string;
   readonly output?: unknown;
   readonly error?: Readonly<{
     code: string;
@@ -133,11 +152,20 @@ export interface ContextItem {
     | 'terminal'
     | 'diagnostic'
     | 'text'
+    | 'image'
+    | 'rules'
     | 'summary';
   readonly title: string;
   readonly content: string;
   readonly tokenEstimate: number;
   readonly priority: number;
+}
+
+export interface ConversationContextItem extends ContextItem {
+  readonly conversationId: string;
+  readonly sourceKey?: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 export type FileChangeOperation = 'create' | 'update' | 'delete' | 'rename';
@@ -237,7 +265,13 @@ export interface CommandExecution {
   readonly completedAt?: string;
 }
 
-export type PermissionRuleKind = 'allow_executable' | 'deny_executable' | 'allow_network_commands';
+export type PermissionRuleKind =
+  | 'allow_executable'
+  | 'deny_executable'
+  | 'allow_network_commands'
+  | 'require_read_approval'
+  | 'blocked_path'
+  | 'external_directory';
 
 export interface PermissionRule {
   readonly id: string;
@@ -246,4 +280,24 @@ export interface PermissionRule {
   readonly value: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export type AuditActor = 'user' | 'agent' | 'system';
+export type AuditCategory =
+  'tool' | 'command' | 'file_change' | 'file_system' | 'permission' | 'security';
+export type AuditOutcome =
+  'requested' | 'allowed' | 'denied' | 'started' | 'succeeded' | 'failed' | 'cancelled';
+
+export interface AuditEvent {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly conversationId?: string;
+  readonly taskId?: string;
+  readonly actor: AuditActor;
+  readonly category: AuditCategory;
+  readonly action: string;
+  readonly outcome: AuditOutcome;
+  readonly summary: string;
+  readonly metadata: Readonly<Record<string, string | number | boolean | null>>;
+  readonly createdAt: string;
 }

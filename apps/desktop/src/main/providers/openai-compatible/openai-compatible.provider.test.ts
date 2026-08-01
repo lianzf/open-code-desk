@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import type { ProviderConfig, ProviderContext } from '@open-code-desk/provider-core';
 
 import { ProviderServiceError } from '../core/provider-error';
+import { requestBody } from './openai-compatible-http';
 import { OpenAICompatibleProvider } from './openai-compatible.provider';
 
 let server: Server;
@@ -93,7 +94,7 @@ describe('OpenAICompatibleProvider', () => {
   it('lists models and validates a real HTTP connection', async () => {
     const provider = new OpenAICompatibleProvider();
 
-    await expect(provider.listModels(config(), context())).resolves.toEqual([
+    await expect(provider.listModels(config(), context())).resolves.toMatchObject([
       { id: 'fixture-model', name: 'fixture-model', ownedBy: 'fixture' },
     ]);
     await expect(provider.validateConfig(config(), context())).resolves.toEqual({
@@ -152,5 +153,37 @@ describe('OpenAICompatibleProvider', () => {
     await expect(provider.listModels(config(), context('wrong-key'))).rejects.not.toThrow(
       'wrong-key',
     );
+  });
+
+  it('maps image content to OpenAI image_url parts', () => {
+    expect(
+      requestBody(
+        {
+          model: 'fixture-model',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Inspect this image.' },
+                { type: 'image', mediaType: 'image/png', data: 'aGVsbG8=' },
+              ],
+            },
+          ],
+        },
+        false,
+      ),
+    ).toMatchObject({
+      messages: [
+        {
+          content: [
+            { type: 'text', text: 'Inspect this image.' },
+            {
+              type: 'image_url',
+              image_url: { url: 'data:image/png;base64,aGVsbG8=' },
+            },
+          ],
+        },
+      ],
+    });
   });
 });

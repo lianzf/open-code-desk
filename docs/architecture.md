@@ -393,6 +393,16 @@ export interface PermissionDecision {
 审批绑定规范化参数摘要，防止 UI 展示内容与实际执行内容不一致。未知 Tool 名称、额外参数或过期
 审批都必须失败。工具注册表拒绝重复名称。
 
+当前实现使用 `tool_calls.status = pending` 作为可持久化的通用工具审批记录。审批摘要由 call ID、
+task ID、conversation ID、Tool 名称、权限等级和经过 Zod 校验的输入共同计算；Renderer 只能回传
+call ID、决策和期望摘要。`ToolApprovalService` 仅在活动 Agent 任务中解析该决策，批准后
+`ToolDispatcher` 才调用工具，拒绝/取消则形成结构化 ToolResult 并继续 Agent 循环。应用重启会把
+遗留 `pending/running` ToolCall 标记为取消。
+
+权限规则按工作区持久化：`require_read_approval` 控制工作区只读工具是否逐次批准，
+`blocked_path` 阻止指定相对路径及其子路径，`external_directory` 只能由系统目录选择器建立。
+外部目录工具始终逐次审批，不继承普通只读工具的自动允许设置。
+
 ### 7.3 Agent、上下文与文件变更
 
 ```ts
@@ -528,24 +538,27 @@ SQLite 文件位于 Electron `userData` 目录，启用外键和 WAL。时间统
 主键使用 UUID/ULID 文本。JSON 字段在 Repository 边界通过 Zod 校验。API Key 和敏感 Header
 明文不进入数据库；`secure_secrets` 只保存 Electron `safeStorage` 使用系统凭据能力生成的密文。
 
-| 表                    | 关键字段                                                                                                                                                                   | 约束与索引                                         |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `workspaces`          | `id`, `canonical_path`, `display_name`, `last_opened_at`, `created_at`, `updated_at`                                                                                       | `canonical_path` 唯一；索引 `last_opened_at`       |
-| `conversations`       | `id`, `workspace_id`, `title`, `summary`, `provider_config_id`, `model_id`, `status`, `deleted_at`, timestamps                                                             | FK workspace；索引 workspace+updated；软删除       |
-| `messages`            | `id`, `conversation_id`, `role`, `content_json`, `sequence`, `token_estimate`, `created_at`                                                                                | conversation+sequence 唯一；级联删除策略由服务控制 |
-| `provider_configs`    | `id`, `kind`, `display_name`, `base_url`, `default_model`, fast/reasoning model, capability flags, Header metadata, `secret_ref`, timestamps                               | 不含明文密钥；`secret_ref` 是不透明引用            |
-| `secure_secrets`      | `ref`, `encrypted_value`, timestamps                                                                                                                                       | 仅系统保护密文；主进程可解密                       |
-| `model_configs`       | `id`, `provider_config_id`, `model_id`, `display_name`, `capabilities_json`, `context_window`, `is_default`, timestamps                                                    | provider+model 唯一；每类默认模型由事务保证        |
-| `agent_tasks`         | `id`, `conversation_id`, `status`, `attempt`, `checkpoint_json`, `error_json`, timestamps, `completed_at`                                                                  | 索引 conversation+created、status                  |
-| `tool_calls`          | `id`, `task_id`, `tool_name`, `permission_level`, `input_json`, `input_digest`, `status`, `output_summary_json`, timestamps                                                | 不默认存完整文件内容；索引 task+created            |
-| `file_change_sets`    | `id`, `task_id`, `status`, `transaction_id`, `snapshot_path_ref`, timestamps, `applied_at`                                                                                 | 为多文件事务提供聚合根                             |
-| `file_changes`        | `id`, `change_set_id`, `file_path`, `previous_path`, `operation`, `base_content_hash`, `original_snapshot_ref`, `proposed_snapshot_ref`, `diff_text`, `status`, timestamps | FK change set；不把大文件正文常驻行内              |
-| `command_executions`  | `id`, `task_id`, `tool_call_id`, `executable`, `args_json`, `cwd`, `status`, `exit_code`, `signal`, `started_at`, `ended_at`, `output_ref`                                 | 索引 task+started；敏感 env 不落库                 |
-| `permission_requests` | `id`, `task_id`, `tool_call_id`, `level`, `summary`, `target`, `input_digest`, `risk_reasons_json`, `status`, `expires_at`, timestamps                                     | 审批与准确输入绑定                                 |
-| `permission_rules`    | `id`, `workspace_id`, `scope`, `action`, `matcher_json`, `enabled`, timestamps                                                                                             | workspace 可空表示全局；危险规则禁止静默持久化     |
-| `app_settings`        | `key`, `value_json`, `updated_at`                                                                                                                                          | 只存非敏感设置                                     |
-| `audit_events`        | `id`, `workspace_id`, `task_id`, `actor`, `action`, `target`, `result`, `metadata_json`, `created_at`                                                                      | 追加写；索引 created、workspace                    |
-| `schema_migrations`   | `id`, `checksum`, `applied_at`                                                                                                                                             | 防止迁移漂移                                       |
+| 表                       | 关键字段                                                                                                                                                                   | 约束与索引                                         |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `workspaces`             | `id`, `canonical_path`, `display_name`, `last_opened_at`, `created_at`, `updated_at`                                                                                       | `canonical_path` 唯一；索引 `last_opened_at`       |
+| `conversations`          | `id`, `workspace_id`, `title`, `summary`, `provider_config_id`, `model_id`, `status`, `deleted_at`, timestamps                                                             | FK workspace；索引 workspace+updated；软删除       |
+| `messages`               | `id`, `conversation_id`, `role`, `content_json`, `sequence`, `token_estimate`, `created_at`                                                                                | conversation+sequence 唯一；级联删除策略由服务控制 |
+| `provider_configs`       | `id`, `kind`, `display_name`, `base_url`, `default_model`, fast/reasoning model, capability flags, Header metadata, `secret_ref`, timestamps                               | 不含明文密钥；`secret_ref` 是不透明引用            |
+| `secure_secrets`         | `ref`, `encrypted_value`, timestamps                                                                                                                                       | 仅系统保护密文；主进程可解密                       |
+| `model_configs`          | `id`, `provider_config_id`, `model_id`, `display_name`, `capabilities_json`, `context_window`, `is_default`, timestamps                                                    | provider+model 唯一；每类默认模型由事务保证        |
+| `agent_tasks`            | `id`, `conversation_id`, `status`, `attempt`, `checkpoint_json`, `error_json`, timestamps, `completed_at`                                                                  | 索引 conversation+created、status                  |
+| `tool_calls`             | `id`, `task_id`, `tool_name`, `permission_level`, `input_json`, `input_digest`, `status`, `output_summary_json`, timestamps                                                | 不默认存完整文件内容；索引 task+created            |
+| `file_change_sets`       | `id`, `task_id`, `status`, `transaction_id`, `snapshot_path_ref`, timestamps, `applied_at`                                                                                 | 为多文件事务提供聚合根                             |
+| `file_changes`           | `id`, `change_set_id`, `file_path`, `previous_path`, `operation`, `base_content_hash`, `original_snapshot_ref`, `proposed_snapshot_ref`, `diff_text`, `status`, timestamps | FK change set；不把大文件正文常驻行内              |
+| `command_executions`     | `id`, `task_id`, `tool_call_id`, `executable`, `args_json`, `cwd`, `status`, `exit_code`, `signal`, `started_at`, `ended_at`, `output_ref`                                 | 索引 task+started；敏感 env 不落库                 |
+| `run_configurations`     | `id`, `workspace_id`, `name`, `type`, `executable`, `args`, `runtime_args`, `working_directory`, environment metadata, console, timestamps                                 | workspace+name 唯一；敏感值只保存 Secret 引用      |
+| `workspace_run_settings` | `workspace_id`, `default_configuration_id`, `updated_at`                                                                                                                   | 每个工作区一个默认运行配置                         |
+| `run_executions`         | `id`, `workspace_id`, `configuration_id`, command snapshot, status, risk, approval digest, PID, output tail, exit/error, timestamps                                        | 保留不可变审批快照；索引 workspace/config+created  |
+| `permission_requests`    | `id`, `task_id`, `tool_call_id`, `level`, `summary`, `target`, `input_digest`, `risk_reasons_json`, `status`, `expires_at`, timestamps                                     | 审批与准确输入绑定                                 |
+| `permission_rules`       | `id`, `workspace_id`, `scope`, `action`, `matcher_json`, `enabled`, timestamps                                                                                             | workspace 可空表示全局；危险规则禁止静默持久化     |
+| `app_settings`           | `key`, `value_json`, `updated_at`                                                                                                                                          | 只存非敏感设置                                     |
+| `audit_events`           | `id`, `workspace_id`, `task_id`, `actor`, `action`, `target`, `result`, `metadata_json`, `created_at`                                                                      | 追加写；索引 created、workspace                    |
+| `schema_migrations`      | `id`, `checksum`, `applied_at`                                                                                                                                             | 防止迁移漂移                                       |
 
 ### 9.1 消息和大对象存储
 
@@ -571,6 +584,17 @@ MVP 必须真实实现：`list_directory`、`read_file`、`read_files`、`search
 工具返回应有大小上限、截断标记和稳定错误码。`search_text` 优先使用受控 `rg` 子进程，找不到时
 使用 Node 实现；工具不能通过软链接、junction、绝对路径、`..`、大小写差异或 UNC 路径绕过
 工作区边界。
+
+### 10.1 IDE 项目运行子系统
+
+项目运行不复用 Agent `run_command` 或用户交互 PTY。`RunConfigurationService` 负责识别与配置，
+`RunExecutionService` 创建不可变命令快照并绑定审批摘要，`RunProcessSupervisor` 只接收已经批准的
+结构化 executable/args/cwd/env。运行时使用 `shell: false`，输出按流分片、脱敏、限长后推送到
+Renderer，并将尾部、退出码、风险和状态写入 `run_executions`。
+
+停止、重新运行和应用退出都通过 Supervisor 清理其拥有的进程树。重启只从既有配置创建新的审批
+与执行记录，不复用旧批准；配置、环境文件摘要或审批快照变化都会要求用户重新确认。DAP 调试将在
+后续通过独立 `DebugAdapter`/`DebugSessionManager` 接入，不从运行进程日志推导伪调试状态。
 
 ## 11. 关键非功能需求
 
