@@ -73,6 +73,17 @@ import { ExternalDirectoryService } from './permissions/external-directory.servi
 const rendererHtmlPath = join(__dirname, '../renderer/index.html');
 const devServerUrl = process.env.ELECTRON_RENDERER_URL;
 const { autoUpdater } = electronUpdater;
+
+// Playwright's Electron bootstrap reapplies the insecure Chromium test backend
+// after process launch. Restore the explicitly requested Linux E2E backend
+// before Electron becomes ready so the suite exercises the real Secret Service.
+if (
+  process.platform === 'linux' &&
+  process.env.OPEN_CODE_DESK_E2E_PASSWORD_STORE === 'gnome-libsecret'
+) {
+  app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
+}
+
 let database: AppDatabase | null = null;
 let workspaceWatcher: WorkspaceWatchService | null = null;
 let chatIpcController: ChatIpcController | null = null;

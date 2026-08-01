@@ -12,10 +12,10 @@ test('launches the secure desktop shell and reaches the main process', async () 
   try {
     const requestedPasswordStore = process.env.OPEN_CODE_DESK_E2E_PASSWORD_STORE;
     if (process.platform === 'linux' && requestedPasswordStore !== undefined) {
-      const selectedPasswordStore = await application.evaluate(({ app }) =>
-        app.commandLine.getSwitchValue('password-store'),
+      const selectedPasswordStore = await application.evaluate(({ safeStorage }) =>
+        safeStorage.getSelectedStorageBackend(),
       );
-      expect(selectedPasswordStore).toBe(requestedPasswordStore);
+      expect(selectedPasswordStore).toBe('gnome_libsecret');
     }
 
     const window = await application.firstWindow();
