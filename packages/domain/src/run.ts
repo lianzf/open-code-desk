@@ -61,3 +61,90 @@ export interface ProjectDetection {
   readonly evidence: ReadonlyArray<ProjectDetectionEvidence>;
   readonly suggestedConfigurations: ReadonlyArray<RunConfigurationDraft>;
 }
+
+export type RunStatus =
+  | 'pending_approval'
+  | 'starting'
+  | 'running'
+  | 'stopping'
+  | 'stopped'
+  | 'completed'
+  | 'failed'
+  | 'rejected';
+
+export type RunRiskLevel = 'low' | 'medium' | 'high' | 'blocked';
+export type RunApprovalDecision = 'approve' | 'reject';
+export type RunOutputStream = 'stdout' | 'stderr';
+
+/**
+ * The immutable, renderer-safe command that was reviewed for this execution.
+ * Sensitive environment values are deliberately represented only by their
+ * safe RunEnvironmentVariable projection.
+ */
+export interface RunCommandSnapshot {
+  readonly configurationId: string;
+  readonly configurationUpdatedAt: string;
+  readonly configurationName: string;
+  readonly projectType: ProjectType;
+  readonly executable: string;
+  readonly runtimeArgs: ReadonlyArray<string>;
+  readonly args: ReadonlyArray<string>;
+  /** Workspace-relative working directory. An empty string denotes the workspace root. */
+  readonly workingDirectory: string;
+  readonly environmentVariables: ReadonlyArray<RunEnvironmentVariable>;
+  readonly environmentFile?: string;
+  /** SHA-256 of the environment file reviewed at proposal time; never contains its values. */
+  readonly environmentFileDigest?: string;
+  readonly console: RunConsole;
+}
+
+export interface RunExecutionError {
+  readonly code: string;
+  readonly message: string;
+  readonly retryable: boolean;
+}
+
+export interface RunExecution {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly configurationId: string;
+  readonly restartOfExecutionId?: string;
+  readonly command: RunCommandSnapshot;
+  readonly status: RunStatus;
+  readonly riskLevel: RunRiskLevel;
+  readonly riskReasons: ReadonlyArray<string>;
+  /** SHA-256 digest of the complete approval snapshot. */
+  readonly approvalDigest: string;
+  readonly approvalDecision?: RunApprovalDecision;
+  readonly processId?: number;
+  readonly outputTail: string;
+  readonly outputBytes: number;
+  readonly outputTruncated: boolean;
+  readonly exitCode?: number;
+  readonly terminationSignal?: string;
+  readonly error?: RunExecutionError;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly approvalDecidedAt?: string;
+  readonly startedAt?: string;
+  readonly completedAt?: string;
+}
+
+export interface RunOutputEvent {
+  readonly type: 'output';
+  readonly executionId: string;
+  readonly workspaceId: string;
+  readonly stream: RunOutputStream;
+  readonly sequence: number;
+  readonly data: string;
+  readonly occurredAt: string;
+}
+
+export interface RunStatusEvent {
+  readonly type: 'status';
+  readonly execution: RunExecution;
+  readonly previousStatus?: RunStatus;
+  readonly occurredAt: string;
+}
+
+export type RunEvent = RunOutputEvent | RunStatusEvent;

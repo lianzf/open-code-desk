@@ -1,22 +1,23 @@
-import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
+import { expect, test, type ElectronApplication } from '@playwright/test';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-function launchDesktop(userDataDirectory: string): Promise<ElectronApplication> {
-  return electron.launch({
-    args: [
-      join(process.cwd(), 'apps/desktop/out/main/main.js'),
-      `--user-data-dir=${userDataDirectory}`,
-    ],
-  });
-}
+import { launchDesktop } from './desktop-fixture';
 
 test('launches the secure desktop shell and reaches the main process', async () => {
   const userDataDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-e2e-user-'));
   const application = await launchDesktop(userDataDirectory);
 
   try {
+    const requestedPasswordStore = process.env.OPEN_CODE_DESK_E2E_PASSWORD_STORE;
+    if (process.platform === 'linux' && requestedPasswordStore !== undefined) {
+      const selectedPasswordStore = await application.evaluate(({ safeStorage }) =>
+        safeStorage.getSelectedStorageBackend(),
+      );
+      expect(selectedPasswordStore).toBe('gnome_libsecret');
+    }
+
     const window = await application.firstWindow();
 
     await expect(window).toHaveTitle('OpenCode Desk');
