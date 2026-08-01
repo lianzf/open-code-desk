@@ -11,6 +11,15 @@ import { launchDesktop } from './desktop-fixture';
 const apiKey = 'sk-e2e-change-review';
 const proposedContent = '# AI reviewed update\n';
 
+async function readDuringAtomicReplacement(filePath: string): Promise<string | undefined> {
+  try {
+    return await readFile(filePath, 'utf8');
+  } catch (error: unknown) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
+
 async function startProviderFixture(): Promise<{ baseUrl: string; server: Server }> {
   const server = createServer((request, response) => {
     if (request.headers.authorization !== `Bearer ${apiKey}`) {
@@ -98,12 +107,12 @@ test('reviews, applies, persists, and rolls back an Agent file proposal', async 
 
     window.once('dialog', (dialog) => void dialog.accept());
     await window.getByTestId('apply-approved-changes').click();
-    await expect.poll(async () => readFile(readmePath, 'utf8')).toBe(proposedContent);
+    await expect.poll(() => readDuringAtomicReplacement(readmePath)).toBe(proposedContent);
     await expect(window.getByTestId('rollback-change-set')).toBeVisible();
 
     window.once('dialog', (dialog) => void dialog.accept());
     await window.getByTestId('rollback-change-set').click();
-    await expect.poll(async () => readFile(readmePath, 'utf8')).toBe(originalContent);
+    await expect.poll(() => readDuringAtomicReplacement(readmePath)).toBe(originalContent);
     await window.getByLabel('关闭变更审核').click();
 
     await application.close();
