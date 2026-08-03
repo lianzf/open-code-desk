@@ -1,6 +1,6 @@
 # OpenCode Desk 开发路线图
 
-> 状态：IDE 扩展阶段 E（高级断点与异常策略）已完成
+> 状态：IDE 扩展阶段 F（Python 解释器与真实调试）本地发布门禁通过，待原生 CI 与 GitHub Release
 > 日期：2026-08-02
 > 目标：以可验证的纵向闭环交付 Windows/macOS MVP
 
@@ -12,27 +12,28 @@
 4. 不用 Mock 数据冒充已实现能力；测试替身仅用于自动化测试。
 5. 每阶段控制变更规模，业务文件超过 400 行前拆分。
 6. 原生依赖尽早在 Windows/macOS CI 验证，避免最后集中暴露 ABI/签名问题。
+7. 每个阶段性版本必须建立 GitHub Release，并提供 Windows、macOS 和 Linux 的可下载安装包或发行包及 SHA-256 摘要。
 
 ## 2. MVP 模块清单
 
-| 模块          | MVP 内容                                        | 非 MVP 预留          |
-| ------------- | ----------------------------------------------- | -------------------- |
-| Desktop Shell | Electron 生命周期、安全窗口、菜单、协议与打包   | 自动更新、Linux 产物 |
-| Renderer      | 欢迎页、工作台、设置、历史会话、审批 UI         | 团队协作、插件市场   |
-| Workspace     | 打开/最近项目、文件树、读取、搜索、保存         | SSH/远程工作区       |
-| Editor        | Monaco 编辑、多标签、Diff 审核                  | 语言服务器深度集成   |
-| Provider      | Registry、OpenAI Compatible、模型列表、流式聊天 | 9 个原生 Adapter     |
-| Secrets       | OS Credential Manager/Keychain Adapter          | 跨设备同步           |
-| Agent         | 单 Agent 状态机、工具循环、取消、重试、恢复     | 多 Agent 协作        |
-| Context       | 分层来源、去重、截断、Token 预算、摘要接口      | 向量索引             |
-| Tools         | 只读文件/搜索、文件变更、Git、批准命令          | MCP 完整支持         |
-| Change Review | FileChangeSet、Diff、审批、原子应用、回滚       | 自动提交/PR          |
-| Terminal      | 用户 PTY、AI 命令审批、输出和取消               | 远程终端             |
-| Run           | 项目识别、运行配置、审批、受管进程与历史        | 组合服务、端口管理   |
-| Debug         | Node/TypeScript DAP、断点、变量、单步和控制台   | 多语言、远程调试     |
-| Persistence   | 12+ SQLite 表、Drizzle Repository、迁移         | 云同步               |
-| Observability | 可读错误、脱敏日志、审计日志                    | 远程遥测             |
-| Quality       | Vitest、集成测试、Playwright、双平台构建        | 大规模性能基准       |
+| 模块          | MVP 内容                                                                                             | 非 MVP 预留                  |
+| ------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------- |
+| Desktop Shell | Electron 生命周期、安全窗口、菜单、协议与打包                                                        | 自动更新、Linux 产物         |
+| Renderer      | 欢迎页、工作台、设置、历史会话、审批 UI                                                              | 团队协作、插件市场           |
+| Workspace     | 打开/最近项目、文件树、读取、搜索、保存                                                              | SSH/远程工作区               |
+| Editor        | Monaco 编辑、多标签、Diff 审核                                                                       | 语言服务器深度集成           |
+| Provider      | Registry、OpenAI Compatible、模型列表、流式聊天                                                      | 9 个原生 Adapter             |
+| Secrets       | OS Credential Manager/Keychain Adapter                                                               | 跨设备同步                   |
+| Agent         | 单 Agent 状态机、工具循环、取消、重试、恢复                                                          | 多 Agent 协作                |
+| Context       | 分层来源、去重、截断、Token 预算、摘要接口                                                           | 向量索引                     |
+| Tools         | 只读文件/搜索、文件变更、Git、批准命令                                                               | MCP 完整支持                 |
+| Change Review | FileChangeSet、Diff、审批、原子应用、回滚                                                            | 自动提交/PR                  |
+| Terminal      | 用户 PTY、AI 命令审批、输出和取消                                                                    | 远程终端                     |
+| Run           | 项目识别、任务、组合运行、端口、审批与受管进程                                                       | 容器与远程运行               |
+| Debug         | Node/Python/浏览器/Electron/Java 内置 DAP、LLDB/Delve/NetCoreDbg 外部通路、Node Inspector 跨环境附加 | 其他语言跨环境附加与自动隧道 |
+| Persistence   | 12+ SQLite 表、Drizzle Repository、迁移                                                              | 云同步                       |
+| Observability | 可读错误、脱敏日志、审计日志                                                                         | 远程遥测                     |
+| Quality       | Vitest、集成测试、Playwright、双平台构建                                                             | 大规模性能基准               |
 
 ### IDE 运行与调试扩展进度
 
@@ -41,9 +42,27 @@
 - [x] **阶段 C / 0.4.0-alpha.1**：Node.js/TypeScript DAP client、真实断点、线程、调用栈、变量、监视与单步控制。
 - [x] **阶段 D / 0.5.0-alpha.1**：异常定位、调试上下文脱敏预览、AI 分析、Diff 审批与重新调试闭环。
 - [x] **阶段 E / 0.6.0-alpha.1**：条件、命中次数、日志断点与工作区异常暂停策略。
+- [x] **阶段 F / 0.7.0-alpha.1 本地交付**：Python 调试、ProjectTask、组合运行、端口管理、高级断点与完整本地门禁已通过；Windows NSIS 与 Linux x64 AppImage 均有当前源码本地安装态/打包态证据，公共原生 CI 与 GitHub Release 仍需形成提交后证据。
+- [ ] **阶段 G / 正式版语言扩展（进行中）**：浏览器 js-debug、Electron 主/渲染双进程 js-debug、Java JDT LS/Java Debug Server、C/C++/Rust `lldb-dap`、Go Delve 和 .NET NetCoreDbg 均已完成 Windows 真实项目的断点、栈、变量与退出清理验收；浏览器、Java 和外部调试器还覆盖单步，LLDB 实测修复了 `launch`/`initialized` 握手顺序。Node.js 已通过随包 js-debug 支持现有 Inspector 的远程/容器附加，并用真实独立目标验证断点、变量和断开后目标存活。JDT LS 已按平台与 CPU 架构选择 Intel/ARM64 配置，公共 CI 的 macOS 构建固定为 `macos-15` ARM64，并让 macOS ARM64/Linux x64 打包作业运行真实 Java 调试验收；仍需提交当前工作树取得这两项原生 runner 结果，以及补齐其他语言跨环境附加和自动隧道编排。
 
 阶段 B 的项目运行服务与 Agent 命令、用户交互终端相互独立；阶段 C 的调试状态来自真实 DAP 事件，
 不复用普通进程输出伪装断点、调用栈或变量；阶段 D 只在用户审核脱敏预览后把选中数据加入会话。
+
+### 阶段 F 实施结果（2026-08-02）
+
+- [x] 仅通过有界文件系统探测发现 `.venv`、`venv`、`env`、当前激活环境和 PATH，不在打开项目时执行项目二进制。
+- [x] 工作区虚拟环境优先，并从有界 `pyvenv.cfg` 显示版本线索；找不到解释器时明确标记“尚未验证”。
+- [x] Python 配置表单提供解释器选择器，仍允许手动路径；保存后与项目绑定并沿用既有审批与持久化。
+- [x] 根据入口和有界依赖元数据生成普通脚本、Django、Flask、FastAPI/uvicorn 与 pytest 建议配置。
+- [x] 固定分发官方 `debugpy 1.8.21`，用户无需修改项目依赖或联网安装调试器。
+- [x] 独立 Python Adapter 使用真实 DAP 完成断点、调用栈、变量、求值、单步、异常、输出脱敏和进程清理。
+- [x] DAP 值投影与路径/Secret 防护下沉为共享基础设施，Node 与 Python Adapter 复用且业务流程无语言分支扩散。
+- [x] CI 对 `develop`、`release/**` 与 `main` 运行质量门禁，阶段分支先验证后才能并入基线。
+- [x] ProjectTask、组合运行、端口占用安全处理、函数/数据断点能力协商、指定/忽略异常规则和三向可调布局形成持久化闭环。
+- [x] 当前源码本地完整门禁通过：380 项 Vitest（111 个文件通过；7 个真实环境门禁文件 / 18 项默认跳过，其中 10 项为真实 Provider 公网门禁；独立集成门禁 29 文件 / 92 项），真实 Chrome、Electron、Java、Go、.NET 门禁分别 1/1 通过，C/C++/Rust LLDB 门禁 3/3 通过；16 项开发构建 Electron E2E、9 项已安装应用核心 E2E、6 项已安装桌面壳/持久化 E2E、10,000 文件性能验收、依赖审计及类型/Lint/格式/构建全部通过；Windows NSIS 候选已通过运行时完整性校验，独立安装后 1.61 秒创建产品窗口，正常退出零残留并可静默卸载。
+- [x] 当前工作树快照在 Debian 12 Linux x64 容器完成冻结依赖安装、原生 `node-pty` 编译、AppImage 打包/自解包、运行时完整性校验、GNOME Secret Service 探测与已打包应用核心 E2E 9/9；AppImage 为 214,339,141 字节，SHA-256 `31D2C23A18AC8168B6D9BCAE9E62D0652C6BF9CF39D05D5A1C110D964BCEB45E`。
+- [x] 发布元数据门禁生成确定性的 CycloneDX 1.6 SBOM（588 个组件）、710 个完整 workspace 依赖的审计、149 个随包第三方组件的许可证审计和 Secret 扫描报告；四份 JSON 均进入 SHA-256 清单，未知许可证、新增凭据或失效的测试夹具白名单会阻断 CI。
+- [x] 排除测试、产物与 vendor 后，TypeScript/TSX 生产源码超过 400 行的文件为 0。
 
 ### 阶段 E 实施结果（2026-08-02）
 
@@ -87,9 +106,10 @@
 | AI 对话、编辑器、终端和调试器之间反复复制粘贴，信息易过期 | 同一工作台保留代码、Diff、运行输出和调试上下文，以稳定 ID/快照关联                 | 已完成单会话闭环 |
 | “运行失败”只显示一行错误，无法判断配置、进程或代码问题    | 显示实际 executable/args/cwd、风险、PID、stdout/stderr、退出码、DAP 状态和可读错误 | 已完成           |
 | launch 配置散落且团队项目差异大                           | 自动识别项目并生成建议配置；允许修改、多配置、默认配置和工作区持久化               | 已完成基础闭环   |
+| Python 经常选错全局解释器，调试器还要求污染虚拟环境       | 工作区 venv 优先发现、来源/版本线索可见；debugpy 随应用分发，配置仍可手动覆盖      | 已完成           |
 | 断点图标与真实调试器状态脱节                              | 区分 pending/verified/unverified/disabled/error，并由 DAP 回写验证结果             | 已完成           |
 | 为定位某次循环或请求反复改代码、加日志，污染工作区        | 条件/命中次数断点精准暂停；日志断点观察运行值且不修改源码                          | 已完成           |
-| 异常暂停过多打断流程，或只在崩溃后才发现                  | none/uncaught/all 策略按项目保存，并可在调试中实时切换                             | 已完成基础策略   |
+| 异常暂停过多打断流程，或只在崩溃后才发现                  | 基础策略、指定异常暂停和忽略列表按项目保存，并可在调试中实时切换                   | 已完成           |
 | AI 或 IDE 自动执行项目脚本带来供应链风险                  | 首次与每次启动显示准确命令快照和风险，摘要绑定后一次性批准                         | 已完成           |
 | 调试信息过载，变量树、日志与线程难以聚焦                  | 暂停时自动定位当前行，按线程/栈帧按需加载变量，输出限长并可切换面板                | 已完成基础体验   |
 | 修复后需要手工重跑、重新收集异常，闭环断裂                | 提供“调试上下文 → AI 分析 → Diff 审批 → 显式重新调试”编排入口                      | 已完成           |
@@ -427,7 +447,7 @@ AI 只能执行审批内容完全一致的命令；输出可实时查看和取�
 - 完成 README、安装说明、Provider 开发文档、故障排查和隐私说明。
 - 验证 SQLite 迁移、清理、导出和会话恢复。
 - 完成 Windows 安装包和 macOS DMG/ZIP。
-- 设置 Windows 签名、macOS 签名/notarization 的安全 CI Secret 流程。
+- 为已建立的 Windows 签名、macOS 签名/notarization CI 流程配置真实发布 Secret，并在正式 Tag 上取得原生验证证据。
 - 生成 SBOM、依赖/Secret 扫描报告和产物校验和。
 - 在干净 Windows/macOS 机器执行完整验收。
 

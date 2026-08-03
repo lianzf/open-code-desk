@@ -18,6 +18,18 @@ extraResources:
     to: js-debug
     filter:
       - '**/*'
+  - from: vendor/debugpy-1.8.21
+    to: debugpy
+    filter:
+      - '**/*'
+  - from: vendor/jdtls-1.60.0
+    to: jdtls
+    filter:
+      - '**/*'
+  - from: vendor/java-debug-0.59.0
+    to: java-debug
+    filter:
+      - '**/*'
 
 publish:
   provider: github

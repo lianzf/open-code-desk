@@ -147,14 +147,15 @@ Header 同样处理。数据库只保存 Header 名、是否敏感和值引用�
 
 每次文件操作都执行：
 
-1. 对用户工作区根目录执行绝对化和真实路径解析，保存 canonical root。
-2. 拒绝空字节、非法设备名、超长输入和不支持的 URI Scheme。
-3. 将相对路径解析到 root；默认拒绝绝对路径。
-4. 解析目标已存在的最近父目录真实路径，处理新建文件场景。
-5. 使用平台感知、带路径分隔符的比较确认目标位于 root 内。
-6. 遍历路径段检查软链接、junction/reparse point；解析后再次校验。
-7. 打开文件后通过句柄/最终路径复验，缩小 TOCTOU 窗口。
-8. 写入前和重命名后再次校验目标。
+1. 要求请求的工作区 ID 与主进程当前显式打开的工作区一致；最近工作区数据库记录本身不授予访问权。
+2. 对用户工作区根目录执行绝对化和真实路径解析，保存 canonical root。
+3. 拒绝空字节、非法设备名、超长输入和不支持的 URI Scheme。
+4. 将相对路径解析到 root；默认拒绝绝对路径。
+5. 解析目标已存在的最近父目录真实路径，处理新建文件场景。
+6. 使用平台感知、带路径分隔符的比较确认目标位于 root 内。
+7. 遍历路径段检查软链接、junction/reparse point；解析后再次校验。
+8. 打开文件后通过句柄/最终路径复验，缩小 TOCTOU 窗口。
+9. 写入前和重命名后再次校验目标。
 
 不能仅用字符串 `startsWith(root)`；Windows 比较需要处理盘符、大小写、UNC、短文件名和
 reparse point。跨卷路径不使用 rename 伪装原子操作。
@@ -244,8 +245,9 @@ Provider Secret 和应用内部变量。
 - 修改系统凭据、安全策略、防火墙或启动项。
 - 命令解释器 `-c`/`/c`、shell 元字符、重定向与管道。
 
-包管理器脚本可能间接执行任意代码，不能因为命令名是 `test` 就自动信任。白名单匹配规范化的
-executable、参数模式、cwd 和工作区，默认按工作区隔离。
+包管理器脚本可能间接执行任意代码，不能因为命令名是 `test` 就自动信任。允许规则精确匹配规范化的
+executable、完整参数数组、cwd 和工作区；旧版本缺少参数的允许规则按失败关闭处理。拒绝规则可以只按
+executable 与 cwd 宽泛阻断。网络命令还必须同时满足独立的工作区网络授权。
 
 ### 8.2 交互终端
 
@@ -267,6 +269,8 @@ executable、参数模式、cwd 和工作区，默认按工作区隔离。
 - 敏感环境变量仅在主进程执行前从 `SecureSecretStore` 解密，既不回传 Renderer，也不进入
   `run_executions`；输出持久化前会按实际 Secret 值脱敏并执行字节上限。
 - PID 只用于展示和清理本应用创建的进程；停止、重新运行与退出清理不能终止未归属的系统进程。
+- 端口检查先重新解析当前占用 PID；终止外部占用者需要用户确认、期望 PID 匹配和执行前复核，未知进程、自身进程或占用者变化一律拒绝。
+- ProjectTask 依赖和运行/调试钩子先展开为不可变计划并整体审批；组合运行通过一份批量提案展示全部子命令，各子进程仍由独立 supervisor 拥有和清理。
 - DAP 调试必须采用独立协议会话和权限边界，不能把普通项目运行当作断点调试。
 - 输出经过大小限制和敏感值脱敏后才进入日志或上下文。
 
@@ -274,10 +278,23 @@ executable、参数模式、cwd 和工作区，默认按工作区隔离。
 
 - 调试开始与普通运行一样先形成不可变 `RunCommandSnapshot`，审批摘要绑定配置、executable、参数、
   工作目录、公开环境元数据、环境文件摘要与风险；配置变化后必须重新审批。
-- Node Adapter 使用参数数组和 `shell: false` 启动官方 js-debug 与被调试程序。工作目录、program、
-  runtime executable 和所有源码路径均经过规范化及工作区边界校验，不接受未注册的适配器类型。
+- Node/Python Adapter 使用参数数组和 `shell: false` 启动官方 js-debug/debugpy 与被调试程序；浏览器
+  Provider 以同一受控边界启动已审批的前端开发服务器，只等待声明的 `127.0.0.1` 端口，并优先从
+  标准绝对安装路径解析 Chrome/Edge，再由固定 js-debug 使用隔离 Profile 启动和清理整棵浏览器
+  进程。外部 LLDB/Delve/NetCoreDbg Provider 只解析 PATH 中的明确可执行文件，以 `shell: false`
+  启动，Delve 仅监听 `127.0.0.1` 随机端口。Java Provider 以 `shell: false` 启动 JDK 21+ 与固定
+  JDT LS，通过 stdio LSP 加载固定 Java Debug Server 插件，再连接插件返回的 `127.0.0.1` DAP 端口；
+  每个会话使用应用拥有的随机临时数据目录。工作
+  目录、program、runtime executable 和所有源码路径均经过规范化及工作区边界校验，不接受未注册
+  的适配器类型。
+- Electron Provider 只接受进入不可变审批摘要的 executable、参数和渲染调试端口；启动前确认端口未被占用，再显式注入 `--remote-debugging-address=127.0.0.1` 与获批端口。主进程使用 `pwa-node`，渲染进程使用第二个 `pwa-chrome` 客户端；两侧 DAP ID 被隔离，渲染目标断开不会冒充整个应用退出。停止会话会清理本应用启动的 Electron 进程，且不会附加到启动前已存在的端口。
 - 调试进程只继承受控最小环境；敏感环境变量在主进程最后一刻解析，不写入 Renderer、SQLite、
   DAP 审计元数据或公开错误。
+- Node Inspector 附加目标只接受经 Schema 校验的主机、端口和绝对 `remoteRoot`；端点进入不可变审批
+  摘要。回环或本机转发目标为中风险，直接非回环连接为高风险并显示远程调试端口可控制目标程序的
+  警告。应用不自动执行 SSH、Docker 或容器命令，也不把本地环境值写入 `attach` 请求。
+- attach 会话只拥有本机 js-debug Adapter，断开时显式使用 `terminateDebuggee=false`；远程或容器内
+  目标不进入本机 PID 清理路径。用户必须自行建立、限制和撤销端口转发。
 - adapter output、stdout/stderr、异常消息、异常堆栈、变量值与表达式结果在进入 UI、数据库或未来
   AI 上下文前统一应用已知 Secret 脱敏和长度上限。遥测类 DAP 输出不会被当作可信控制指令。
 - Renderer 无法直接连接 DAP socket/stdio；所有控制和查询都通过 preload 最小 API 与独立
@@ -286,8 +303,18 @@ executable、参数模式、cwd 和工作区，默认按工作区隔离。
   进入幂等清理；PID 不构成终止任意系统进程的授权。
 - 持久化只保存断点位置、监视表达式、受限输出尾部、暂停快照和会话元数据；不持久化完整变量树或
   敏感环境值。恢复历史不自动恢复进程或重放调试命令。
-- 当前仅加载固定版本 `vscode-js-debug 1.117.0`。仓库记录来源、许可证和入口文件 SHA-256
-  `50EBF42EBA65B673677866B2FCC1BC82C4D6AAFE2BDB67A2EA76A3A7A89D1902`；升级需重新核验。
+- 内置 Adapter 仅加载固定版本 `vscode-js-debug 1.117.0`、`debugpy 1.8.21`、JDT LS 1.60.0 和
+  Java Debug Server 0.53.2。仓库记录来源、许可证和
+  分发文件 SHA-256；debugpy universal wheel 摘要为
+  `b1e37d333663c8851516a47364ef473da127f9caebe4417e6df6f5825a7e9a92`，升级需重新核验。
+- `lldb-dap`、`dlv` 和 `netcoredbg` 不随应用下载或分发；缺失时调试提案失败关闭。运行配置仍须通过
+  工作区路径、目标类型和存在性校验，构建命令应放入独立、可审核的 pre-debug ProjectTask。
+- Python 解释器发现只检查工作区固定虚拟环境路径、当前环境引用和 PATH 文件，不递归扫描用户主
+  目录，也不为显示版本而执行解释器。`pyvenv.cfg` 读取限制为 32 KiB；建议配置不会自动执行。
+- debugpy 由应用只读资源提供，不通过 `pip install` 修改用户项目。真正启动用户选择的解释器仍需
+  经过绑定 executable/args/cwd/env 的调试审批；适配器只监听 `127.0.0.1` 的随机端口。
+- Java 调试器不会下载 JDK、修改 PATH/注册表或向项目安装依赖。JDT LS 运行时只从显式候选、
+  `JDTLS_JAVA_HOME`、`JAVA_HOME`、PATH 和标准 JDK 安装目录发现，并验证主版本至少为 21。
 - “交给 AI 分析”是用户显式动作。主进程先收集、裁剪并脱敏，再让用户逐分区预览；未点击确认时
   不创建会话上下文、不调用 Provider，也不把原始 DAP 数据返回 Renderer。
 - 内存缓存只保存已脱敏快照，10 分钟过期并限制数量。摘要绑定 session、workspace、conversation、
@@ -300,8 +327,8 @@ executable、参数模式、cwd 和工作区，默认按工作区隔离。
   发送给 Adapter；它们不会经过 Shell，不会被转换为系统命令，也不会自动由模型创建。
 - 高级断点 IPC 对表达式和日志消息设置长度上限并拒绝未知字段。断点路径继续执行工作区边界校验；
   Adapter 返回的验证错误只作为不可信、限长文本展示。
-- 异常暂停策略仅允许 `none`、`uncaught`、`all`，按 workspace ID 持久化；运行中切换只影响当前
-  工作区活动 Adapter，不构成启动、重启、文件写入或命令执行授权。
+- 异常暂停基础策略仅允许 `none`、`uncaught`、`all`；指定/忽略类型经过数量、长度、去重和 IPC 校验并按 workspace ID 持久化。Node 条件中的类型名使用 JSON 字符串转义；Python 用标准 DAP `exceptionOptions` 设置正向规则，忽略规则则在暂停后通过 `exceptionInfo` 校验类型并自动继续。两条路径均不会进入 Shell；识别或继续失败时保守地保留暂停。
+- 函数/数据断点只在 Adapter 明确声明能力时发送对应 DAP 请求；不支持时保留未验证状态，不能用 UI 图标冒充真实断点。
 - 日志断点输出与普通调试输出共用敏感值脱敏和长度上限，持久化前不会绕过现有输出策略。
 
 ## 9. Provider 网络安全
@@ -312,7 +339,7 @@ executable、参数模式、cwd 和工作区，默认按工作区隔离。
 - Ollama 本地访问是显式例外，不与云 Provider Secret 共用。
 - 重定向默认关闭；若启用，只允许同源且每跳重新校验，跨源绝不携带认证 Header。
 - 每个 Provider 请求只读取该配置绑定的 Secret，不允许 Adapter 枚举 SecretStore。
-- 设置连接、响应头、总时长、空闲和最大响应大小限制。
+- 设置连接、响应头、总时长、正文空闲和最大响应大小限制；JSON 按分块原始字节累计后再缓冲，SSE 的注释和协议框架同样计入总量。
 - TLS 证书错误默认失败，不提供全局“忽略证书”开关。
 - 网络错误响应先限长、按内容类型解析并脱敏，再映射为 `AppError`。
 - Provider 请求只携带用户当前批准的上下文；UI 清楚显示数据将发送到哪个端点。
@@ -368,12 +395,14 @@ executable、参数模式、cwd 和工作区，默认按工作区隔离。
 
 - pnpm lockfile 固定依赖；CI 使用 frozen lockfile。
 - 原生依赖在 Electron ABI 下分别对 Windows/macOS 重建并测试。
-- 启用依赖漏洞、许可证和 Secret 扫描；高风险发现阻断发布。
+- `pnpm security:dependency-audit` 对完整 workspace 依赖图（包括桌面运行时位于 `devDependencies` 的依赖和打包工具链）执行 high/critical 阻断审计并输出 JSON；已知易受攻击的传递版本由带版本范围的 pnpm override 精确固定到修复版。`pnpm security:licenses` 对 SBOM 中全部随包第三方组件执行许可证清单门禁；`pnpm security:secrets` 扫描 Git 跟踪及未忽略首方文本，白名单必须绑定文件、规则、脱敏指纹和原因。未知许可证、新增凭据或失效白名单都会阻断发布。
 - 生产包禁止包含 `.env`、测试凭据、源码地图中的 Secret 或开发服务器地址。
 - Windows 和 macOS 产物签名；macOS 完成 notarization 后发布。
+- 正式 Tag 发布工作流强制要求受保护 `release-signing` Environment 中的 Windows/macOS 签名 Secret；Windows 在安装烟测前验证 Authenticode，macOS 在上传前验证 `codesign`、Gatekeeper 与 stapled notarization ticket。凭据只从受保护 CI Secret 注入，缺失时发布失败而不是回退到未签名产物；仓库写权限仅授予最终发布 Job。
+- 签名打包还依赖独立 Windows runner 的 240 分钟 Electron 稳定性 Job；普通质量门禁或短时冒烟不能替代该发布阻断条件。
 - 自动更新若实现，必须验证签名并使用 HTTPS；MVP 可暂不自动更新。
-- 构建产物生成哈希和 SBOM，发布流程最小化令牌权限。
-- 打包后的 js-debug 资源必须与固定来源和入口 SHA-256 一致；不得从工作区或网络动态加载任意 Adapter。
+- 构建产物生成 SHA-256 和通过 CycloneDX 1.6 Schema 验证的 SBOM；SBOM 区分随包组件与开发/构建组件，并显式包含 Electron、node-pty、js-debug、debugpy、JDT LS 和 Java Debug Server。发布流程最小化令牌权限。
+- 打包后的 js-debug/debugpy/JDT LS/Java Debug Server 资源必须与固定来源和 SHA-256 一致；不得从工作区或网络动态加载任意 Adapter。
 
 ## 13. 安全测试门槛
 
@@ -402,6 +431,7 @@ executable、参数模式、cwd 和工作区，默认按工作区隔离。
 - 命令审批内容与实际 spawn 参数逐项一致。
 - 真实 Node 调试覆盖审批、命中断点、线程/调用栈/局部变量、单步、求值、停止和重启恢复。
 - 真实 Node 调试覆盖条件、命中次数、日志断点，以及 all/none 异常暂停行为和重启持久化。
+- 真实 Node Inspector 附加覆盖不可变端点审批、断点、栈、变量，以及断开后外部目标仍然存活。
 - 调试器异常退出、正常停止和应用关闭后，不残留由应用拥有的 adapter/debuggee 进程。
 - 真实异常经过脱敏预览后进入 AI，Provider 请求不含运行时 Secret；AI 修复在批准前不改变磁盘，
   重新调试只能由用户显式触发。

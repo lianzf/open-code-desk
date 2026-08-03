@@ -5,6 +5,8 @@ import type {
   SaveRunConfigurationRequest,
 } from '@open-code-desk/ipc-contracts';
 
+import { rendererErrorMessage } from '../settings/error-i18n';
+
 const maximumOutputTail = 65_536;
 
 export interface RunOutputChunk {
@@ -14,10 +16,7 @@ export interface RunOutputChunk {
 }
 
 export function readableRunError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message.replace(/^Error invoking remote method '[^']+': Error: /, '');
-  }
-  return '运行操作失败，请检查配置后重试。';
+  return rendererErrorMessage(error, 'runOperationFailed');
 }
 
 const statusRank: Readonly<Record<RunExecution['status'], number>> = {

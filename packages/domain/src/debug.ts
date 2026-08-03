@@ -12,8 +12,16 @@ export type DebugSessionStatus =
   | 'rejected';
 
 export type DebugBreakpointStatus = 'pending' | 'verified' | 'unverified' | 'disabled' | 'error';
+export type DebugBreakpointKind = 'line' | 'function' | 'data';
+export type DebugDataBreakpointAccessType = 'read' | 'write' | 'readWrite';
 
 export type DebugExceptionPauseMode = 'none' | 'uncaught' | 'all';
+
+export interface DebugExceptionPolicy {
+  readonly exceptionPauseMode: DebugExceptionPauseMode;
+  readonly exceptionBreakTypes: ReadonlyArray<string>;
+  readonly exceptionIgnoreTypes: ReadonlyArray<string>;
+}
 
 export interface DebugAdapterCapabilities {
   readonly pause: boolean;
@@ -24,6 +32,7 @@ export interface DebugAdapterCapabilities {
   readonly hitConditionalBreakpoints: boolean;
   readonly logPoints: boolean;
   readonly functionBreakpoints: boolean;
+  readonly dataBreakpoints: boolean;
   readonly exceptionInfo: boolean;
 }
 
@@ -97,6 +106,10 @@ export interface DebugBreakpoint {
   readonly line: number;
   readonly column?: number;
   readonly enabled: boolean;
+  readonly kind: DebugBreakpointKind;
+  readonly functionName?: string;
+  readonly dataId?: string;
+  readonly dataAccessType?: DebugDataBreakpointAccessType;
   readonly condition?: string;
   readonly hitCondition?: string;
   readonly logMessage?: string;
@@ -107,9 +120,8 @@ export interface DebugBreakpoint {
   readonly updatedAt: string;
 }
 
-export interface DebugSettings {
+export interface DebugSettings extends DebugExceptionPolicy {
   readonly workspaceId: string;
-  readonly exceptionPauseMode: DebugExceptionPauseMode;
   readonly updatedAt: string;
 }
 

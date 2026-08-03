@@ -4,6 +4,7 @@ import type { UpdateStatus } from '@open-code-desk/ipc-contracts';
 
 import { Button } from '@/components/ui/button';
 import { translate } from './i18n';
+import { localizeMainProcessError } from './main-process-error-i18n';
 
 interface UpdatePanelProps {
   readonly locale: Parameters<typeof translate>[0];
@@ -31,7 +32,12 @@ export function UpdatePanel({ locale }: UpdatePanelProps) {
       .getStatus()
       .then(setStatus)
       .catch((error: unknown) => {
-        setErrorMessage(error instanceof Error ? error.message : translate(locale, 'updateError'));
+        const fallback = translate(locale, 'updateError');
+        setErrorMessage(
+          error instanceof Error
+            ? localizeMainProcessError(locale, error.message, undefined, fallback)
+            : fallback,
+        );
       });
     return window.openCodeDesk.updates.onStatusChanged(setStatus);
   }, [locale]);
@@ -46,7 +52,12 @@ export function UpdatePanel({ locale }: UpdatePanelProps) {
         setStatus(await window.openCodeDesk.updates[action]());
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : t('updateError'));
+      const fallback = t('updateError');
+      setErrorMessage(
+        error instanceof Error
+          ? localizeMainProcessError(locale, error.message, undefined, fallback)
+          : fallback,
+      );
     } finally {
       setBusy(false);
     }
@@ -86,7 +97,10 @@ export function UpdatePanel({ locale }: UpdatePanelProps) {
         </div>
       ) : null}
       {status.message === undefined && errorMessage === undefined ? null : (
-        <p className="mt-2 text-[11px] text-red-300">{errorMessage ?? status.message}</p>
+        <p className="mt-2 text-[11px] text-red-300">
+          {errorMessage ??
+            localizeMainProcessError(locale, status.message ?? '', undefined, t('updateError'))}
+        </p>
       )}
       <div className="mt-3 flex justify-end">
         {canCheck ? (

@@ -8,6 +8,7 @@ import type {
 } from './chat.store';
 import { useChangeReviewStore } from '@/features/changes/change-review.store';
 import { useCommandStore } from '@/features/commands/command.store';
+import { rendererErrorDetail } from '@/features/settings/error-i18n';
 
 type ChatStoreSet = (
   partial: Partial<ChatState> | ((state: ChatState) => Partial<ChatState>),
@@ -112,7 +113,15 @@ export function handleStreamEvent(
             : { input: existing.input }
           : { input: event.input }),
         ...(event.outputPreview === undefined ? {} : { outputPreview: event.outputPreview }),
-        ...(event.error === undefined ? {} : { errorMessage: event.error.message }),
+        ...(event.error === undefined
+          ? {}
+          : {
+              errorMessage: rendererErrorDetail(
+                event.error.message,
+                event.error.code,
+                'chatOperationFailed',
+              ),
+            }),
       };
       return {
         toolActivity:
@@ -165,7 +174,11 @@ export function handleStreamEvent(
     set((state) => ({
       activeRequestId: undefined,
       agentStatus: 'failed',
-      errorMessage: event.error.message,
+      errorMessage: rendererErrorDetail(
+        event.error.message,
+        event.error.code,
+        'chatOperationFailed',
+      ),
       messages: updateLatestStreaming(state.messages, 'error'),
     }));
   }

@@ -116,6 +116,10 @@ describe('CommandService integration', () => {
 
   it('does not start before approval, streams output, persists success, and remembers an allow rule', async () => {
     const markerPath = join(fixture.rootPath, 'approved.txt');
+    const approvedArgs = [
+      '-e',
+      'require("node:fs").writeFileSync("approved.txt", "approved"); process.stdout.write("approved-output");',
+    ];
     const events: CommandLifecycleEvent[] = [];
     const unsubscribe = fixture.service.subscribe(fixture.taskId, (event) => events.push(event));
     const proposalPromise = waitForEvent(
@@ -127,10 +131,7 @@ describe('CommandService integration', () => {
       'run_command',
       {
         executable: process.execPath,
-        args: [
-          '-e',
-          'require("node:fs").writeFileSync("approved.txt", "approved"); process.stdout.write("approved-output");',
-        ],
+        args: approvedArgs,
         timeoutMs: 10_000,
       },
       fixture.context,
@@ -164,14 +165,38 @@ describe('CommandService integration', () => {
       'run_command',
       {
         executable: process.execPath,
-        args: ['-e', 'process.stdout.write("auto-approved")'],
+        args: approvedArgs,
         timeoutMs: 10_000,
       },
       { ...fixture.context, callId: crypto.randomUUID(), modelCallId: crypto.randomUUID() },
     );
     expect(autoApproved.status).toBe('completed');
-    expect(autoApproved.output).toContain('auto-approved');
+    expect(autoApproved.output).toContain('approved-output');
     expect(fixture.commands.findById(autoApproved.commandId)?.autoApproved).toBe(true);
+
+    const differentProposalPromise = waitForEvent(
+      fixture.service,
+      fixture.taskId,
+      (event) => event.type === 'command_proposed',
+    );
+    const differentResultPromise = fixture.service.requestAndExecute(
+      'run_command',
+      {
+        executable: process.execPath,
+        args: ['-e', 'process.stdout.write("different-payload")'],
+        timeoutMs: 10_000,
+      },
+      { ...fixture.context, callId: crypto.randomUUID(), modelCallId: crypto.randomUUID() },
+    );
+    const differentProposal = commandFrom(await differentProposalPromise);
+    expect(differentProposal.autoApproved).toBe(false);
+    fixture.service.decide({
+      commandId: differentProposal.id,
+      expectedApprovalDigest: differentProposal.approvalDigest,
+      decision: 'reject',
+      rememberExecutable: false,
+    });
+    await expect(differentResultPromise).resolves.toMatchObject({ status: 'rejected' });
   });
 
   it('rejects without side effects and persists a remembered deny rule', async () => {
@@ -275,12 +300,14 @@ describe('CommandService integration', () => {
       'allow_executable',
       process.execPath,
       '',
+      ['--test'],
     );
     const denied = await fixture.service.upsertExecutableRule(
       fixture.workspaceId,
       'deny_executable',
       'fixture-denied',
       '',
+      [],
     );
 
     expect(allowed.kind).toBe('allow_executable');
@@ -292,6 +319,7 @@ describe('CommandService integration', () => {
         'allow_executable',
         process.execPath,
         '../outside',
+        [],
       ),
     ).rejects.toThrow();
   });

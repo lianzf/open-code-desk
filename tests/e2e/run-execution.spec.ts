@@ -77,6 +77,7 @@ test('detects, approves, runs, stops, restarts, and safely restores a project ru
     await window.getByTestId('approve-run').click();
     await expect(window.getByTestId('run-output')).toContainText('RUN_E2E_READY');
     await expect(window.getByTestId('stop-run')).toBeEnabled();
+    await expect.poll(async () => exists(heartbeatPath)).toBe(true);
 
     await application.close();
     application = undefined;

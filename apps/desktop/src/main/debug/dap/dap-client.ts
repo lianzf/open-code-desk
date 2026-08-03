@@ -1,4 +1,5 @@
-import { connect, type Socket } from 'node:net';
+import { connect } from 'node:net';
+import type { Readable, Writable } from 'node:stream';
 
 import { DapFrameParser } from './dap-frame-parser';
 import { encodeDapMessage, type DapEventMessage, type DapMessage } from './dap-message';
@@ -24,15 +25,24 @@ export class DapClient {
   readonly #parser = new DapFrameParser();
   readonly #pending = new Map<number, PendingRequest>();
   readonly #listeners = new Set<(event: DapEventMessage) => void>();
+  readonly #closeListeners = new Set<(error: Error) => void>();
   #reverseRequestHandler:
     ((command: string, argumentsValue: unknown) => Promise<unknown>) | undefined;
   #sequence = 1;
   #closed = false;
+  #closeReason: Error | undefined;
 
-  private constructor(private readonly socket: Socket) {
-    socket.on('data', (chunk: Buffer) => this.handleData(chunk));
-    socket.once('close', () => this.close(new Error('调试适配器连接已关闭。')));
-    socket.once('error', (error) => this.close(error));
+  private constructor(
+    private readonly input: Readable,
+    private readonly output: Writable,
+    private readonly disposeTransport: () => void,
+  ) {
+    input.on('data', (chunk: Buffer | string) =>
+      this.handleData(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)),
+    );
+    input.once('close', () => this.close(new Error('调试适配器连接已关闭。')));
+    input.once('error', (error) => this.close(error));
+    output.once('error', (error) => this.close(error));
   }
 
   public static async connect(host: string, port: number, timeoutMs = 10_000): Promise<DapClient> {
@@ -51,7 +61,15 @@ export class DapClient {
         reject(error);
       });
     });
-    return new DapClient(socket);
+    return new DapClient(socket, socket, () => socket.destroy());
+  }
+
+  public static fromStreams(
+    input: Readable,
+    output: Writable,
+    disposeTransport: () => void = () => undefined,
+  ): DapClient {
+    return new DapClient(input, output, disposeTransport);
   }
 
   public onEvent(listener: (event: DapEventMessage) => void): () => void {
@@ -95,7 +113,7 @@ export class DapClient {
         resolve: (body) => resolve(body as TBody),
         reject,
       });
-      this.socket.write(encodeDapMessage(request), (error) => {
+      this.output.write(encodeDapMessage(request), (error) => {
         if (error !== undefined && error !== null) {
           const pending = this.#pending.get(seq);
           if (pending !== undefined) {
@@ -109,23 +127,35 @@ export class DapClient {
   }
 
   public waitForEvent(eventName: string, timeoutMs = 15_000): Promise<DapEventMessage> {
+    if (this.#closed) {
+      return Promise.reject(this.#closeReason ?? new Error('调试适配器连接已关闭。'));
+    }
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      let settled = false;
+      const finish = (action: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         unsubscribe();
-        reject(new Error(`等待调试事件 ${eventName} 超时。`));
+        this.#closeListeners.delete(onClose);
+        action();
+      };
+      const timer = setTimeout(() => {
+        finish(() => reject(new Error(`等待调试事件 ${eventName} 超时。`)));
       }, timeoutMs);
       const unsubscribe = this.onEvent((event) => {
         if (event.event === eventName) {
-          clearTimeout(timer);
-          unsubscribe();
-          resolve(event);
+          finish(() => resolve(event));
         }
       });
+      const onClose = (error: Error) => finish(() => reject(error));
+      this.#closeListeners.add(onClose);
+      if (this.#closed) onClose(this.#closeReason ?? new Error('调试适配器连接已关闭。'));
     });
   }
 
   public dispose(): void {
-    this.socket.destroy();
+    this.disposeTransport();
     this.close(new Error('调试客户端已关闭。'));
   }
 
@@ -135,7 +165,7 @@ export class DapClient {
         this.handleMessage(message);
       }
     } catch (error) {
-      this.socket.destroy();
+      this.disposeTransport();
       this.close(error instanceof Error ? error : new Error(String(error)));
     }
   }
@@ -210,7 +240,7 @@ export class DapClient {
       }),
       'utf8',
     );
-    this.socket.write(
+    this.output.write(
       Buffer.concat([Buffer.from(`Content-Length: ${body.byteLength}\r\n\r\n`, 'ascii'), body]),
     );
   }
@@ -220,11 +250,14 @@ export class DapClient {
       return;
     }
     this.#closed = true;
+    this.#closeReason = error;
     for (const pending of this.#pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(error);
     }
     this.#pending.clear();
+    for (const listener of this.#closeListeners) listener(error);
+    this.#closeListeners.clear();
     this.#listeners.clear();
   }
 }

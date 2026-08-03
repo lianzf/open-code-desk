@@ -2,29 +2,35 @@ import { Wrench } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { localizeApprovalReason } from '@/features/settings/approval-reason-i18n';
+import { useAppSettingsStore } from '@/features/settings/app-settings.store';
+import { translate } from '@/features/settings/i18n';
+import { localizeMainProcessError } from '@/features/settings/main-process-error-i18n';
 
 import type { DisplayToolActivity } from './chat.store';
 
 const toolStatusLabels = {
-  pending: '等待',
-  running: '执行中',
-  completed: '完成',
-  failed: '失败',
-  cancelled: '已取消',
-  rejected: '已拒绝',
+  pending: 'toolPending',
+  running: 'toolRunning',
+  completed: 'toolCompleted',
+  failed: 'statusFailed',
+  cancelled: 'toolCancelled',
+  rejected: 'toolRejected',
 } as const;
 
-function serializeInput(input: unknown): string {
+function serializeInput(input: unknown, fallback: string): string {
   try {
     return JSON.stringify(input, null, 2);
   } catch {
-    return '参数无法显示';
+    return fallback;
   }
 }
 
 export function ToolActivityItem({ activity }: { readonly activity: DisplayToolActivity }) {
   const [deciding, setDeciding] = useState(false);
   const [decisionError, setDecisionError] = useState<string>();
+  const locale = useAppSettingsStore((state) => state.settings.locale);
+  const t = (key: Parameters<typeof translate>[1]) => translate(locale, key);
 
   const decide = async (decision: 'approve' | 'reject') => {
     if (activity.approvalDigest === undefined) {
@@ -39,7 +45,12 @@ export function ToolActivityItem({ activity }: { readonly activity: DisplayToolA
         decision,
       });
     } catch (error) {
-      setDecisionError(error instanceof Error ? error.message : '工具审批失败。');
+      const fallback = t('toolApprovalFailed');
+      setDecisionError(
+        error instanceof Error
+          ? localizeMainProcessError(locale, error.message, undefined, fallback)
+          : fallback,
+      );
     } finally {
       setDeciding(false);
     }
@@ -62,14 +73,14 @@ export function ToolActivityItem({ activity }: { readonly activity: DisplayToolA
                 : 'ml-auto text-amber-400'
           }
         >
-          {toolStatusLabels[activity.status]}
+          {t(toolStatusLabels[activity.status])}
         </span>
       </div>
       {activity.input !== undefined ? (
         <details className="mt-1 text-[10px] text-zinc-500">
-          <summary className="cursor-pointer">查看参数</summary>
+          <summary className="cursor-pointer">{t('viewArguments')}</summary>
           <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap">
-            {serializeInput(activity.input)}
+            {serializeInput(activity.input, t('unserializableArguments'))}
           </pre>
         </details>
       ) : null}
@@ -79,14 +90,16 @@ export function ToolActivityItem({ activity }: { readonly activity: DisplayToolA
       {activity.status === 'pending' && activity.approvalDigest !== undefined ? (
         <div className="mt-2 rounded border border-amber-900/60 bg-amber-950/20 p-2">
           <p className="text-[10px] leading-4 text-amber-200">
-            {activity.approvalReason ?? '该工具调用需要你的明确批准。'}
+            {activity.approvalReason === undefined
+              ? t('toolApprovalRequired')
+              : localizeApprovalReason(locale, activity.approvalReason)}
           </p>
           <p className="mt-1 text-[10px] text-zinc-500">
-            权限：{activity.permissionLevel ?? 'read'}
+            {t('permission')}：{activity.permissionLevel ?? 'read'}
           </p>
           <div className="mt-2 flex gap-2">
             <Button size="sm" onClick={() => void decide('approve')} disabled={deciding}>
-              批准
+              {t('approve')}
             </Button>
             <Button
               size="sm"
@@ -94,7 +107,7 @@ export function ToolActivityItem({ activity }: { readonly activity: DisplayToolA
               onClick={() => void decide('reject')}
               disabled={deciding}
             >
-              拒绝
+              {t('reject')}
             </Button>
           </div>
           {decisionError === undefined ? null : (

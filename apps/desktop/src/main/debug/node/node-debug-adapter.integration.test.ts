@@ -1,3 +1,4 @@
+import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +11,10 @@ import { NodeDebugAdapterProvider } from './node-debug-adapter.provider';
 const temporaryPaths: string[] = [];
 const debugAdapterExecutable =
   process.env.OPEN_CODE_DESK_DEBUG_ADAPTER_EXECUTABLE ?? process.execPath;
+
+function emptyExceptionPolicy(exceptionPauseMode: 'none' | 'uncaught' | 'all') {
+  return { exceptionPauseMode, exceptionBreakTypes: [], exceptionIgnoreTypes: [] } as const;
+}
 
 afterEach(async () => {
   await Promise.all(
@@ -48,6 +53,7 @@ describe('NodeDebugAdapterProvider integration', () => {
             workspaceId: '00000000-0000-4000-8000-000000000024',
             relativePath: 'loop.js',
             line: 2,
+            kind: 'line',
             enabled: true,
             logMessage: 'LOGPOINT i={i}',
             status: 'pending',
@@ -59,6 +65,7 @@ describe('NodeDebugAdapterProvider integration', () => {
             workspaceId: '00000000-0000-4000-8000-000000000024',
             relativePath: 'loop.js',
             line: 3,
+            kind: 'line',
             enabled: true,
             condition: 'i === 3',
             hitCondition: '>= 2',
@@ -67,7 +74,7 @@ describe('NodeDebugAdapterProvider integration', () => {
             updatedAt: now,
           },
         ],
-        exceptionPauseMode: 'none',
+        exceptionPolicy: emptyExceptionPolicy('none'),
       });
 
       expect(session.capabilities).toMatchObject({
@@ -113,6 +120,72 @@ describe('NodeDebugAdapterProvider integration', () => {
     }
   }, 30_000);
 
+  it('reports a real adapter function-breakpoint limitation without claiming success', async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'open-code-desk-function-breakpoint-'));
+    temporaryPaths.push(workspaceRoot);
+    await writeFile(
+      join(workspaceRoot, 'function.js'),
+      [
+        'function targetFunction(value) {',
+        '  return value + 1;',
+        '}',
+        'console.log(targetFunction(4));',
+      ].join('\n'),
+      'utf8',
+    );
+    const provider = createProvider();
+    let session: DebugAdapterSession | undefined;
+    const now = new Date().toISOString();
+    try {
+      session = await provider.createSession({
+        sessionId: '00000000-0000-4000-8000-000000000026',
+        workspaceRoot,
+        command: command('00000000-0000-4000-8000-000000000027', 'function.js'),
+        environment: {},
+        sensitiveValues: [],
+        breakpoints: [
+          {
+            id: '00000000-0000-4000-8000-000000000028',
+            workspaceId: '00000000-0000-4000-8000-000000000024',
+            relativePath: '@function/test',
+            line: 1,
+            kind: 'function',
+            functionName: 'targetFunction',
+            enabled: true,
+            status: 'pending',
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+        exceptionPolicy: emptyExceptionPolicy('none'),
+      });
+      expect(session.capabilities.functionBreakpoints).toBe(false);
+      await expect(
+        session.setFunctionBreakpoints([
+          {
+            id: '00000000-0000-4000-8000-000000000028',
+            workspaceId: '00000000-0000-4000-8000-000000000024',
+            relativePath: '@function/test',
+            line: 1,
+            kind: 'function',
+            functionName: 'targetFunction',
+            enabled: true,
+            status: 'pending',
+            createdAt: now,
+            updatedAt: now,
+          },
+        ]),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          status: 'unverified',
+          message: '当前调试适配器不支持函数断点。',
+        }),
+      ]);
+    } finally {
+      await session?.disconnect();
+    }
+  }, 30_000);
+
   it('applies all and none exception pause modes to real caught and uncaught errors', async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'open-code-desk-debug-policy-'));
     temporaryPaths.push(workspaceRoot);
@@ -142,7 +215,7 @@ describe('NodeDebugAdapterProvider integration', () => {
         environment: {},
         sensitiveValues: [],
         breakpoints: [],
-        exceptionPauseMode: 'all',
+        exceptionPolicy: emptyExceptionPolicy('all'),
       });
       const stopped = await collectEvent(
         allSession,
@@ -168,7 +241,7 @@ describe('NodeDebugAdapterProvider integration', () => {
         environment: {},
         sensitiveValues: [],
         breakpoints: [],
-        exceptionPauseMode: 'none',
+        exceptionPolicy: emptyExceptionPolicy('none'),
       });
       const observed = await collectEventsUntil(
         noneSession,
@@ -178,6 +251,58 @@ describe('NodeDebugAdapterProvider integration', () => {
       expect(observed.events.some((event) => event.type === 'stopped')).toBe(false);
     } finally {
       await Promise.allSettled([allSession?.disconnect(), noneSession?.disconnect()]);
+    }
+  }, 30_000);
+
+  it('pauses only for configured Node.js exception names and honors the ignore list', async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'open-code-desk-debug-named-policy-'));
+    temporaryPaths.push(workspaceRoot);
+    await writeFile(
+      join(workspaceRoot, 'named-errors.js'),
+      [
+        "class IgnoredError extends Error { constructor() { super('ignored'); this.name = 'IgnoredError'; } }",
+        "class TargetError extends Error { constructor() { super('target'); this.name = 'TargetError'; } }",
+        'try { throw new IgnoredError(); } catch {}',
+        'try { throw new TargetError(); } catch {}',
+        "console.log('continued');",
+      ].join('\n'),
+      'utf8',
+    );
+    const provider = createProvider();
+    let session: DebugAdapterSession | undefined;
+    try {
+      session = await provider.createSession({
+        sessionId: '00000000-0000-4000-8000-000000000035',
+        workspaceRoot,
+        command: command('00000000-0000-4000-8000-000000000036', 'named-errors.js'),
+        environment: {},
+        sensitiveValues: [],
+        breakpoints: [],
+        exceptionPolicy: {
+          exceptionPauseMode: 'none',
+          exceptionBreakTypes: ['TargetError'],
+          exceptionIgnoreTypes: ['IgnoredError'],
+        },
+      });
+      const stopped = await collectEvent(
+        session,
+        'named exception',
+        (event) => event.type === 'stopped' && event.reason === 'exception',
+      );
+      if (stopped.type !== 'stopped') throw new Error('Expected named exception stop.');
+      expect(await session.exceptionInfo(stopped.threadId)).toMatchObject({
+        exceptionId: expect.stringContaining('TargetError'),
+        message: expect.stringContaining('target'),
+      });
+      const terminated = collectEvent(
+        session,
+        'named exception termination',
+        (event) => event.type === 'terminated',
+      );
+      await session.continue(stopped.threadId);
+      await terminated;
+    } finally {
+      await session?.disconnect();
     }
   }, 30_000);
 
@@ -215,6 +340,7 @@ describe('NodeDebugAdapterProvider integration', () => {
       workspaceId: '00000000-0000-4000-8000-000000000004',
       relativePath: 'program.js',
       line: 3,
+      kind: 'line' as const,
       enabled: true,
       status: 'pending' as const,
       createdAt: new Date().toISOString(),
@@ -239,7 +365,7 @@ describe('NodeDebugAdapterProvider integration', () => {
         environment: {},
         sensitiveValues: [],
         breakpoints: [breakpoint],
-        exceptionPauseMode: 'uncaught',
+        exceptionPolicy: emptyExceptionPolicy('uncaught'),
       });
 
       const stopped = await collectEvent(
@@ -335,7 +461,7 @@ describe('NodeDebugAdapterProvider integration', () => {
         environment: { RUNTIME_SECRET: secret },
         sensitiveValues: [secret],
         breakpoints: [],
-        exceptionPauseMode: 'uncaught',
+        exceptionPolicy: emptyExceptionPolicy('uncaught'),
       });
 
       const stopped = await collectEvent(
@@ -357,7 +483,144 @@ describe('NodeDebugAdapterProvider integration', () => {
       await session?.disconnect();
     }
   }, 30_000);
+
+  it('attaches to an existing Node Inspector target without terminating it on disconnect', async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'open-code-desk-debug-attach-'));
+    temporaryPaths.push(workspaceRoot);
+    const scriptPath = join(workspaceRoot, 'remote.js');
+    await writeFile(
+      scriptPath,
+      [
+        'function calculate(left, right) {',
+        '  const total = left + right;',
+        '  return total;',
+        '}',
+        'const answer = calculate(4, 5);',
+        'setInterval(() => console.log(answer), 1_000);',
+      ].join('\n'),
+      'utf8',
+    );
+    const target = await startInspectorTarget(workspaceRoot, scriptPath);
+    const provider = createProvider();
+    let session: DebugAdapterSession | undefined;
+    try {
+      const now = new Date().toISOString();
+      session = await provider.createSession({
+        sessionId: '00000000-0000-4000-8000-000000000031',
+        workspaceRoot,
+        command: {
+          configurationId: '00000000-0000-4000-8000-000000000032',
+          configurationUpdatedAt: now,
+          configurationName: 'Existing remote Node target',
+          projectType: 'node',
+          executable: 'node',
+          runtimeArgs: [],
+          args: [],
+          workingDirectory: '',
+          environmentVariables: [],
+          console: 'runOutput',
+          debugAttach: {
+            adapter: 'pwa-node',
+            environment: 'remote',
+            host: '127.0.0.1',
+            port: target.port,
+            remoteRoot: workspaceRoot,
+          },
+        },
+        environment: {},
+        sensitiveValues: [],
+        breakpoints: [
+          {
+            id: '00000000-0000-4000-8000-000000000033',
+            workspaceId: '00000000-0000-4000-8000-000000000034',
+            relativePath: 'remote.js',
+            line: 3,
+            kind: 'line',
+            enabled: true,
+            status: 'pending',
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+        exceptionPolicy: emptyExceptionPolicy('none'),
+      });
+
+      const stopped = await collectEvent(
+        session,
+        'remote attach breakpoint',
+        (event) => event.type === 'stopped' && event.reason === 'breakpoint',
+      );
+      if (stopped.type !== 'stopped') throw new Error('Expected remote breakpoint stop event.');
+      const frames = await session.stackTrace(stopped.threadId);
+      expect(frames[0]).toMatchObject({ relativePath: 'remote.js', line: 3 });
+      const scopes = await session.scopes(frames[0]!.id);
+      const variables = (
+        await Promise.all(
+          scopes
+            .filter((scope) => !scope.expensive)
+            .map((scope) => session!.variables(scope.variablesReference)),
+        )
+      ).flat();
+      expect(variables).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: 'total', value: '9' })]),
+      );
+
+      await session.disconnect();
+      session = undefined;
+      expect(target.child.exitCode).toBeNull();
+    } finally {
+      await session?.disconnect();
+      await stopInspectorTarget(target.child);
+    }
+  }, 30_000);
 });
+
+async function startInspectorTarget(workspaceRoot: string, scriptPath: string) {
+  const child = spawn(process.execPath, ['--inspect-brk=127.0.0.1:0', scriptPath], {
+    cwd: workspaceRoot,
+    windowsHide: true,
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  const port = await new Promise<number>((resolve, reject) => {
+    let stderr = '';
+    const timer = setTimeout(
+      () => finish(new Error('Timed out waiting for Node Inspector.')),
+      10_000,
+    );
+    const finish = (error: Error | undefined, value?: number) => {
+      clearTimeout(timer);
+      child.stderr.off('data', onData);
+      child.off('error', onError);
+      child.off('exit', onExit);
+      if (error !== undefined) reject(error);
+      else resolve(value!);
+    };
+    const onData = (chunk: Buffer | string) => {
+      stderr += chunk.toString();
+      const match = /Debugger listening on ws:\/\/127\.0\.0\.1:(\d+)\//u.exec(stderr);
+      if (match !== null) finish(undefined, Number(match[1]));
+    };
+    const onError = (error: Error) => finish(error);
+    const onExit = (code: number | null) =>
+      finish(new Error(`Node Inspector exited before startup with code ${String(code)}.`));
+    child.stderr.on('data', onData);
+    child.once('error', onError);
+    child.once('exit', onExit);
+  });
+  return { child, port };
+}
+
+async function stopInspectorTarget(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null) return;
+  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+  child.kill();
+  await Promise.race([
+    exited,
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, 5_000);
+    }),
+  ]);
+}
 
 function collectEvent(
   session: DebugAdapterSession,

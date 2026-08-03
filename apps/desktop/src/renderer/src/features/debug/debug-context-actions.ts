@@ -1,5 +1,7 @@
 import type { DebugContextSectionKey, DebugContextSnapshot } from '@open-code-desk/ipc-contracts';
 
+import { currentRendererLocale } from '../settings/error-i18n';
+
 import {
   readableDebugError,
   selectedDebugSession,
@@ -19,6 +21,7 @@ export async function previewDebugContext(
     const snapshot = await window.openCodeDesk.debug.previewContext({
       sessionId: session.id,
       conversationId,
+      locale: currentRendererLocale(),
     });
     set({ contextLoading: false, contextPreview: snapshot });
     return snapshot;

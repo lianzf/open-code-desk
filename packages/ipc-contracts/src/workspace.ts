@@ -107,6 +107,7 @@ export const writeFileResponseSchema = z
 
 export const searchFilesRequestSchema = z
   .object({
+    requestId: z.string().uuid(),
     workspaceId: workspaceIdSchema,
     query: z.string().trim().min(1).max(200),
     limit: z.number().int().min(1).max(200).default(100),

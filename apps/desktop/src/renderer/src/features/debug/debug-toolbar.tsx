@@ -15,6 +15,7 @@ import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { useEditorStore } from '@/features/editor/editor.store';
 import { useRunStore } from '@/features/run/run.store';
+import { useDebugTranslation } from './debug-i18n';
 import { useDebugStore } from './debug.store';
 
 export interface DebugToolbarProps {
@@ -23,6 +24,7 @@ export interface DebugToolbarProps {
 }
 
 export function DebugToolbar({ workspaceId, onShowDebug }: DebugToolbarProps) {
+  const { t } = useDebugTranslation();
   const selectedConfigurationId = useRunStore((state) => state.selectedConfigurationId);
   const initialize = useDebugStore((state) => state.initialize);
   const dispose = useDebugStore((state) => state.dispose);
@@ -49,7 +51,7 @@ export function DebugToolbar({ workspaceId, onShowDebug }: DebugToolbarProps) {
   return (
     <div
       className="flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950/70 p-1"
-      aria-label="调试控制"
+      aria-label={t('debugControls')}
       data-testid="debug-toolbar"
     >
       <Button
@@ -64,11 +66,11 @@ export function DebugToolbar({ workspaceId, onShowDebug }: DebugToolbarProps) {
             });
           }
         }}
-        title="使用当前运行配置启动调试（需要批准）"
+        title={t('startDebugRequiresApproval')}
         data-testid="propose-debug"
       >
         <Bug className="size-3.5" aria-hidden="true" />
-        调试
+        {t('debug')}
       </Button>
       <Button
         type="button"
@@ -76,15 +78,15 @@ export function DebugToolbar({ workspaceId, onShowDebug }: DebugToolbarProps) {
         variant="ghost"
         disabled={active === undefined || !['running', 'paused'].includes(active.status)}
         onClick={() => void control(paused ? 'continue' : 'pause')}
-        title={paused ? '继续' : '暂停'}
-        aria-label={paused ? '继续调试' : '暂停调试'}
+        title={paused ? t('continue') : t('pause')}
+        aria-label={paused ? t('continueDebug') : t('pauseDebug')}
         data-testid="debug-toggle-pause"
       >
         {paused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
       </Button>
       <DebugStepButton
         testId="debug-next"
-        title="单步跳过"
+        title={t('stepOver')}
         disabled={!paused}
         onClick={() => void control('next')}
       >
@@ -92,7 +94,7 @@ export function DebugToolbar({ workspaceId, onShowDebug }: DebugToolbarProps) {
       </DebugStepButton>
       <DebugStepButton
         testId="debug-step-in"
-        title="单步进入"
+        title={t('stepInto')}
         disabled={!paused}
         onClick={() => void control('stepIn')}
       >
@@ -100,7 +102,7 @@ export function DebugToolbar({ workspaceId, onShowDebug }: DebugToolbarProps) {
       </DebugStepButton>
       <DebugStepButton
         testId="debug-step-out"
-        title="单步跳出"
+        title={t('stepOut')}
         disabled={!paused}
         onClick={() => void control('stepOut')}
       >
@@ -108,7 +110,7 @@ export function DebugToolbar({ workspaceId, onShowDebug }: DebugToolbarProps) {
       </DebugStepButton>
       <DebugStepButton
         testId="restart-debug"
-        title="重新调试"
+        title={t('restartDebug')}
         disabled={selected === undefined || !['running', 'paused'].includes(selected.status)}
         onClick={() => void restart(selected?.id)}
       >
@@ -116,7 +118,7 @@ export function DebugToolbar({ workspaceId, onShowDebug }: DebugToolbarProps) {
       </DebugStepButton>
       <DebugStepButton
         testId="stop-debug"
-        title="停止调试"
+        title={t('stopDebug')}
         disabled={active === undefined || active.status === 'stopping'}
         onClick={() => void stop(active?.id)}
       >
@@ -124,7 +126,7 @@ export function DebugToolbar({ workspaceId, onShowDebug }: DebugToolbarProps) {
       </DebugStepButton>
       <DebugStepButton
         testId="focus-debug-location"
-        title="返回当前暂停位置"
+        title={t('returnToPause')}
         disabled={active?.pause?.relativePath === undefined || active.pause.line === undefined}
         onClick={() => {
           const location = active?.pause;
@@ -139,8 +141,8 @@ export function DebugToolbar({ workspaceId, onShowDebug }: DebugToolbarProps) {
         type="button"
         className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
         onClick={onShowDebug}
-        title="打开调试面板"
-        aria-label="打开调试面板"
+        title={t('openDebugPanel')}
+        aria-label={t('openDebugPanel')}
       >
         <CornerDownLeft className="size-3.5" />
       </button>

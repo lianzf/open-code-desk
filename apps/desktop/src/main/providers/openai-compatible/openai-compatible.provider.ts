@@ -78,7 +78,9 @@ export class OpenAICompatibleProvider implements ModelProvider {
       context.signal,
     );
     assertSuccessful(response);
-    const parsed = modelListResponseSchema.safeParse(await readLimitedJson(response));
+    const parsed = modelListResponseSchema.safeParse(
+      await readLimitedJson(response, { signal: context.signal }),
+    );
     if (!parsed.success) {
       throw new ProviderServiceError(
         'PROVIDER_UNAVAILABLE',
@@ -262,7 +264,9 @@ export class OpenAICompatibleProvider implements ModelProvider {
       context.signal,
     );
     assertSuccessful(response);
-    const parsed = chatCompletionSchema.safeParse(await readLimitedJson(response));
+    const parsed = chatCompletionSchema.safeParse(
+      await readLimitedJson(response, { signal: context.signal }),
+    );
     if (!parsed.success) {
       throw new ProviderServiceError(
         'PROVIDER_UNAVAILABLE',

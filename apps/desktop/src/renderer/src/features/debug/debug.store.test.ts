@@ -69,6 +69,7 @@ function breakpoint(id: string): DebugBreakpoint {
     workspaceId: '00000000-0000-4000-8000-000000000202',
     relativePath: 'program.js',
     line: 3,
+    kind: 'line',
     enabled: true,
     status: 'pending',
     createdAt: '2026-08-02T00:00:00.000Z',

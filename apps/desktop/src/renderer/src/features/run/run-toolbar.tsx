@@ -1,8 +1,10 @@
-import { CircleStop, Play, RotateCw, Settings2 } from 'lucide-react';
+import { CircleStop, Layers3, Play, RotateCw, Settings2 } from 'lucide-react';
 import { useEffect } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { CompoundRunApprovalDialog, CompoundRunDialog } from './compound-run-dialog';
 import { RunConfigurationDialog } from './run-configuration-dialog';
+import { useRunTranslation } from './run-i18n';
 import { useRunStore } from './run.store';
 
 export interface RunToolbarProps {
@@ -11,6 +13,7 @@ export interface RunToolbarProps {
 }
 
 export function RunToolbar({ workspaceId, onShowOutput }: RunToolbarProps) {
+  const { t } = useRunTranslation();
   const configurations = useRunStore((state) => state.configurations);
   const selectedConfigurationId = useRunStore((state) => state.selectedConfigurationId);
   const detection = useRunStore((state) => state.detection);
@@ -25,6 +28,7 @@ export function RunToolbar({ workspaceId, onShowOutput }: RunToolbarProps) {
   const stop = useRunStore((state) => state.stop);
   const restart = useRunStore((state) => state.restart);
   const openConfigurationDialog = useRunStore((state) => state.openConfigurationDialog);
+  const openCompoundDialog = useRunStore((state) => state.openCompoundDialog);
 
   useEffect(() => {
     void initialize(workspaceId);
@@ -32,6 +36,10 @@ export function RunToolbar({ workspaceId, onShowOutput }: RunToolbarProps) {
   }, [dispose, initialize, workspaceId]);
 
   const selectedExecution = executions.find((execution) => execution.id === selectedExecutionId);
+  const selectedConfiguration = configurations.find(
+    (configuration) => configuration.id === selectedConfigurationId,
+  );
+  const debugOnly = selectedConfiguration?.debugAttach !== undefined;
   const activeExecution = executions.find(
     (execution) =>
       execution.configurationId === selectedConfigurationId &&
@@ -47,14 +55,14 @@ export function RunToolbar({ workspaceId, onShowOutput }: RunToolbarProps) {
     <>
       <div
         className="flex min-w-0 items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950/70 p-1"
-        aria-label="运行控制"
+        aria-label={t('runControls')}
         data-testid="run-toolbar"
       >
         <select
           className="h-7 min-w-32 max-w-60 rounded border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-200 outline-none focus:border-cyan-500"
           value={selectedConfigurationId ?? ''}
           disabled={loading}
-          aria-label="运行配置"
+          aria-label={t('runConfiguration')}
           onChange={(event) => {
             const value = event.target.value;
             if (value.startsWith('suggestion:')) {
@@ -70,10 +78,10 @@ export function RunToolbar({ workspaceId, onShowOutput }: RunToolbarProps) {
           data-testid="run-configuration-select"
         >
           <option value="" disabled>
-            {loading ? '正在检测项目…' : '选择运行配置'}
+            {loading ? t('detectingProject') : t('selectRunConfiguration')}
           </option>
           {configurations.length === 0 ? null : (
-            <optgroup label="已保存">
+            <optgroup label={t('savedConfigurations')}>
               {configurations.map((configuration) => (
                 <option key={configuration.id} value={configuration.id}>
                   {configuration.name}
@@ -82,7 +90,7 @@ export function RunToolbar({ workspaceId, onShowOutput }: RunToolbarProps) {
             </optgroup>
           )}
           {(detection?.suggestedConfigurations.length ?? 0) === 0 ? null : (
-            <optgroup label="检测建议（选择后保存）">
+            <optgroup label={t('detectedSuggestions')}>
               {detection?.suggestedConfigurations.map((suggestion, index) => (
                 <option key={`${suggestion.name}-${index}`} value={`suggestion:${index}`}>
                   {suggestion.name} · {suggestion.executable}
@@ -95,8 +103,23 @@ export function RunToolbar({ workspaceId, onShowOutput }: RunToolbarProps) {
         <Button
           type="button"
           size="sm"
+          variant="outline"
+          disabled={loading || configurations.length < 2}
+          onClick={openCompoundDialog}
+          title={t('compoundRun')}
+          data-testid="open-compound-run"
+        >
+          <Layers3 className="size-3.5" aria-hidden="true" />
+          {t('combo')}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
           disabled={
-            loading || selectedConfigurationId === undefined || activeExecution !== undefined
+            loading ||
+            selectedConfigurationId === undefined ||
+            activeExecution !== undefined ||
+            debugOnly
           }
           onClick={() => {
             void proposeStart().then((execution) => {
@@ -105,11 +128,11 @@ export function RunToolbar({ workspaceId, onShowOutput }: RunToolbarProps) {
               }
             });
           }}
-          title="运行（需要批准）"
+          title={debugOnly ? t('debugOnlyConfiguration') : t('runRequiresApproval')}
           data-testid="propose-run"
         >
           <Play className="size-3.5" aria-hidden="true" />
-          运行
+          {t('run')}
         </Button>
         <Button
           type="button"
@@ -121,11 +144,11 @@ export function RunToolbar({ workspaceId, onShowOutput }: RunToolbarProps) {
               void stop(activeExecution.id);
             }
           }}
-          title="停止运行"
+          title={t('stopRun')}
           data-testid="stop-run"
         >
           <CircleStop className="size-3.5" aria-hidden="true" />
-          停止
+          {t('stop')}
         </Button>
         <Button
           type="button"
@@ -139,25 +162,27 @@ export function RunToolbar({ workspaceId, onShowOutput }: RunToolbarProps) {
               }
             });
           }}
-          title="重新运行（需要再次批准）"
+          title={t('restartRequiresApproval')}
           data-testid="restart-run"
         >
           <RotateCw className="size-3.5" aria-hidden="true" />
-          重启
+          {t('restartShort')}
         </Button>
         <Button
           type="button"
           size="sm"
           variant="ghost"
           onClick={() => openConfigurationDialog(selectedConfigurationId)}
-          title="编辑运行配置"
-          aria-label="编辑运行配置"
+          title={t('editRunConfiguration')}
+          aria-label={t('editRunConfiguration')}
           data-testid="open-run-configuration"
         >
           <Settings2 className="size-3.5" aria-hidden="true" />
         </Button>
       </div>
       <RunConfigurationDialog />
+      <CompoundRunDialog />
+      <CompoundRunApprovalDialog />
     </>
   );
 }

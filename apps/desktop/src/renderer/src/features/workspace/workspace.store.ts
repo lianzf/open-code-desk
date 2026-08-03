@@ -1,6 +1,8 @@
 import type { FileEntry, TextSearchMatch, WorkspaceInfo } from '@open-code-desk/ipc-contracts';
 import { create } from 'zustand';
 
+import { rendererErrorMessage } from '../settings/error-i18n';
+
 type SearchMode = 'files' | 'content';
 
 interface WorkspaceState {
@@ -35,7 +37,7 @@ interface WorkspaceState {
 let activeSearchRequestId: string | undefined;
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : '工作区操作失败，请重试。';
+  return rendererErrorMessage(error, 'workspaceOperationFailed');
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
@@ -172,10 +174,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     set({ loading: true, errorMessage: undefined });
     const searchMode = get().searchMode;
+    const requestId = crypto.randomUUID();
+    activeSearchRequestId = requestId;
     try {
       if (searchMode === 'content') {
-        const requestId = crypto.randomUUID();
-        activeSearchRequestId = requestId;
         const result = await window.openCodeDesk.files.searchText({
           requestId,
           workspaceId: workspace.id,
@@ -190,16 +192,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         }
       } else {
         const searchResults = await window.openCodeDesk.files.searchFiles({
+          requestId,
           workspaceId: workspace.id,
           query: trimmedQuery,
           limit: 100,
         });
-        set({ searchResults, textSearchResults: [], loading: false });
+        if (activeSearchRequestId === requestId) {
+          activeSearchRequestId = undefined;
+          set({ searchResults, textSearchResults: [], loading: false });
+        }
       }
     } catch (error) {
-      if (searchMode === 'content' && activeSearchRequestId === undefined) {
-        return;
-      }
+      if (activeSearchRequestId !== requestId) return;
       activeSearchRequestId = undefined;
       set({ loading: false, errorMessage: errorMessage(error) });
     }

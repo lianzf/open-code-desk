@@ -3,6 +3,7 @@ import type { ProposeDebugStartRequest } from '@open-code-desk/ipc-contracts';
 
 import type { AuditLogService } from '../audit/audit-log.service';
 import type { RunConfigurationRepository } from '../run/run-configuration.repository';
+import type { ProjectTaskPlanProvider } from '../run/run-execution-proposal';
 import type { WorkspaceService } from '../workspace/workspace.service';
 import { createDebugProposal } from './debug-proposal';
 import { recordDebugSessionAudit } from './debug-session-audit';
@@ -13,6 +14,7 @@ export interface DebugProposalServiceOptions {
   readonly sessions: DebugSessionRepository;
   readonly workspaces: WorkspaceService;
   readonly audit?: AuditLogService;
+  readonly taskPlans?: ProjectTaskPlanProvider;
   readonly emit: (event: DebugEvent) => void;
 }
 
@@ -36,10 +38,13 @@ export class DebugProposalService {
     }
     const session = await createDebugProposal({
       ...input,
-      adapterType: adapterTypeForProject(configuration.type),
+      adapterType:
+        configuration.debugAttach?.adapter ??
+        adapterTypeForProject(configuration.type, configuration.port),
       configurations: this.options.configurations,
       sessions: this.options.sessions,
       workspaces: this.options.workspaces,
+      ...(this.options.taskPlans === undefined ? {} : { taskPlans: this.options.taskPlans }),
     });
     this.options.emit({
       type: 'status',
@@ -51,7 +56,16 @@ export class DebugProposalService {
   }
 }
 
-function adapterTypeForProject(projectType: string): string {
+export function adapterTypeForProject(projectType: string, port?: number): string {
+  if (projectType === 'electron') return 'electron-js-debug';
+  if (port !== undefined && ['react', 'vue', 'nextjs'].includes(projectType)) {
+    return 'browser-js-debug';
+  }
   if (['node', 'typescript', 'react', 'vue', 'nextjs'].includes(projectType)) return 'pwa-node';
+  if (projectType === 'python') return 'debugpy';
+  if (['c', 'cpp', 'rust'].includes(projectType)) return 'lldb-dap';
+  if (projectType === 'go') return 'go-delve';
+  if (projectType === 'dotnet') return 'coreclr';
+  if (['java-maven', 'java-gradle', 'spring-boot'].includes(projectType)) return 'java';
   throw new Error(`当前阶段尚未提供 ${projectType} 项目的调试适配器。`);
 }

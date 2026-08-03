@@ -1,6 +1,8 @@
 import type { HealthResponse } from '@open-code-desk/ipc-contracts';
 import { create } from 'zustand';
 
+import { rendererError } from '../settings/error-i18n';
+
 type HealthStatus = 'checking' | 'healthy' | 'unavailable';
 
 interface AppHealthState {
@@ -26,7 +28,7 @@ export const useAppHealthStore = create<AppHealthState>((set) => ({
       set({
         status: 'unavailable',
         response: undefined,
-        errorMessage: '无法连接桌面端主进程，请重新启动应用。',
+        errorMessage: rendererError('mainProcessUnavailable'),
       });
     }
   },

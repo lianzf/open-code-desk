@@ -1,5 +1,6 @@
 export * from './run';
 export * from './debug';
+export * from './project-task';
 
 export type AgentStatus =
   | 'idle'

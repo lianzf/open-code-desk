@@ -4,6 +4,8 @@ import { CircleStop, Paperclip, RefreshCw, TerminalSquare, X } from 'lucide-reac
 import { useEffect, useRef, useState } from 'react';
 
 import { useConversationContextStore } from '@/features/context/context.store';
+import { localizeMainProcessError } from '@/features/settings/main-process-error-i18n';
+import { translateTerminal, useTerminalTranslation } from './terminal-i18n';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalPanelProps {
@@ -13,11 +15,10 @@ interface TerminalPanelProps {
 
 type TerminalState = 'starting' | 'running' | 'exited' | 'failed';
 
-function readableError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message.replace(/^Error invoking remote method '[^']+': Error: /, '');
-  }
-  return '无法启动集成终端。';
+function readableError(error: unknown, locale: 'zh-CN' | 'en-US', fallback: string): string {
+  return error instanceof Error
+    ? localizeMainProcessError(locale, error.message, undefined, fallback)
+    : fallback;
 }
 
 const ansiSequence = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');
@@ -27,6 +28,8 @@ function cleanTerminalOutput(output: string): string {
 }
 
 export function TerminalPanel({ workspaceId, onClose }: TerminalPanelProps) {
+  const { locale, t } = useTerminalTranslation();
+  const localeRef = useRef(locale);
   const hostRef = useRef<HTMLDivElement>(null);
   const sessionIdRef = useRef<string | undefined>(undefined);
   const contextSourceRef = useRef<string | undefined>(undefined);
@@ -40,6 +43,10 @@ export function TerminalPanel({ workspaceId, onClose }: TerminalPanelProps) {
   const [outputSize, setOutputSize] = useState(0);
   const contextConversationId = useConversationContextStore((state) => state.conversationId);
   const saveContext = useConversationContextStore((state) => state.save);
+
+  useEffect(() => {
+    localeRef.current = locale;
+  }, [locale]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -84,7 +91,9 @@ export function TerminalPanel({ workspaceId, onClose }: TerminalPanelProps) {
         sessionIdRef.current = undefined;
         setState('exited');
         setExitCode(event.exitCode);
-        terminal.write(`\r\n\x1b[90m[进程已退出，退出码 ${event.exitCode}]\x1b[0m\r\n`);
+        terminal.write(
+          `\r\n\x1b[90m${translateTerminal(localeRef.current, 'processExitedMessage', { code: event.exitCode })}\x1b[0m\r\n`,
+        );
       }
     });
     const inputDisposable = terminal.onData((data) => {
@@ -126,8 +135,13 @@ export function TerminalPanel({ workspaceId, onClose }: TerminalPanelProps) {
       .catch((error: unknown) => {
         if (!disposed) {
           setState('failed');
-          setErrorMessage(readableError(error));
-          terminal.write(`\r\n\x1b[31m${readableError(error)}\x1b[0m\r\n`);
+          const message = readableError(
+            error,
+            localeRef.current,
+            translateTerminal(localeRef.current, 'startFailedGeneric'),
+          );
+          setErrorMessage(message);
+          terminal.write(`\r\n\x1b[31m${message}\x1b[0m\r\n`);
         }
       });
 
@@ -157,20 +171,20 @@ export function TerminalPanel({ workspaceId, onClose }: TerminalPanelProps) {
   };
 
   return (
-    <section className="flex h-60 min-h-0 shrink-0 flex-col border-t border-zinc-800 bg-zinc-950">
+    <section className="flex h-full min-h-0 flex-col border-t border-zinc-800 bg-zinc-950">
       <header className="flex h-8 shrink-0 items-center gap-2 border-b border-zinc-800 px-3 text-[11px]">
         <TerminalSquare className="size-3.5 text-cyan-500" aria-hidden="true" />
-        <span className="font-medium text-zinc-300">交互终端</span>
-        <span className="text-zinc-600">用户控制</span>
+        <span className="font-medium text-zinc-300">{t('interactiveTerminal')}</span>
+        <span className="text-zinc-600">{t('userControlled')}</span>
         {cwd !== '' ? <span className="min-w-0 truncate text-zinc-600">{cwd}</span> : null}
         <span className="ml-auto text-zinc-600">
           {state === 'starting'
-            ? '正在启动'
+            ? t('starting')
             : state === 'running'
               ? shell
               : state === 'failed'
-                ? '启动失败'
-                : `已退出${exitCode === undefined ? '' : ` (${exitCode})`}`}
+                ? t('startFailed')
+                : t('exited', { code: exitCode === undefined ? '' : ` (${exitCode})` })}
         </span>
         <button
           className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-cyan-300 disabled:opacity-40"
@@ -179,7 +193,7 @@ export function TerminalPanel({ workspaceId, onClose }: TerminalPanelProps) {
             if (content !== '') {
               void saveContext({
                 type: 'terminal',
-                title: `终端输出 · ${cwd || '工作区'}`,
+                title: t('terminalContextTitle', { cwd: cwd || t('workspace') }),
                 content,
                 priority: 75,
                 ...(contextSourceRef.current === undefined
@@ -189,8 +203,8 @@ export function TerminalPanel({ workspaceId, onClose }: TerminalPanelProps) {
             }
           }}
           disabled={contextConversationId === undefined || outputSize === 0}
-          aria-label="将终端输出加入上下文"
-          title="将当前终端输出加入 AI 上下文"
+          aria-label={t('addOutputContext')}
+          title={t('addOutputContextTitle')}
           data-testid="add-terminal-context"
         >
           <Paperclip className="size-3.5" />
@@ -199,8 +213,8 @@ export function TerminalPanel({ workspaceId, onClose }: TerminalPanelProps) {
           <button
             className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-amber-300"
             onClick={() => void stop()}
-            aria-label="终止终端进程"
-            title="终止终端进程"
+            aria-label={t('stopTerminal')}
+            title={t('stopTerminal')}
           >
             <CircleStop className="size-3.5" />
           </button>
@@ -208,8 +222,8 @@ export function TerminalPanel({ workspaceId, onClose }: TerminalPanelProps) {
           <button
             className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
             onClick={() => setGeneration((value) => value + 1)}
-            aria-label="重新启动终端"
-            title="重新启动终端"
+            aria-label={t('restartTerminal')}
+            title={t('restartTerminal')}
           >
             <RefreshCw className="size-3.5" />
           </button>
@@ -217,7 +231,7 @@ export function TerminalPanel({ workspaceId, onClose }: TerminalPanelProps) {
         <button
           className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
           onClick={onClose}
-          aria-label="关闭终端面板"
+          aria-label={t('closeTerminal')}
         >
           <X className="size-3.5" />
         </button>

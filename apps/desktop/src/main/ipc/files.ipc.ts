@@ -79,9 +79,23 @@ export function registerFilesIpc(
   ipcMain.handle(filesChannels.searchFiles, async (event, untrustedInput: unknown) => {
     assertTrustedIpcEvent(event, options);
     const request = searchFilesRequestSchema.parse(untrustedInput);
-    return fileEntryListSchema.parse(
-      await service.searchFiles(request.workspaceId, request.query, request.limit),
-    );
+    searchControllers.get(request.requestId)?.abort();
+    const controller = new AbortController();
+    searchControllers.set(request.requestId, controller);
+    try {
+      return fileEntryListSchema.parse(
+        await service.searchFiles(
+          request.workspaceId,
+          request.query,
+          request.limit,
+          controller.signal,
+        ),
+      );
+    } finally {
+      if (searchControllers.get(request.requestId) === controller) {
+        searchControllers.delete(request.requestId);
+      }
+    }
   });
 
   ipcMain.handle(filesChannels.searchText, async (event, untrustedInput: unknown) => {

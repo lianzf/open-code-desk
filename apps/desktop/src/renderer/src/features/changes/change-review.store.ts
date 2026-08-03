@@ -1,6 +1,8 @@
 import type { ChangeContents, FileChange, FileChangeSet } from '@open-code-desk/ipc-contracts';
 import { create } from 'zustand';
 
+import { rendererErrorMessage } from '../settings/error-i18n';
+
 interface ChangeReviewState {
   readonly conversationId: string | undefined;
   readonly changeSets: ReadonlyArray<FileChangeSet>;
@@ -27,10 +29,7 @@ interface ChangeReviewState {
 }
 
 function readableError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message.replace(/^Error invoking remote method '[^']+': Error: /, '');
-  }
-  return 'The change review operation failed.';
+  return rendererErrorMessage(error, 'changeOperationFailed');
 }
 
 function replaceSet(

@@ -14,28 +14,22 @@ import {
   matchesExecutableRule,
 } from './command-risk-policy';
 import { StructuredCommandRunner, type CommandRunResult } from './command-runner';
+import { CommandApprovalQueue } from './command-approval-queue';
+import { CommandEventPublisher } from './command-event-publisher';
 import {
   commandDigest,
   toToolOutput,
-  type ApprovalOutcome,
   type CommandDecision,
-  type CommandLifecycleEvent,
   type CommandListener,
   type CommandToolInput,
   type CommandToolOutput,
 } from './command-lifecycle';
 import type { PermissionRuleRepository } from './permission-rule.repository';
 
-interface PendingApproval {
-  readonly resolve: (outcome: ApprovalOutcome) => void;
-  readonly signal: AbortSignal;
-  readonly abortListener: () => void;
-}
-
 export class CommandService {
-  readonly #pending = new Map<string, PendingApproval>();
   readonly #running = new Map<string, AbortController>();
-  readonly #listeners = new Map<string, Set<CommandListener>>();
+  readonly #events: CommandEventPublisher;
+  readonly #approvals: CommandApprovalQueue;
 
   public constructor(
     private readonly repository: CommandRepository,
@@ -43,18 +37,13 @@ export class CommandService {
     private readonly workspaces: WorkspaceService,
     private readonly runner: StructuredCommandRunner = new StructuredCommandRunner(),
     private readonly audit?: AuditLogService,
-  ) {}
+  ) {
+    this.#events = new CommandEventPublisher(audit);
+    this.#approvals = new CommandApprovalQueue(repository, (event) => this.emit(event));
+  }
 
   public subscribe(taskId: string, listener: CommandListener): () => void {
-    const listeners = this.#listeners.get(taskId) ?? new Set<CommandListener>();
-    listeners.add(listener);
-    this.#listeners.set(taskId, listeners);
-    return () => {
-      listeners.delete(listener);
-      if (listeners.size === 0) {
-        this.#listeners.delete(taskId);
-      }
-    };
+    return this.#events.subscribe(taskId, listener);
   }
 
   public listForConversation(conversationId: string): ReadonlyArray<CommandExecution> {
@@ -84,10 +73,15 @@ export class CommandService {
     kind: Extract<PermissionRuleKind, 'allow_executable' | 'deny_executable'>,
     executable: string,
     requestedCwd: string,
+    args: ReadonlyArray<string>,
   ) {
     const workspace = await this.workspaces.getById(workspaceId);
     const cwd = await this.resolveWorkingDirectory(workspace.rootPath, requestedCwd);
-    return this.addRule(workspaceId, kind, executableRuleValue(executable, cwd));
+    return this.addRule(
+      workspaceId,
+      kind,
+      executableRuleValue(executable, cwd, kind === 'allow_executable' ? args : undefined),
+    );
   }
 
   public setNetworkAccess(workspaceId: string, allowed: boolean) {
@@ -159,12 +153,14 @@ export class CommandService {
     const rules = this.rules.list(context.workspaceId);
     const denied = rules.some(
       (rule) =>
-        rule.kind === 'deny_executable' && matchesExecutableRule(rule, input.executable, cwd),
+        rule.kind === 'deny_executable' &&
+        matchesExecutableRule(rule, input.executable, cwd, input.args),
     );
     const networkAllowed = rules.some((rule) => rule.kind === 'allow_network_commands');
     const allowListed = rules.some(
       (rule) =>
-        rule.kind === 'allow_executable' && matchesExecutableRule(rule, input.executable, cwd),
+        rule.kind === 'allow_executable' &&
+        matchesExecutableRule(rule, input.executable, cwd, input.args),
     );
     const autoApproved =
       !denied &&
@@ -218,7 +214,7 @@ export class CommandService {
       });
       this.emit({ type: 'command_status', command });
     } else {
-      const approval = this.waitForApproval(command, context.signal);
+      const approval = this.#approvals.wait(command, context.signal);
       this.emit({ type: 'command_proposed', command });
       const outcome = await approval;
       command = this.requireCommand(command.id);
@@ -238,8 +234,7 @@ export class CommandService {
     if (command.approvalDigest !== input.expectedApprovalDigest) {
       throw new Error('The command approval digest is stale.');
     }
-    const pending = this.#pending.get(command.id);
-    if (pending === undefined) {
+    if (!this.#approvals.has(command.id)) {
       throw new Error('The Agent task that requested this command is no longer active.');
     }
     const now = new Date().toISOString();
@@ -253,7 +248,7 @@ export class CommandService {
       this.rules.upsert(
         command.workspaceId,
         'allow_executable',
-        executableRuleValue(command.executable, command.cwd),
+        executableRuleValue(command.executable, command.cwd, command.args),
       );
     } else if (input.rememberExecutable && !approved) {
       this.rules.upsert(
@@ -275,7 +270,7 @@ export class CommandService {
             },
           }),
     });
-    this.resolveApproval(command.id, approved ? 'approved' : 'rejected');
+    this.#approvals.resolve(command.id, approved ? 'approved' : 'rejected');
     this.emit({ type: 'command_status', command: updated });
     return updated;
   }
@@ -286,8 +281,7 @@ export class CommandService {
       running.abort(new DOMException('Command cancelled by user.', 'AbortError'));
       return true;
     }
-    const pending = this.#pending.get(commandId);
-    if (pending === undefined) {
+    if (!this.#approvals.has(commandId)) {
       return false;
     }
     const command = this.repository.update(commandId, {
@@ -299,13 +293,13 @@ export class CommandService {
       },
       completedAt: new Date().toISOString(),
     });
-    this.resolveApproval(commandId, 'cancelled');
+    this.#approvals.resolve(commandId, 'cancelled');
     this.emit({ type: 'command_status', command });
     return true;
   }
 
   public close(): void {
-    for (const commandId of [...this.#pending.keys()]) {
+    for (const commandId of this.#approvals.ids()) {
       this.cancel(commandId);
     }
     for (const controller of this.#running.values()) {
@@ -377,86 +371,8 @@ export class CommandService {
     return toToolOutput(command);
   }
 
-  private waitForApproval(
-    command: CommandExecution,
-    signal: AbortSignal,
-  ): Promise<ApprovalOutcome> {
-    return new Promise<ApprovalOutcome>((resolve) => {
-      const abortListener = () => {
-        if (!this.#pending.has(command.id)) {
-          return;
-        }
-        const cancelled = this.repository.update(command.id, {
-          status: 'cancelled',
-          error: {
-            code: 'CANCELLED',
-            message: 'The Agent task was cancelled while waiting for command approval.',
-            retryable: true,
-          },
-          completedAt: new Date().toISOString(),
-        });
-        this.resolveApproval(command.id, 'cancelled');
-        this.emit({ type: 'command_status', command: cancelled });
-      };
-      this.#pending.set(command.id, { resolve, signal, abortListener });
-      signal.addEventListener('abort', abortListener, { once: true });
-    });
-  }
-
-  private resolveApproval(commandId: string, outcome: ApprovalOutcome): void {
-    const pending = this.#pending.get(commandId);
-    if (pending === undefined) {
-      return;
-    }
-    this.#pending.delete(commandId);
-    pending.signal.removeEventListener('abort', pending.abortListener);
-    pending.resolve(outcome);
-  }
-
-  private emit(event: CommandLifecycleEvent): void {
-    const taskId = event.type === 'command_output' ? event.taskId : event.command.taskId;
-    if (event.type !== 'command_output') {
-      const command = event.command;
-      const outcome =
-        command.status === 'pending_approval'
-          ? 'requested'
-          : command.status === 'approved'
-            ? 'allowed'
-            : command.status === 'running'
-              ? 'started'
-              : command.status === 'completed'
-                ? 'succeeded'
-                : command.status === 'cancelled'
-                  ? 'cancelled'
-                  : command.status === 'failed' || command.status === 'timed_out'
-                    ? 'failed'
-                    : 'denied';
-      this.audit?.record({
-        workspaceId: command.workspaceId,
-        conversationId: command.conversationId,
-        taskId: command.taskId,
-        actor:
-          command.status === 'pending_approval'
-            ? 'agent'
-            : command.status === 'approved' && !command.autoApproved
-              ? 'user'
-              : 'system',
-        category: 'command',
-        action: 'command.execute',
-        outcome,
-        summary: `Command ${command.executable} changed to ${command.status}.`,
-        metadata: {
-          commandId: command.id,
-          executable: command.executable,
-          riskLevel: command.riskLevel,
-          status: command.status,
-          autoApproved: command.autoApproved,
-        },
-      });
-    }
-    for (const listener of this.#listeners.get(taskId) ?? []) {
-      listener(event);
-    }
+  private emit(event: Parameters<CommandEventPublisher['emit']>[0]): void {
+    this.#events.emit(event);
   }
 
   private requireCommand(commandId: string): CommandExecution {

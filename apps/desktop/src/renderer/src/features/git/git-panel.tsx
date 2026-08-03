@@ -2,6 +2,7 @@ import { FileCode2, GitBranch, Paperclip, RefreshCw, X } from 'lucide-react';
 import { useEffect } from 'react';
 
 import { useConversationContextStore } from '@/features/context/context.store';
+import { type GitTranslationKey, useGitTranslation } from './git-i18n';
 import { useGitStore } from './git.store';
 
 interface GitPanelProps {
@@ -9,28 +10,29 @@ interface GitPanelProps {
   readonly onClose: () => void;
 }
 
-function statusLabel(file: {
+function statusLabelKey(file: {
   readonly staged: boolean;
   readonly modified: boolean;
   readonly untracked: boolean;
   readonly conflicted: boolean;
-}): string {
+}): GitTranslationKey {
   if (file.conflicted) {
-    return '冲突';
+    return 'conflicted';
   }
   if (file.untracked) {
-    return '未跟踪';
+    return 'untracked';
   }
   if (file.staged && file.modified) {
-    return '暂存 + 修改';
+    return 'stagedModified';
   }
   if (file.staged) {
-    return '已暂存';
+    return 'staged';
   }
-  return '已修改';
+  return 'modified';
 }
 
 export function GitPanel({ workspaceId, onClose }: GitPanelProps) {
+  const { t } = useGitTranslation();
   const git = useGitStore();
   const contextConversationId = useConversationContextStore((state) => state.conversationId);
   const saveContext = useConversationContextStore((state) => state.save);
@@ -44,7 +46,7 @@ export function GitPanel({ workspaceId, onClose }: GitPanelProps) {
 
   return (
     <section
-      className="flex h-60 min-h-0 shrink-0 flex-col border-t border-zinc-800 bg-zinc-950"
+      className="flex h-full min-h-0 flex-col border-t border-zinc-800 bg-zinc-950"
       data-testid="git-panel"
     >
       <header className="flex h-8 shrink-0 items-center gap-2 border-b border-zinc-800 px-3 text-[11px]">
@@ -59,7 +61,9 @@ export function GitPanel({ workspaceId, onClose }: GitPanelProps) {
               </span>
             )}
             <span className="text-zinc-600">
-              {status.clean ? '工作区干净' : `${status.files.length} 个变更`}
+              {status.clean
+                ? t('cleanWorkspace')
+                : t('changeCount', { count: status.files.length })}
             </span>
           </>
         ) : null}
@@ -69,10 +73,13 @@ export function GitPanel({ workspaceId, onClose }: GitPanelProps) {
             onClick={() => {
               const diff = git.diff;
               if (diff !== undefined && diff.content !== '') {
-                const scope = diff.path ?? '全部变更';
+                const scope = diff.path ?? t('allChanges');
                 void saveContext({
                   type: 'git_diff',
-                  title: `${diff.staged ? '暂存区' : '工作区'} Diff · ${scope}`,
+                  title: t('diffContextTitle', {
+                    scope: diff.staged ? t('stagedArea') : t('workspace'),
+                    path: scope,
+                  }),
                   content: diff.content,
                   priority: 80,
                   sourceKey: `git-diff:${diff.staged ? 'staged' : 'worktree'}:${diff.path ?? '*'}`,
@@ -84,8 +91,8 @@ export function GitPanel({ workspaceId, onClose }: GitPanelProps) {
               git.diff === undefined ||
               git.diff.content === ''
             }
-            aria-label="将当前 Git Diff 加入上下文"
-            title="将当前 Git Diff 加入 AI 上下文"
+            aria-label={t('addDiffContext')}
+            title={t('addDiffContextTitle')}
             data-testid="add-git-diff-context"
           >
             <Paperclip className="size-3.5" />
@@ -94,7 +101,7 @@ export function GitPanel({ workspaceId, onClose }: GitPanelProps) {
             className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
             onClick={() => void git.refresh()}
             disabled={git.loading}
-            aria-label="刷新 Git 状态"
+            aria-label={t('refreshStatus')}
             data-testid="refresh-git"
           >
             <RefreshCw className={`size-3.5 ${git.loading ? 'animate-spin' : ''}`} />
@@ -102,7 +109,7 @@ export function GitPanel({ workspaceId, onClose }: GitPanelProps) {
           <button
             className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
             onClick={onClose}
-            aria-label="关闭 Git 面板"
+            aria-label={t('closePanel')}
           >
             <X className="size-3.5" />
           </button>
@@ -116,10 +123,12 @@ export function GitPanel({ workspaceId, onClose }: GitPanelProps) {
       )}
 
       {status === undefined ? (
-        <div className="grid flex-1 place-items-center text-xs text-zinc-600">正在读取 Git…</div>
+        <div className="grid flex-1 place-items-center text-xs text-zinc-600">
+          {t('readingGit')}
+        </div>
       ) : !status.isRepository ? (
         <div className="grid flex-1 place-items-center text-xs text-zinc-600">
-          当前工作区不是 Git 仓库
+          {t('notRepository')}
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
@@ -132,7 +141,7 @@ export function GitPanel({ workspaceId, onClose }: GitPanelProps) {
               }`}
               onClick={() => void git.selectPath(undefined)}
             >
-              全部变更
+              {t('allChanges')}
             </button>
             {status.files.map((file) => (
               <button
@@ -155,7 +164,7 @@ export function GitPanel({ workspaceId, onClose }: GitPanelProps) {
                         : 'text-amber-400'
                   }
                 >
-                  {statusLabel(file)}
+                  {t(statusLabelKey(file))}
                 </span>
               </button>
             ))}
@@ -168,7 +177,7 @@ export function GitPanel({ workspaceId, onClose }: GitPanelProps) {
                 }`}
                 onClick={() => void git.setStaged(false)}
               >
-                工作区 Diff
+                {t('workspaceDiff')}
               </button>
               <button
                 className={`rounded px-2 py-1 text-[10px] ${
@@ -176,19 +185,17 @@ export function GitPanel({ workspaceId, onClose }: GitPanelProps) {
                 }`}
                 onClick={() => void git.setStaged(true)}
               >
-                暂存区 Diff
+                {t('stagedDiff')}
               </button>
               {git.diff?.truncated === true ? (
-                <span className="ml-auto text-[10px] text-amber-400">Diff 已截断</span>
+                <span className="ml-auto text-[10px] text-amber-400">{t('diffTruncated')}</span>
               ) : null}
             </div>
             <pre
               className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-4 text-zinc-400"
               data-testid="git-diff"
             >
-              {git.diff?.content === ''
-                ? '此范围没有可显示的 Diff。未跟踪文件在纳入 Git 前不会生成标准 Diff。'
-                : (git.diff?.content ?? '')}
+              {git.diff?.content === '' ? t('emptyDiff') : (git.diff?.content ?? '')}
             </pre>
           </div>
         </div>

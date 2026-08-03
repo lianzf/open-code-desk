@@ -1,6 +1,8 @@
 import type { CommandExecution, PermissionRule } from '@open-code-desk/ipc-contracts';
 import { create } from 'zustand';
 
+import { rendererErrorMessage } from '../settings/error-i18n';
+
 interface CommandState {
   readonly conversationId: string | undefined;
   readonly workspaceId: string | undefined;
@@ -23,6 +25,7 @@ interface CommandState {
     kind: 'allow_executable' | 'deny_executable',
     executable: string,
     cwd: string,
+    args: ReadonlyArray<string>,
   ): Promise<void>;
   addBlockedPath(relativePath: string): Promise<void>;
   grantExternalDirectory(): Promise<void>;
@@ -30,10 +33,7 @@ interface CommandState {
 }
 
 function readableError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message.replace(/^Error invoking remote method '[^']+': Error: /, '');
-  }
-  return '命令操作失败。';
+  return rendererErrorMessage(error, 'commandOperationFailed');
 }
 
 export function mergeCommandExecution(
@@ -191,7 +191,7 @@ export const useCommandStore = create<CommandState>((set, get) => ({
     }
   },
 
-  async addExecutableRule(kind, executable, cwd) {
+  async addExecutableRule(kind, executable, cwd, args) {
     const workspaceId = get().workspaceId;
     if (workspaceId === undefined || executable.trim() === '') {
       return;
@@ -202,6 +202,7 @@ export const useCommandStore = create<CommandState>((set, get) => ({
         kind,
         executable,
         cwd,
+        args: [...args],
       });
       set((state) => ({
         rules: [...state.rules.filter((rule) => rule.id !== saved.id), saved],

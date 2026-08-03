@@ -13,28 +13,39 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/features/chat/chat.store';
-import { useWorkspaceStore } from '@/features/workspace/workspace.store';
+import { useAppSettingsStore } from '@/features/settings/app-settings.store';
 import { useResolvedTheme } from '@/features/settings/use-resolved-theme';
+import { useWorkspaceStore } from '@/features/workspace/workspace.store';
 import { cn } from '@/lib/utils';
+import { translateApproval } from './approval-i18n';
 import { useChangeReviewStore } from './change-review.store';
 import '../editor/monaco-environment';
 
 const setStatusLabels = {
-  pending_review: '待审核',
-  ready_to_apply: '可应用',
-  applying: '应用中',
-  applied: '已应用',
-  failed: '失败',
-  rolling_back: '回滚中',
-  rolled_back: '已回滚',
-  cancelled: '已拒绝',
+  pending_review: 'pendingReview',
+  ready_to_apply: 'readyToApply',
+  applying: 'applying',
+  applied: 'applied',
+  failed: 'failed',
+  rolling_back: 'rollingBack',
+  rolled_back: 'rolledBack',
+  cancelled: 'rejected',
 } as const;
 
 const operationLabels = {
-  create: '新建',
-  update: '修改',
-  delete: '删除',
-  rename: '重命名',
+  create: 'operationCreate',
+  update: 'operationUpdate',
+  delete: 'operationDelete',
+  rename: 'operationRename',
+} as const;
+
+const changeStatusLabels = {
+  pending: 'pending',
+  approved: 'approved',
+  rejected: 'rejected',
+  applied: 'applied',
+  failed: 'failed',
+  rolled_back: 'rolledBack',
 } as const;
 
 function languageFor(path: string): string {
@@ -62,6 +73,11 @@ function isDangerous(operation: 'create' | 'update' | 'delete' | 'rename'): bool
 
 export function ChangeReviewSummary() {
   const review = useChangeReviewStore();
+  const locale = useAppSettingsStore((state) => state.settings.locale);
+  const t = (
+    key: Parameters<typeof translateApproval>[1],
+    values?: Record<string, string | number>,
+  ) => translateApproval(locale, key, values);
   const active =
     review.changeSets.find((changeSet) =>
       ['pending_review', 'ready_to_apply', 'failed'].includes(changeSet.status),
@@ -80,9 +96,11 @@ export function ChangeReviewSummary() {
     >
       <span className="flex items-center gap-2">
         <FileDiff className="size-4" />
-        代码变更审核
+        {t('codeReview')}
       </span>
-      <span>{pending > 0 ? `${pending} 个待处理文件` : setStatusLabels[active.status]}</span>
+      <span>
+        {pending > 0 ? t('pendingFiles', { value: pending }) : t(setStatusLabels[active.status])}
+      </span>
     </button>
   );
 }
@@ -90,6 +108,11 @@ export function ChangeReviewSummary() {
 export function ChangeReviewDialog() {
   const resolvedTheme = useResolvedTheme();
   const review = useChangeReviewStore();
+  const locale = useAppSettingsStore((state) => state.settings.locale);
+  const t = (
+    key: Parameters<typeof translateApproval>[1],
+    values?: Record<string, string | number>,
+  ) => translateApproval(locale, key, values);
   const refreshTree = useWorkspaceStore((state) => state.refreshTree);
   const refreshConversation = useChatStore((state) => state.selectConversation);
   const activeConversationId = useChatStore((state) => state.activeConversationId);
@@ -121,7 +144,10 @@ export function ChangeReviewDialog() {
       activeChange !== undefined &&
       isDangerous(activeChange.operation) &&
       !window.confirm(
-        `确认批准高风险操作：${operationLabels[activeChange.operation]} ${activeChange.filePath}？`,
+        t('dangerousApproval', {
+          operation: t(operationLabels[activeChange.operation]),
+          path: activeChange.filePath,
+        }),
       )
     ) {
       return;
@@ -148,10 +174,7 @@ export function ChangeReviewDialog() {
 
   const approveAll = async () => {
     const dangerous = activeSet.changes.filter((change) => isDangerous(change.operation));
-    if (
-      dangerous.length > 0 &&
-      !window.confirm(`本次包含 ${dangerous.length} 个删除或重命名操作，确认全部批准？`)
-    ) {
+    if (dangerous.length > 0 && !window.confirm(t('dangerousBatch', { value: dangerous.length }))) {
       return;
     }
     await review.reviewAll('approve');
@@ -162,36 +185,36 @@ export function ChangeReviewDialog() {
       className="fixed inset-0 z-50 flex bg-black/75 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label="代码变更审核"
+      aria-label={t('codeReview')}
       data-testid="change-review-dialog"
     >
       <section className="m-auto flex h-[min(900px,94vh)] w-[min(1500px,96vw)] flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 shadow-2xl">
         <header className="flex h-12 shrink-0 items-center gap-3 border-b border-zinc-800 px-4">
           <FileDiff className="size-4 text-cyan-400" />
           <div>
-            <p className="text-sm font-medium">代码变更审核</p>
-            <p className="text-[10px] text-zinc-500">只有已批准且摘要未变化的文件才会写入工作区</p>
+            <p className="text-sm font-medium">{t('codeReview')}</p>
+            <p className="text-[10px] text-zinc-500">{t('reviewDescription')}</p>
           </div>
           <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-400">
-            {setStatusLabels[activeSet.status]}
+            {t(setStatusLabels[activeSet.status])}
           </span>
           <select
             className="ml-auto h-7 max-w-64 rounded border border-zinc-800 bg-zinc-900 px-2 text-xs"
             value={activeSet.id}
             onChange={(event) => void review.selectSet(event.target.value)}
-            aria-label="变更历史"
+            aria-label={t('changeHistory')}
           >
             {review.changeSets.map((changeSet) => (
               <option key={changeSet.id} value={changeSet.id}>
-                {new Date(changeSet.updatedAt).toLocaleString()} ·{' '}
-                {setStatusLabels[changeSet.status]}
+                {new Date(changeSet.updatedAt).toLocaleString(locale)} ·{' '}
+                {t(setStatusLabels[changeSet.status])}
               </option>
             ))}
           </select>
           <button
             className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
             onClick={review.close}
-            aria-label="关闭变更审核"
+            aria-label={t('closeReview')}
           >
             <X className="size-4" />
           </button>
@@ -223,11 +246,11 @@ export function ChangeReviewDialog() {
                           : 'bg-zinc-800 text-zinc-400',
                     )}
                   >
-                    {change.status}
+                    {t(changeStatusLabels[change.status])}
                   </span>
                 </span>
                 <span className="mt-1 block text-[10px] text-zinc-500">
-                  {operationLabels[change.operation]}
+                  {t(operationLabels[change.operation])}
                   {change.destinationPath === undefined ? '' : ` → ${change.destinationPath}`}
                 </span>
               </button>
@@ -238,7 +261,7 @@ export function ChangeReviewDialog() {
             {review.loading || activeChange === undefined || review.contents === undefined ? (
               <div className="grid flex-1 place-items-center text-xs text-zinc-500">
                 <LoaderCircle className="mb-2 size-5 animate-spin" />
-                正在加载变更内容…
+                {t('loadingChange')}
               </div>
             ) : (
               <DiffEditor
@@ -285,7 +308,7 @@ export function ChangeReviewDialog() {
               data-testid="save-proposed-change"
             >
               <Save className="size-3.5" />
-              保存提案编辑
+              {t('saveProposal')}
             </Button>
           ) : null}
           {['pending_review', 'ready_to_apply', 'failed'].includes(activeSet.status) ? (
@@ -298,7 +321,7 @@ export function ChangeReviewDialog() {
                 data-testid="reject-change"
               >
                 <XCircle className="size-3.5" />
-                拒绝此文件
+                {t('rejectFile')}
               </Button>
               <Button
                 size="sm"
@@ -308,7 +331,7 @@ export function ChangeReviewDialog() {
                 data-testid="approve-change"
               >
                 <Check className="size-3.5" />
-                批准此文件
+                {t('approveFile')}
               </Button>
               <Button
                 size="sm"
@@ -316,7 +339,7 @@ export function ChangeReviewDialog() {
                 disabled={review.busy}
                 onClick={() => void rejectAll()}
               >
-                全部拒绝
+                {t('rejectAll')}
               </Button>
               <Button
                 size="sm"
@@ -326,26 +349,28 @@ export function ChangeReviewDialog() {
                 data-testid="approve-all-changes"
               >
                 <CheckCheck className="size-3.5" />
-                全部批准
+                {t('approveAll')}
               </Button>
             </>
           ) : null}
           <span className="ml-auto text-[10px] text-zinc-600">
-            {activeSet.changes.filter((change) => change.status === 'approved').length} 个已批准
+            {t('approvedFiles', {
+              value: activeSet.changes.filter((change) => change.status === 'approved').length,
+            })}
           </span>
           {activeSet.status === 'ready_to_apply' ? (
             <Button
               size="sm"
               disabled={review.busy || draftDirty}
               onClick={() => {
-                if (window.confirm('仅应用当前已批准的固定变更集？')) {
+                if (window.confirm(t('applyConfirm'))) {
                   void review.applyActive().then(refreshAfterMutation);
                 }
               }}
               data-testid="apply-approved-changes"
             >
               {review.busy ? <LoaderCircle className="size-3.5 animate-spin" /> : <CheckCheck />}
-              应用已批准变更
+              {t('applyApproved')}
             </Button>
           ) : null}
           {activeSet.status === 'applied' ? (
@@ -354,14 +379,14 @@ export function ChangeReviewDialog() {
               variant="outline"
               disabled={review.busy}
               onClick={() => {
-                if (window.confirm('回滚这个变更集？若文件已被再次修改，回滚会被阻止。')) {
+                if (window.confirm(t('rollbackConfirm'))) {
                   void review.rollbackActive().then(refreshAfterMutation);
                 }
               }}
               data-testid="rollback-change-set"
             >
               <RotateCcw className="size-3.5" />
-              回滚
+              {t('rollback')}
             </Button>
           ) : null}
         </footer>

@@ -1,0 +1,423 @@
+name: Signed release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signed-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    name: Release quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.29.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify tag matches package version
+        shell: bash
+        run: |
+          root_version="$(node -p "require('./package.json').version")"
+          desktop_version="$(node -p "require('./apps/desktop/package.json').version")"
+          if [ "$root_version" != "$desktop_version" ]; then
+            echo "Root version $root_version does not match desktop version $desktop_version." >&2
+            exit 1
+          fi
+          expected_tag="v$root_version"
+          if [ "$GITHUB_REF_NAME" != "$expected_tag" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $expected_tag." >&2
+            exit 1
+          fi
+
+      - name: Run static and automated gates
+        run: |
+          pnpm format:check
+          pnpm docs:check
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm test:integration
+          pnpm security:secrets
+          pnpm security:dependency-audit
+          pnpm release:sbom
+          pnpm security:licenses
+          pnpm test:performance
+          pnpm build
+
+      - name: Install Linux keyring dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes gnome-keyring libsecret-tools
+
+      - name: Run Electron end-to-end tests
+        env:
+          OPEN_CODE_DESK_E2E_PASSWORD_STORE: gnome-libsecret
+          XDG_CURRENT_DESKTOP: GNOME
+        run: |
+          dbus-run-session -- bash -euo pipefail -c '
+            keyring_password="$(openssl rand -hex 32)"
+            eval "$(printf "%s" "$keyring_password" | gnome-keyring-daemon --daemonize --unlock --components=secrets)"
+            unset keyring_password
+            xvfb-run --auto-servernum pnpm exec playwright test
+          '
+
+  stability:
+    name: Four-hour stability acceptance
+    needs: quality
+    runs-on: windows-latest
+    timeout-minutes: 300
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+      OPEN_CODE_DESK_STABILITY_MINUTES: '240'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Enable pinned pnpm
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.29.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build application
+        run: pnpm build
+
+      - name: Run four-hour Electron stability acceptance
+        run: pnpm test:stability
+
+      - name: Upload stability diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: four-hour-stability-diagnostics
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  package:
+    name: Package ${{ matrix.name }}
+    needs:
+      - quality
+      - stability
+    runs-on: ${{ matrix.os }}
+    environment: release-signing
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            platform: windows
+            runtime_platform: win32
+            architecture: x64
+            artifact: signed-windows-x64
+          - name: macOS arm64
+            os: macos-15
+            platform: macos
+            runtime_platform: darwin
+            architecture: arm64
+            java_architecture: aarch64
+            artifact: signed-macos-arm64
+          - name: Linux x64
+            os: ubuntu-latest
+            platform: linux
+            runtime_platform: linux
+            architecture: x64
+            java_architecture: x64
+            artifact: linux-x64
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Set up JDK 21 for native Java debugger acceptance
+        if: matrix.platform == 'macos' || matrix.platform == 'linux'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          architecture: ${{ matrix.java_architecture }}
+
+      - name: Enable pinned pnpm
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.29.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare and build application
+        run: |
+          pnpm --filter @open-code-desk/desktop prepare:electron
+          pnpm build
+          pnpm --filter @open-code-desk/desktop verify:packaging-deps
+
+      - name: Run native Java debugger acceptance
+        if: matrix.platform == 'macos' || matrix.platform == 'linux'
+        shell: bash
+        env:
+          OPEN_CODE_DESK_JAVA_ACCEPTANCE: '1'
+        run: |
+          export OPEN_CODE_DESK_JAVA_HOME="$JAVA_HOME"
+          pnpm exec vitest run apps/desktop/src/main/debug/java/java-debug-adapter.acceptance.test.ts --maxWorkers=1
+
+      - name: Require Windows signing credentials
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          foreach ($name in @('WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD')) {
+            if ([string]::IsNullOrWhiteSpace((Get-Item -LiteralPath "Env:$name").Value)) {
+              throw "Required release secret $name is missing."
+            }
+          }
+
+      - name: Build signed Windows installer
+        if: matrix.platform == 'windows'
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: >-
+          pnpm --filter @open-code-desk/desktop exec electron-builder
+          --win --publish never --config electron-builder.yml
+          -c.forceCodeSigning=true
+
+      - name: Verify and smoke-test signed Windows installer
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem release -Filter '*.exe' | Select-Object -First 1
+          if ($null -eq $installer) { throw 'Windows installer was not created.' }
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
+          if ($signature.Status -ne 'Valid') {
+            throw "Windows installer signature is $($signature.Status): $($signature.StatusMessage)"
+          }
+          & ./apps/desktop/scripts/windows-installed-e2e.ps1 `
+            -InstallerPath $installer.FullName `
+            -WorkspaceRoot $env:GITHUB_WORKSPACE
+          & ./apps/desktop/scripts/windows-installer-smoke.ps1 `
+            -InstallerPath $installer.FullName `
+            -WorkspaceRoot $env:GITHUB_WORKSPACE
+
+      - name: Require macOS signing and notarization credentials
+        if: matrix.platform == 'macos'
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
+            if [ -z "${!name:-}" ]; then
+              echo "Required release secret $name is missing." >&2
+              exit 1
+            fi
+          done
+
+      - name: Build signed and notarized macOS artifacts
+        if: matrix.platform == 'macos'
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: >-
+          pnpm --filter @open-code-desk/desktop exec electron-builder
+          --mac --arm64 --publish never --config electron-builder.yml
+          -c.forceCodeSigning=true -c.mac.notarize=true
+
+      - name: Verify macOS signature, Gatekeeper and notarization ticket
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          app_bundle="$(find release -type d -name 'OpenCode Desk.app' -print -quit)"
+          if [ -z "$app_bundle" ]; then
+            echo 'Packaged macOS app bundle was not found.' >&2
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$app_bundle"
+          spctl --assess --verbose --type exec "$app_bundle"
+          xcrun stapler validate "$app_bundle"
+
+      - name: Build Linux AppImage
+        if: matrix.platform == 'linux'
+        run: pnpm --filter @open-code-desk/desktop package:linux
+
+      - name: Verify packaged runtime contents
+        run: >-
+          node apps/desktop/scripts/verify-packaged-runtime.mjs
+          --platform ${{ matrix.runtime_platform }} --release-dir release
+          --arch ${{ matrix.architecture }}
+
+      - name: Generate release security metadata
+        run: pnpm release:metadata
+
+      - name: Verify Linux AppImage archive
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          appimage="$(find release -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          if [ -z "$appimage" ]; then
+            echo 'Linux AppImage was not created.' >&2
+            exit 1
+          fi
+          chmod +x "$appimage"
+          "$appimage" --appimage-extract >/dev/null
+          test -x squashfs-root/AppRun
+
+      - name: Resolve packaged Unix executable
+        if: matrix.platform != 'windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ '${{ matrix.platform }}' == 'macos' ]]; then
+            executable="$(find release -type f -path '*/OpenCode Desk.app/Contents/MacOS/OpenCode Desk' -print -quit)"
+          else
+            executable="$GITHUB_WORKSPACE/release/linux-unpacked/open-code-desk"
+          fi
+          test -n "$executable"
+          if [[ "$executable" != /* ]]; then
+            executable="$GITHUB_WORKSPACE/$executable"
+          fi
+          test -x "$executable"
+          echo "OPEN_CODE_DESK_E2E_EXECUTABLE_PATH=$executable" >> "$GITHUB_ENV"
+
+      - name: Test packaged macOS application
+        if: matrix.platform == 'macos'
+        run: pnpm test:e2e:packaged-core
+
+      - name: Install packaged Linux test dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes gnome-keyring libsecret-tools
+
+      - name: Test packaged Linux application
+        if: matrix.platform == 'linux'
+        env:
+          OPEN_CODE_DESK_E2E_PASSWORD_STORE: gnome-libsecret
+          XDG_CURRENT_DESKTOP: GNOME
+        run: |
+          dbus-run-session -- bash -euo pipefail -c '
+            keyring_password="$(openssl rand -hex 32)"
+            eval "$(printf "%s" "$keyring_password" | gnome-keyring-daemon --daemonize --unlock --components=secrets)"
+            unset keyring_password
+            xvfb-run --auto-servernum pnpm test:e2e:packaged-core
+          '
+
+      - name: Upload packaged end-to-end diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-e2e-diagnostics-${{ matrix.artifact }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/*.dmg
+            release/*.zip
+            release/*.AppImage
+            release/*.json
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish GitHub release
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-x64'
+          path: staged
+          merge-multiple: true
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: signed-macos-arm64
+          path: staged
+
+      - name: Generate combined checksums
+        shell: bash
+        run: |
+          cd staged
+          find . -maxdepth 1 -type f ! -name 'SHA256SUMS.txt' -print0 \
+            | sort -z \
+            | xargs -0 sha256sum \
+            | sed 's#  \./#  #' > SHA256SUMS.txt
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" staged/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" staged/* \
+              --verify-tag \
+              --generate-notes \
+              --title "OpenCode Desk $GITHUB_REF_NAME"
+          fi

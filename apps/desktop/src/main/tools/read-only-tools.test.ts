@@ -44,7 +44,9 @@ describe('read-only Agent tools', () => {
     const database = createAppDatabase(':memory:');
     const workspaceRepository = new WorkspaceRepository(database);
     const workspace = workspaceRepository.upsert(await realpath(directory));
-    const fileService = new WorkspaceFileService(new WorkspaceService(workspaceRepository, picker));
+    const workspaceService = new WorkspaceService(workspaceRepository, picker);
+    await workspaceService.openRecent(workspace.id);
+    const fileService = new WorkspaceFileService(workspaceService);
     const registry = createReadOnlyToolRegistry(fileService);
     const dispatcher = new ToolDispatcher(registry, new DefaultPermissionPolicy(), {
       async started() {},

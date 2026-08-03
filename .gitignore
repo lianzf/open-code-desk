@@ -3,6 +3,7 @@ node_modules/
 .desktop-node-modules-backup-*/
 .pnpm-store/
 .pnpm-stale-cache/
+.runtime/
 
 dist/
 out/
@@ -16,6 +17,8 @@ blob-report/
 *.db
 *.db-shm
 *.db-wal
+__pycache__/
+*.py[cod]
 
 .env
 .env.*

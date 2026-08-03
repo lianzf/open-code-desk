@@ -12,6 +12,8 @@ export * from './git';
 export * from './health';
 export * from './permissions';
 export * from './providers';
+export * from './project-detection';
+export * from './project-task';
 export * from './run';
 export * from './settings';
 export * from './terminal';

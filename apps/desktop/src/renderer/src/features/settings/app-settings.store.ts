@@ -5,6 +5,8 @@ import {
 } from '@open-code-desk/ipc-contracts';
 import { create } from 'zustand';
 
+import { rendererErrorMessage } from './error-i18n';
+
 interface AppSettingsState {
   readonly initialized: boolean;
   readonly loading: boolean;
@@ -20,10 +22,7 @@ interface AppSettingsState {
 const initialSettings = appSettingsSchema.parse({ selectedModels: {} });
 
 function describeError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message.replace(/^Error invoking remote method '[^']+': Error: /, '');
-  }
-  return '应用设置操作失败，请重试。';
+  return rendererErrorMessage(error, 'settingsOperationFailed');
 }
 
 export function applyDocumentTheme(theme: AppSettings['theme']): void {
@@ -35,6 +34,10 @@ export function applyDocumentTheme(theme: AppSettings['theme']): void {
       : theme;
   document.documentElement.dataset.theme = resolved;
   document.documentElement.style.colorScheme = resolved;
+}
+
+function applyDocumentLocale(locale: AppSettings['locale']): void {
+  document.documentElement.lang = locale;
 }
 
 export const useAppSettingsStore = create<AppSettingsState>((set, get) => ({
@@ -60,9 +63,11 @@ export const useAppSettingsStore = create<AppSettingsState>((set, get) => ({
     try {
       const settings = await window.openCodeDesk.settings.get();
       applyDocumentTheme(settings.theme);
+      applyDocumentLocale(settings.locale);
       set({ initialized: true, loading: false, settings });
     } catch (error) {
       applyDocumentTheme(initialSettings.theme);
+      applyDocumentLocale(initialSettings.locale);
       set({
         initialized: true,
         loading: false,
@@ -76,6 +81,7 @@ export const useAppSettingsStore = create<AppSettingsState>((set, get) => ({
     try {
       const settings = await window.openCodeDesk.settings.update(input);
       applyDocumentTheme(settings.theme);
+      applyDocumentLocale(settings.locale);
       set({ loading: false, settings });
       return settings;
     } catch (error) {

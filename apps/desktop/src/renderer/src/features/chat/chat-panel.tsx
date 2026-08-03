@@ -1,6 +1,5 @@
 import {
   Bot,
-  Copy,
   Download,
   Pencil,
   Plus,
@@ -10,34 +9,32 @@ import {
   Settings2,
   Square,
   Trash2,
-  User,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { ChangeReviewSummary } from '@/features/changes/change-review-panel';
 import { useChangeReviewStore } from '@/features/changes/change-review.store';
-import { CommandReviewPanel } from '@/features/commands/command-review-panel';
 import { useCommandStore } from '@/features/commands/command.store';
 import { ContextTray } from '@/features/context/context-tray';
 import { useConversationContextStore } from '@/features/context/context.store';
 import { useProviderStore } from '@/features/providers/provider.store';
+import { translate } from '@/features/settings/i18n';
+import { useAppSettingsStore } from '@/features/settings/app-settings.store';
 import { useWorkspaceStore } from '@/features/workspace/workspace.store';
+import { ChatMessageList } from './chat-message-list';
 import { useChatStore } from './chat.store';
-import { MarkdownMessage } from './markdown-message';
-import { ToolActivityItem } from './tool-activity-item';
 
 const statusLabels = {
-  idle: '空闲',
-  analyzing: '分析中',
-  planning: '规划中',
-  waiting_for_approval: '等待批准',
-  executing_tool: '执行工具',
-  editing_files: '准备修改',
-  running_tests: '运行测试',
-  completed: '已完成',
-  failed: '失败',
-  cancelled: '已取消',
+  idle: 'statusIdle',
+  analyzing: 'statusAnalyzing',
+  planning: 'statusPlanning',
+  waiting_for_approval: 'statusWaitingApproval',
+  executing_tool: 'statusExecutingTool',
+  editing_files: 'statusEditingFiles',
+  running_tests: 'statusRunningTests',
+  completed: 'statusCompleted',
+  failed: 'statusFailed',
+  cancelled: 'statusCancelled',
 } as const;
 
 export function ChatPanel() {
@@ -52,6 +49,9 @@ export function ChatPanel() {
   const initializeChanges = useChangeReviewStore((state) => state.initialize);
   const initializeCommands = useCommandStore((state) => state.initialize);
   const initializeContext = useConversationContextStore((state) => state.initialize);
+  const locale = useAppSettingsStore((state) => state.settings.locale);
+  const t = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
+    translate(locale, key, values);
 
   useEffect(() => bindStream(), [bindStream]);
 
@@ -105,21 +105,21 @@ export function ChatPanel() {
   };
 
   return (
-    <aside className="flex w-[400px] shrink-0 flex-col border-l border-zinc-800 bg-zinc-950">
+    <aside className="flex h-full min-h-0 w-full flex-col overflow-hidden border-l border-zinc-800 bg-zinc-950">
       <header className="space-y-2 border-b border-zinc-800 p-3">
         <div className="flex items-center gap-2">
           <Bot className="size-4 text-cyan-400" aria-hidden="true" />
-          <span className="text-sm font-medium">AI 编程助手</span>
+          <span className="text-sm font-medium">{t('chatTitle')}</span>
           <span
             className="rounded-full border border-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400"
             data-testid="agent-status"
           >
-            {statusLabels[chat.agentStatus]}
+            {t(statusLabels[chat.agentStatus])}
           </span>
           <button
             className="ml-auto rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
             onClick={provider.openSettings}
-            aria-label="模型设置"
+            aria-label={t('modelSettings')}
           >
             <Settings2 className="size-4" />
           </button>
@@ -137,8 +137,8 @@ export function ChatPanel() {
             className="h-7 min-w-0 flex-1 bg-transparent px-1.5 text-xs text-zinc-300 outline-none placeholder:text-zinc-600"
             value={historyQuery}
             onChange={(event) => setHistoryQuery(event.target.value)}
-            placeholder="搜索历史会话"
-            aria-label="搜索历史会话"
+            placeholder={t('searchConversations')}
+            aria-label={t('searchConversations')}
             data-testid="conversation-search"
           />
           {chat.conversationQuery !== '' ? (
@@ -150,7 +150,7 @@ export function ChatPanel() {
                 void chat.searchConversations('');
               }}
             >
-              清除
+              {t('clear')}
             </button>
           ) : null}
         </form>
@@ -163,7 +163,7 @@ export function ChatPanel() {
             disabled={
               chat.activeRequestId !== undefined || chat.agentStatus === 'waiting_for_approval'
             }
-            aria-label="选择会话"
+            aria-label={t('selectConversation')}
             data-testid="conversation-select"
           >
             {chat.conversations.map((conversation) => (
@@ -176,7 +176,7 @@ export function ChatPanel() {
             className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
             onClick={() => void chat.newConversation()}
             disabled={chat.activeRequestId !== undefined}
-            aria-label="新建会话"
+            aria-label={t('newConversation')}
             data-testid="new-conversation"
           >
             <Plus className="size-4" />
@@ -187,13 +187,13 @@ export function ChatPanel() {
               if (activeConversation === undefined) {
                 return;
               }
-              const title = window.prompt('输入新的会话名称', activeConversation.title);
+              const title = window.prompt(t('renameConversationPrompt'), activeConversation.title);
               if (title !== null && title.trim() !== '') {
                 void chat.renameActive(title);
               }
             }}
             disabled={activeConversation === undefined || chat.activeRequestId !== undefined}
-            aria-label="重命名会话"
+            aria-label={t('renameConversation')}
           >
             <Pencil className="size-3.5" />
           </button>
@@ -201,19 +201,19 @@ export function ChatPanel() {
             className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
             onClick={() => void chat.exportActive()}
             disabled={activeConversation === undefined}
-            aria-label="导出 Markdown"
+            aria-label={t('exportMarkdown')}
           >
             <Download className="size-3.5" />
           </button>
           <button
             className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-red-300"
             onClick={() => {
-              if (window.confirm('删除当前会话？该操作会从历史列表中移除会话。')) {
+              if (window.confirm(t('deleteConversationConfirm'))) {
                 void chat.deleteActive();
               }
             }}
             disabled={activeConversation === undefined || chat.activeRequestId !== undefined}
-            aria-label="删除会话"
+            aria-label={t('deleteConversation')}
           >
             <Trash2 className="size-3.5" />
           </button>
@@ -221,7 +221,7 @@ export function ChatPanel() {
 
         {provider.configurations.length === 0 ? (
           <Button variant="outline" size="sm" className="w-full" onClick={provider.openSettings}>
-            配置模型服务
+            {t('configureProvider')}
           </Button>
         ) : (
           <div className="grid grid-cols-2 gap-2">
@@ -229,7 +229,7 @@ export function ChatPanel() {
               className="h-8 min-w-0 rounded border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-300 outline-none"
               value={provider.selectedProviderId ?? ''}
               onChange={(event) => provider.selectProvider(event.target.value)}
-              aria-label="选择模型服务"
+              aria-label={t('selectProvider')}
             >
               {provider.configurations.map((configuration) => (
                 <option key={configuration.id} value={configuration.id}>
@@ -250,7 +250,7 @@ export function ChatPanel() {
                   provider.selectModel(selectedConfiguration.id, event.target.value);
                 }
               }}
-              aria-label="选择模型"
+              aria-label={t('selectModel')}
             >
               {modelOptions.map((model) => (
                 <option key={model} value={model}>
@@ -262,138 +262,20 @@ export function ChatPanel() {
         )}
       </header>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-auto p-3" data-testid="chat-messages">
-        {chat.messages.length === 0 ? (
-          <div className="grid h-full place-items-center text-center">
-            <div>
-              <Bot className="mx-auto size-7 text-zinc-700" />
-              <p className="mt-3 text-sm text-zinc-500">描述你的编程任务</p>
-              <p className="mt-1 text-xs leading-5 text-zinc-700">
-                Agent 会按需读取项目文件并显示工具轨迹。
-                <br />
-                写文件和命令执行仍需单独批准。
-              </p>
-            </div>
-          </div>
-        ) : (
-          chat.messages.map((message) => (
-            <article key={message.id} className={message.role === 'user' ? 'ml-6' : 'mr-2'}>
-              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-zinc-600">
-                {message.role === 'user' ? (
-                  <User className="size-3" />
-                ) : (
-                  <Bot className="size-3 text-cyan-600" />
-                )}
-                {message.role === 'user' ? '你' : '助手'}
-                <button
-                  className="ml-auto rounded p-1 hover:bg-zinc-800 hover:text-zinc-300"
-                  onClick={() => void navigator.clipboard.writeText(message.content)}
-                  aria-label="复制消息"
-                >
-                  <Copy className="size-3" />
-                </button>
-              </div>
-              <div
-                className={
-                  message.role === 'user'
-                    ? 'rounded-xl bg-zinc-800 px-3 py-2'
-                    : 'rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2'
-                }
-              >
-                {message.reasoning !== '' ? (
-                  <details className="mb-2 text-xs text-zinc-500">
-                    <summary className="cursor-pointer">推理过程</summary>
-                    <p className="mt-2 whitespace-pre-wrap">{message.reasoning}</p>
-                  </details>
-                ) : null}
-                <MarkdownMessage
-                  content={
-                    message.content === '' && message.status === 'streaming'
-                      ? '正在生成…'
-                      : message.content
-                  }
-                />
-                {message.usage !== undefined ? (
-                  <p className="mt-2 text-[10px] text-zinc-700">
-                    输入 {message.usage.inputTokens} · 输出 {message.usage.outputTokens} tokens
-                  </p>
-                ) : null}
-                {message.status === 'cancelled' ? (
-                  <p className="mt-2 text-[11px] text-amber-400">已停止生成</p>
-                ) : null}
-                {message.status === 'error' ? (
-                  <p className="mt-2 text-[11px] text-red-400">本轮执行失败</p>
-                ) : null}
-              </div>
-            </article>
-          ))
-        )}
+      <ChatMessageList endRef={endRef} />
 
-        {chat.taskPlan === undefined || chat.taskPlan.steps.length === 0 ? null : (
-          <details
-            className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-2"
-            open={chat.agentStatus !== 'completed'}
-            data-testid="task-plan"
-          >
-            <summary className="cursor-pointer text-[11px] text-zinc-400">
-              任务计划 · 第 {chat.taskAttempt ?? 1} 次尝试 · 第 {chat.taskPlan.round} 轮
-            </summary>
-            <ol className="mt-2 space-y-1">
-              {chat.taskPlan.steps.map((step) => (
-                <li key={step.id} className="flex items-center gap-2 text-[10px]">
-                  <span
-                    className={`size-1.5 shrink-0 rounded-full ${
-                      step.status === 'completed'
-                        ? 'bg-emerald-500'
-                        : step.status === 'in_progress'
-                          ? 'animate-pulse bg-cyan-400'
-                          : step.status === 'failed'
-                            ? 'bg-red-500'
-                            : step.status === 'cancelled'
-                              ? 'bg-amber-500'
-                              : 'bg-zinc-700'
-                    }`}
-                  />
-                  <span
-                    className={step.status === 'in_progress' ? 'text-zinc-300' : 'text-zinc-500'}
-                  >
-                    {step.label}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          </details>
-        )}
-
-        {chat.toolActivity.length > 0 ? (
-          <details className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-2" open>
-            <summary className="cursor-pointer text-[11px] text-zinc-400">
-              工具执行记录（{chat.toolActivity.length}）
-            </summary>
-            <div className="mt-2 space-y-1.5">
-              {chat.toolActivity.map((activity) => (
-                <ToolActivityItem key={activity.id} activity={activity} />
-              ))}
-            </div>
-          </details>
-        ) : null}
-        <ChangeReviewSummary />
-        <CommandReviewPanel />
-        <div ref={endRef} />
-      </div>
-
-      <footer className="border-t border-zinc-800 p-3">
+      <footer className="min-h-0 max-h-[70%] shrink overflow-y-auto border-t border-zinc-800 p-3">
         {chat.contextStats !== undefined ? (
           <p className="mb-2 text-[10px] text-zinc-600" data-testid="context-stats">
-            上下文 {chat.contextStats.usedTokens}/{chat.contextStats.budget} tokens
+            {t('context')} {chat.contextStats.usedTokens}/{chat.contextStats.budget} tokens
             {chat.contextStats.summarizedMessages > 0
-              ? ` · 已摘要 ${chat.contextStats.summarizedMessages} 条历史消息`
+              ? ` · ${t('summarizedMessages', { value: chat.contextStats.summarizedMessages })}`
               : ''}
             {chat.contextStats.selectedContextItems > 0
-              ? ` · 已使用 ${chat.contextStats.selectedContextItems} 项附件`
+              ? ` · ${t('selectedAttachments', { value: chat.contextStats.selectedContextItems })}`
               : ''}
             {chat.contextStats.droppedContextItems > 0
-              ? ` · 裁减 ${chat.contextStats.droppedContextItems} 项`
+              ? ` · ${t('droppedAttachments', { value: chat.contextStats.droppedContextItems })}`
               : ''}
           </p>
         ) : null}
@@ -414,7 +296,7 @@ export function ChatPanel() {
                 submit();
               }
             }}
-            placeholder="输入任务，Ctrl/Cmd + Enter 发送"
+            placeholder={t('chatPlaceholder')}
             disabled={chat.activeRequestId !== undefined}
             data-testid="chat-input"
           />
@@ -426,7 +308,7 @@ export function ChatPanel() {
               disabled={chat.activeRequestId !== undefined || chat.messages.length === 0}
             >
               <RotateCcw className="size-3.5" />
-              重试
+              {t('retry')}
             </Button>
             {chat.activeRequestId === undefined ? (
               <Button
@@ -441,7 +323,7 @@ export function ChatPanel() {
                 data-testid="send-chat"
               >
                 <Send className="size-3.5" />
-                发送
+                {t('send')}
               </Button>
             ) : (
               <Button
@@ -451,7 +333,7 @@ export function ChatPanel() {
                 data-testid="stop-chat"
               >
                 <Square className="size-3.5" />
-                停止
+                {t('stop')}
               </Button>
             )}
           </div>

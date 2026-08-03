@@ -109,6 +109,7 @@ export const upsertExecutableRuleRequestSchema = z
     kind: z.enum(['allow_executable', 'deny_executable']),
     executable: z.string().trim().min(1).max(1_000),
     cwd: z.string().trim().max(2_000).default(''),
+    args: z.array(z.string().max(8_000)).max(128).default([]),
   })
   .strict();
 

@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   lstat,
   mkdir,
@@ -11,7 +11,7 @@ import {
   stat,
   unlink,
 } from 'node:fs/promises';
-import { dirname, extname } from 'node:path';
+import { dirname } from 'node:path';
 
 import type {
   FileEntry,
@@ -31,95 +31,29 @@ import {
   normalizeRelativePath,
   toPlatformPath,
 } from './path-policy';
-
-const maximumFileBytes = 2_000_000;
-const maximumSearchEntries = 10_000;
-const maximumTextSearchFiles = 2_000;
-
-const searchableExtensions = new Set([
-  '.c',
-  '.cpp',
-  '.css',
-  '.go',
-  '.h',
-  '.html',
-  '.java',
-  '.js',
-  '.json',
-  '.jsx',
-  '.md',
-  '.py',
-  '.rs',
-  '.scss',
-  '.sh',
-  '.sql',
-  '.toml',
-  '.ts',
-  '.tsx',
-  '.txt',
-  '.xml',
-  '.yaml',
-  '.yml',
-]);
-
-const languageByExtension: Readonly<Record<string, string>> = {
-  '.css': 'css',
-  '.go': 'go',
-  '.html': 'html',
-  '.java': 'java',
-  '.js': 'javascript',
-  '.json': 'json',
-  '.jsx': 'javascript',
-  '.md': 'markdown',
-  '.py': 'python',
-  '.rs': 'rust',
-  '.scss': 'scss',
-  '.sh': 'shell',
-  '.sql': 'sql',
-  '.toml': 'toml',
-  '.ts': 'typescript',
-  '.tsx': 'typescript',
-  '.xml': 'xml',
-  '.yaml': 'yaml',
-  '.yml': 'yaml',
-};
-
-function contentHash(content: Uint8Array): string {
-  return createHash('sha256').update(content).digest('hex');
-}
-
-function fileLanguage(filePath: string): string {
-  return languageByExtension[extname(filePath).toLocaleLowerCase('en-US')] ?? 'plaintext';
-}
-
-function decodeText(content: Uint8Array): string {
-  if (content.includes(0)) {
-    throw new Error('不支持打开二进制文件。');
-  }
-
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(content);
-  } catch {
-    throw new Error('文件不是有效的 UTF-8 文本。');
-  }
-}
-
-function joinRelative(parent: string, child: string): string {
-  return parent === '' ? child : `${parent}/${child}`;
-}
-
-function isMissingPathError(error: unknown): boolean {
-  return (
-    error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT'
-  );
-}
+import {
+  contentHash,
+  decodeText,
+  fileLanguage,
+  isMissingPathError,
+  joinRelative,
+  maximumFileBytes,
+} from './workspace-file-support';
+import { WorkspaceFileSearch } from './workspace-file-search';
 
 export class WorkspaceFileService {
+  readonly #search: WorkspaceFileSearch;
+
   public constructor(
     private readonly workspaces: WorkspaceService,
     private readonly audit?: AuditLogService,
     private readonly pathPolicy?: WorkspacePathPolicy,
-  ) {}
+  ) {
+    this.#search = new WorkspaceFileSearch(
+      (workspaceId, relativePath) => this.listDirectory(workspaceId, relativePath),
+      (workspaceId, relativePath) => this.readFile(workspaceId, relativePath),
+    );
+  }
 
   public async listDirectory(
     workspaceId: string,
@@ -413,46 +347,9 @@ export class WorkspaceFileService {
     workspaceId: string,
     query: string,
     limit: number,
+    signal?: AbortSignal,
   ): Promise<ReadonlyArray<FileEntry>> {
-    const workspace = await this.workspaces.getById(workspaceId);
-    const normalizedQuery = query.toLocaleLowerCase('en-US');
-    const queue: string[] = [''];
-    const matches: FileEntry[] = [];
-    let visited = 0;
-
-    while (queue.length > 0 && matches.length < limit && visited < maximumSearchEntries) {
-      const directory = queue.shift();
-
-      if (directory === undefined) {
-        break;
-      }
-
-      const entries = await this.listDirectory(workspace.id, directory);
-
-      for (const entry of entries) {
-        visited += 1;
-
-        if (
-          !entry.restricted &&
-          entry.relativePath.toLocaleLowerCase('en-US').includes(normalizedQuery)
-        ) {
-          matches.push(entry);
-          if (matches.length >= limit) {
-            break;
-          }
-        }
-
-        if (entry.kind === 'directory' && !entry.restricted && !entry.symbolicLink) {
-          queue.push(entry.relativePath);
-        }
-
-        if (visited >= maximumSearchEntries) {
-          break;
-        }
-      }
-    }
-
-    return matches;
+    return this.#search.searchFiles(workspaceId, query, limit, signal);
   }
 
   public async searchText(
@@ -463,66 +360,7 @@ export class WorkspaceFileService {
     limit: number,
     signal?: AbortSignal,
   ): Promise<TextSearchResponse> {
-    const path = normalizeRelativePath(requestedPath);
-    const queue = [path];
-    const matches: TextSearchResponse['matches'][number][] = [];
-    const needle = caseSensitive ? query : query.toLocaleLowerCase('en-US');
-    let visitedFiles = 0;
-
-    while (queue.length > 0 && matches.length < limit && visitedFiles < maximumTextSearchFiles) {
-      signal?.throwIfAborted();
-      const directory = queue.shift();
-      if (directory === undefined) {
-        break;
-      }
-      const entries = await this.listDirectory(workspaceId, directory);
-      for (const entry of entries) {
-        signal?.throwIfAborted();
-        if (entry.restricted || entry.symbolicLink) {
-          continue;
-        }
-        if (entry.kind === 'directory') {
-          queue.push(entry.relativePath);
-          continue;
-        }
-        if (!searchableExtensions.has(extname(entry.name).toLocaleLowerCase('en-US'))) {
-          continue;
-        }
-        visitedFiles += 1;
-        try {
-          const file = await this.readFile(workspaceId, entry.relativePath);
-          const lines = file.content.split('\n');
-          for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-            const line = lines[lineIndex] ?? '';
-            const searchableLine = caseSensitive ? line : line.toLocaleLowerCase('en-US');
-            const column = searchableLine.indexOf(needle);
-            if (column !== -1) {
-              matches.push({
-                path: entry.relativePath,
-                line: lineIndex + 1,
-                column: column + 1,
-                preview: line.trim().slice(0, 500),
-              });
-              if (matches.length >= limit) {
-                break;
-              }
-            }
-          }
-        } catch (error) {
-          if (error instanceof Error && error.name === 'AbortError') {
-            throw error;
-          }
-          // Binary, oversized, or concurrently removed files are safely skipped.
-        }
-      }
-    }
-
-    return {
-      query,
-      matches,
-      visitedFiles,
-      truncated: matches.length >= limit || visitedFiles >= maximumTextSearchFiles,
-    };
+    return this.#search.searchText(workspaceId, query, requestedPath, caseSensitive, limit, signal);
   }
 
   private assertReadableRelativePath(requestedRelativePath: string): string {

@@ -44,5 +44,6 @@ function breakpoint(overrides: Partial<DebugBreakpoint> = {}): DebugBreakpoint {
     createdAt: '2026-08-02T00:00:00.000Z',
     updatedAt: '2026-08-02T00:00:00.001Z',
     ...overrides,
+    kind: overrides.kind ?? 'line',
   };
 }

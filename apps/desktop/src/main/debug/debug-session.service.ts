@@ -7,6 +7,7 @@ import type {
   DebugThread,
   DebugVariable,
   DebugWatchExpression,
+  ProjectTaskPlanSnapshot,
 } from '@open-code-desk/domain';
 import type {
   DecideDebugStartRequest,
@@ -18,8 +19,8 @@ import type {
 } from '@open-code-desk/ipc-contracts';
 
 import type { AuditLogService } from '../audit/audit-log.service';
+import type { ProjectTaskExecutionService } from '../project-tasks/project-task-execution.service';
 import type { RunConfigurationRepository } from '../run/run-configuration.repository';
-import { resolveRunEnvironment } from '../run/run-execution-policy';
 import type { SecretStore } from '../security/secret-store';
 import type { WorkspaceService } from '../workspace/workspace.service';
 import type { DebugAdapterEvent } from './debug-adapter';
@@ -31,6 +32,7 @@ import { DebugOperationQueue } from './debug-operation-queue';
 import { DebugProposalService } from './debug-proposal.service';
 import { recordDebugSessionAudit } from './debug-session-audit';
 import { DebugSessionController } from './debug-session-controller';
+import { DebugSessionStartup, safeErrorMessage } from './debug-session-startup';
 import type { DebugSessionRepository } from './debug-session.repository';
 import type { DebugSettingsRepository } from './debug-settings.repository';
 import type { DebugWatchRepository } from './debug-watch.repository';
@@ -42,8 +44,12 @@ export class DebugSessionService {
   readonly #listeners = new Set<DebugListener>();
   readonly #operations = new DebugOperationQueue();
   readonly #sequences = new Map<string, number>();
+  readonly #startupRunners = new Map<string, Promise<void>>();
+  readonly #activeHookExecutionIds = new Map<string, string>();
   readonly #proposals: DebugProposalService;
   readonly #controller: DebugSessionController;
+  readonly #startup: DebugSessionStartup;
+  #closing = false;
   public readonly configuration: DebugConfigurationCoordinator;
 
   public constructor(
@@ -56,6 +62,7 @@ export class DebugSessionService {
     private readonly secretStore: SecretStore,
     private readonly adapters: DebugAdapterRegistry,
     private readonly audit?: AuditLogService,
+    private readonly taskExecutions?: ProjectTaskExecutionService,
   ) {
     this.configuration = new DebugConfigurationCoordinator({
       breakpoints,
@@ -70,12 +77,35 @@ export class DebugSessionService {
       sessions,
       workspaces,
       ...(audit === undefined ? {} : { audit }),
+      ...(taskExecutions === undefined ? {} : { taskPlans: taskExecutions }),
       emit: (event) => this.emit(event),
     });
     this.#controller = new DebugSessionController({
       sessions,
       activeAdapter: (sessionId) => this.requireActiveSession(sessionId).adapter,
       emitStatus: (previous, session) => this.emitStatus(previous, session),
+    });
+    this.#startup = new DebugSessionStartup({
+      configurations,
+      sessions,
+      workspaces,
+      secretStore,
+      adapters,
+      configuration: this.configuration,
+      active: this.#active,
+      runners: this.#startupRunners,
+      ...(audit === undefined ? {} : { audit }),
+      executeHook: (session, phase) => {
+        const snapshot =
+          phase === 'pre' ? session.command.preLaunchTaskPlan : session.command.postRunTaskPlan;
+        if (snapshot === undefined) throw new Error('调试任务快照不存在。');
+        return this.executeHook(session, snapshot);
+      },
+      fail: (previous, code, message) => this.fail(previous, code, message),
+      emitStatus: (previous, session) => this.emitStatus(previous, session),
+      onAdapterEvent: (sessionId, event) => {
+        void this.enqueue(sessionId, () => this.handleAdapterEvent(sessionId, event));
+      },
     });
   }
 
@@ -110,7 +140,7 @@ export class DebugSessionService {
         recordDebugSessionAudit(this.audit, rejected, 'denied');
         return rejected;
       }
-      return this.startApproved(session);
+      return this.#startup.startApproved(session);
     });
   }
 
@@ -131,6 +161,11 @@ export class DebugSessionService {
       }
       const stopping = this.sessions.update(sessionId, { status: 'stopping', pause: null });
       this.emitStatus(current, stopping);
+      const hookExecutionId = this.#activeHookExecutionIds.get(sessionId);
+      if (hookExecutionId !== undefined && this.taskExecutions !== undefined) {
+        await this.taskExecutions.stop({ executionId: hookExecutionId });
+      }
+      await this.#startupRunners.get(sessionId);
       const active = this.#active.get(sessionId);
       if (active !== undefined) {
         active.terminating = true;
@@ -138,12 +173,31 @@ export class DebugSessionService {
         active.unsubscribe();
         this.#active.delete(sessionId);
       }
+      const beforePostTask = this.requireSession(sessionId);
+      if (
+        beforePostTask.startedAt !== undefined &&
+        beforePostTask.command.postRunTaskPlan !== undefined &&
+        !this.#closing
+      ) {
+        const taskExecution = await this.executeHook(
+          beforePostTask,
+          beforePostTask.command.postRunTaskPlan,
+        );
+        if (taskExecution.status !== 'completed') {
+          return this.fail(
+            this.requireSession(sessionId),
+            'DEBUG_POST_TASK_FAILED',
+            `调试后任务执行失败：${taskExecution.error?.message ?? taskExecution.status}`,
+          );
+        }
+      }
+      const beforeStopped = this.requireSession(sessionId);
       const stopped = this.sessions.update(sessionId, {
         status: 'stopped',
         adapterProcessId: null,
         completedAt: new Date().toISOString(),
       });
-      this.emitStatus(stopping, stopped);
+      this.emitStatus(beforeStopped, stopped);
       recordDebugSessionAudit(this.audit, stopped, 'cancelled');
       return stopped;
     });
@@ -168,7 +222,7 @@ export class DebugSessionService {
           `重新调试失败：${safeErrorMessage(error)}`,
         );
       }
-      return this.startApproved(this.requireSession(sessionId));
+      return this.#startup.startApproved(this.requireSession(sessionId));
     });
   }
 
@@ -225,75 +279,26 @@ export class DebugSessionService {
   }
 
   public async close(): Promise<void> {
-    await Promise.allSettled([...this.#active.keys()].map((sessionId) => this.stop(sessionId)));
+    this.#closing = true;
+    const sessionIds = new Set([...this.#active.keys(), ...this.#startupRunners.keys()]);
+    await Promise.allSettled([...sessionIds].map((sessionId) => this.stop(sessionId)));
+    await Promise.allSettled(this.#startupRunners.values());
     this.#listeners.clear();
   }
 
-  private async startApproved(session: DebugSession): Promise<DebugSession> {
-    const configuration = this.configurations.findStoredById(session.configurationId);
-    if (
-      configuration === null ||
-      configuration.workspaceId !== session.workspaceId ||
-      configuration.updatedAt !== session.command.configurationUpdatedAt
-    ) {
-      return this.fail(session, 'DEBUG_CONFIGURATION_CHANGED', '调试配置已变化，请重新发起调试。');
-    }
-    const starting = this.sessions.update(session.id, {
-      status: 'starting',
-      approvalDecision: 'approve',
-      approvalDecidedAt: new Date().toISOString(),
-      adapterProcessId: null,
-      pause: null,
-      outputTail: '',
-      outputBytes: 0,
-      error: null,
-      completedAt: null,
-    });
-    this.emitStatus(session, starting);
-    recordDebugSessionAudit(this.audit, starting, 'allowed');
+  private async executeHook(parent: DebugSession, snapshot: ProjectTaskPlanSnapshot) {
+    if (this.taskExecutions === undefined) throw new Error('项目任务执行器不可用。');
     try {
-      const workspace = await this.workspaces.getById(session.workspaceId);
-      const environment = await resolveRunEnvironment(
-        workspace.rootPath,
-        configuration,
-        this.secretStore,
-        session.command.environmentFileDigest,
-      );
-      const adapter = await this.adapters.get(session.adapterType).createSession({
-        sessionId: session.id,
-        workspaceRoot: workspace.rootPath,
-        command: session.command,
-        environment: environment.values,
-        sensitiveValues: environment.sensitiveValues,
-        breakpoints: this.configuration.breakpoints.listWorkspace(session.workspaceId),
-        exceptionPauseMode: this.configuration.settings.current(session.workspaceId)
-          .exceptionPauseMode,
+      return await this.taskExecutions.executeApprovedPlan({
+        workspaceId: parent.workspaceId,
+        snapshot,
+        parentApprovalDigest: parent.approvalDigest,
+        onStarted: (execution) => {
+          this.#activeHookExecutionIds.set(parent.id, execution.id);
+        },
       });
-      const active: ActiveDebugSession = {
-        adapter,
-        terminating: false,
-        unsubscribe: () => undefined,
-      };
-      this.#active.set(session.id, active);
-      active.unsubscribe = adapter.subscribe((event) => {
-        void this.enqueue(session.id, () => this.handleAdapterEvent(session.id, event));
-      });
-      const running = this.sessions.update(session.id, {
-        status: 'running',
-        adapterProcessId: adapter.processId,
-        capabilities: adapter.capabilities,
-        startedAt: new Date().toISOString(),
-      });
-      this.emitStatus(starting, running);
-      recordDebugSessionAudit(this.audit, running, 'started');
-      await this.configuration.breakpoints.refreshAll(session.workspaceId);
-      return running;
-    } catch (error) {
-      return this.fail(
-        this.requireSession(session.id),
-        'DEBUG_START_FAILED',
-        `调试启动失败：${safeErrorMessage(error)}`,
-      );
+    } finally {
+      this.#activeHookExecutionIds.delete(parent.id);
     }
   }
 
@@ -315,7 +320,19 @@ export class DebugSessionService {
         this.configuration.updateBreakpointFromAdapter(workspaceId, breakpointEvent),
     });
     if (result === 'completed') {
-      const completed = this.requireSession(sessionId);
+      let completed = this.requireSession(sessionId);
+      if (completed.command.postRunTaskPlan !== undefined && !this.#closing) {
+        const taskExecution = await this.executeHook(completed, completed.command.postRunTaskPlan);
+        if (taskExecution.status !== 'completed') {
+          this.fail(
+            completed,
+            'DEBUG_POST_TASK_FAILED',
+            `调试后任务执行失败：${taskExecution.error?.message ?? taskExecution.status}`,
+          );
+          return;
+        }
+        completed = this.requireSession(sessionId);
+      }
       recordDebugSessionAudit(this.audit, completed, 'succeeded');
     }
   }
@@ -368,8 +385,4 @@ export class DebugSessionService {
   private enqueue<T>(sessionId: string, action: () => Promise<T>): Promise<T> {
     return this.#operations.enqueue(sessionId, action);
   }
-}
-
-function safeErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message.slice(0, 2_000) : '调试器返回了无法识别的错误。';
 }

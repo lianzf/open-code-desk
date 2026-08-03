@@ -6,7 +6,7 @@ import { expect, test, type ElectronApplication } from '@playwright/test';
 
 import { launchDesktop } from './desktop-fixture';
 
-test('edits, executes and restores conditional breakpoints, logpoints and exception policy', async () => {
+test('edits, executes and restores advanced breakpoints and exception rules', async () => {
   const projectDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-debug-advanced-project-'));
   const userDataDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-debug-advanced-user-'));
   const completedPath = join(projectDirectory, 'advanced-finished.txt');
@@ -65,11 +65,32 @@ test('edits, executes and restores conditional breakpoints, logpoints and except
     await window.getByTestId('debug-breakpoint-hit-condition').fill('>= 2');
     await window.getByTestId('save-debug-breakpoint').click();
     await window.getByTestId('debug-exception-pause-mode').selectOption('all');
+    await window.getByTestId('edit-exception-breakpoints').click();
+    await window.getByTestId('exception-break-types').fill('TypeError\nRangeError');
+    await window.getByTestId('exception-ignore-types').fill('AbortError');
+    await window.getByTestId('save-exception-breakpoints').click();
+    await expect(window.getByTestId('exception-breakpoint-dialog')).toBeHidden();
+    await expect(window.getByTestId('debug-panel')).toContainText('指定暂停 2 · 忽略 1');
 
     await expect(breakpoints.nth(0)).toHaveAttribute('data-breakpoint-kind', 'logpoint');
     await expect(breakpoints.nth(1)).toHaveAttribute('data-breakpoint-kind', 'conditional');
     await expect(breakpoints.nth(0)).toContainText('LOGPOINT i={i}');
     await expect(breakpoints.nth(1)).toContainText('i === 3');
+    await window.getByTestId('add-function-breakpoint').click();
+    await window.getByTestId('special-breakpoint-value').fill('targetFunction');
+    await window.getByTestId('save-special-breakpoint').click();
+    await window.getByTestId('add-data-breakpoint').click();
+    await window.getByTestId('special-breakpoint-value').fill('adapter-owned-data-id');
+    await window.getByTestId('data-breakpoint-access-type').selectOption('readWrite');
+    await window.getByTestId('save-special-breakpoint').click();
+    breakpoints = window.getByTestId('debug-breakpoint-item');
+    await expect(breakpoints).toHaveCount(4);
+    await expect(
+      window.locator('[data-testid="debug-breakpoint-item"][data-breakpoint-kind="function"]'),
+    ).toContainText('targetFunction');
+    await expect(
+      window.locator('[data-testid="debug-breakpoint-item"][data-breakpoint-kind="data"]'),
+    ).toContainText('adapter-owned-data-id');
     await expect(access(completedPath)).rejects.toThrow();
 
     await window.getByTestId('propose-debug').click();
@@ -79,6 +100,12 @@ test('edits, executes and restores conditional breakpoints, logpoints and except
     await expect(window.getByTestId('debug-panel')).toContainText(/i\s*=\s*3/u);
     await expect(window.getByTestId('debug-panel')).toContainText('LOGPOINT i=0');
     await expect(breakpoints.locator('[data-breakpoint-status="verified"]')).toHaveCount(2);
+    await expect(
+      window.locator('[data-testid="debug-breakpoint-item"][data-breakpoint-kind="function"]'),
+    ).toContainText('不支持函数断点');
+    await expect(
+      window.locator('[data-testid="debug-breakpoint-item"][data-breakpoint-kind="data"]'),
+    ).toContainText('不支持数据断点');
 
     await window.getByTestId('debug-toggle-pause').click();
     await expect(window.getByTestId('debug-status')).toHaveText('已完成', { timeout: 20_000 });
@@ -91,10 +118,16 @@ test('edits, executes and restores conditional breakpoints, logpoints and except
     await window.locator('[data-testid^="recent-workspace-"]').first().click();
     await window.getByTestId('toggle-debug').click();
     breakpoints = window.getByTestId('debug-breakpoint-item');
-    await expect(breakpoints).toHaveCount(2);
-    await expect(breakpoints.nth(0)).toContainText('LOGPOINT i={i}');
-    await expect(breakpoints.nth(1)).toContainText('i === 3');
+    await expect(breakpoints).toHaveCount(4);
+    await expect(window.getByTestId('debug-panel')).toContainText('LOGPOINT i={i}');
+    await expect(window.getByTestId('debug-panel')).toContainText('i === 3');
+    await expect(window.getByTestId('debug-panel')).toContainText('targetFunction');
+    await expect(window.getByTestId('debug-panel')).toContainText('adapter-owned-data-id');
     await expect(window.getByTestId('debug-exception-pause-mode')).toHaveValue('all');
+    await expect(window.getByTestId('debug-panel')).toContainText('指定暂停 2 · 忽略 1');
+    await window.getByTestId('edit-exception-breakpoints').click();
+    await expect(window.getByTestId('exception-break-types')).toHaveValue('TypeError\nRangeError');
+    await expect(window.getByTestId('exception-ignore-types')).toHaveValue('AbortError');
   } finally {
     if (application !== undefined) await application.close();
     await rm(projectDirectory, { recursive: true, force: true });

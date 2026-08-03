@@ -1,44 +1,44 @@
-import type { RunEvent, RunExecution, RunStatus } from '@open-code-desk/domain';
+import type { RunEvent, RunExecution, RunPortInspection } from '@open-code-desk/domain';
 import type {
   DecideRunStartRequest,
   ListRunHistoryRequest,
+  InspectRunPortRequest,
   ProposeRunStartRequest,
   RestartRunExecutionRequest,
   StopRunExecutionRequest,
+  TerminateRunPortProcessRequest,
 } from '@open-code-desk/ipc-contracts';
 
 import type { AuditLogService } from '../audit/audit-log.service';
-import { redactAuditText } from '../audit/audit-log.service';
+import type { ProjectTaskExecutionService } from '../project-tasks/project-task-execution.service';
 import type { SecretStore } from '../security/secret-store';
 import type { WorkspaceService } from '../workspace/workspace.service';
 import type { RunConfigurationRepository } from './run-configuration.repository';
 import { recordRunExecutionAudit } from './run-execution-audit';
 import { RunExecutionServiceError } from './run-execution-errors';
-import { resolveRunEnvironment, resolveRunWorkingDirectory } from './run-execution-policy';
+import {
+  isTerminalRunStatus,
+  RunExecutionLifecycle,
+  safeRunErrorMessage,
+} from './run-execution-lifecycle';
 import { createRunProposal } from './run-execution-proposal';
 import type { RunExecutionRepository } from './run-execution.repository';
-import {
-  RunProcessSupervisor,
-  type RunProcessEvent,
-  type RunProcessExitResult,
-} from './run-process-supervisor';
+import { RunPortService } from './run-port.service';
+import { RunProcessSupervisor, type RunProcessEvent } from './run-process-supervisor';
 
 type RunEventListener = (event: RunEvent) => void;
 
 export { RunExecutionServiceError } from './run-execution-errors';
 
-const terminalStatuses: ReadonlySet<RunStatus> = new Set([
-  'stopped',
-  'completed',
-  'failed',
-  'rejected',
-]);
-
 export class RunExecutionService {
   readonly #listeners = new Set<RunEventListener>();
   readonly #queues = new Map<string, Promise<void>>();
+  readonly #lifecycleRunners = new Map<string, Promise<void>>();
   readonly #sequences = new Map<string, number>();
   readonly #unsubscribeSupervisor: () => void;
+  readonly #ports: RunPortService;
+  readonly #lifecycle: RunExecutionLifecycle;
+  #closing = false;
 
   public constructor(
     private readonly configurations: RunConfigurationRepository,
@@ -47,11 +47,22 @@ export class RunExecutionService {
     private readonly secretStore: SecretStore,
     private readonly supervisor: RunProcessSupervisor = new RunProcessSupervisor(),
     private readonly audit?: AuditLogService,
+    private readonly taskExecutions?: ProjectTaskExecutionService,
   ) {
+    this.#ports = new RunPortService(() => this.supervisor.list());
+    this.#lifecycle = new RunExecutionLifecycle(
+      this.executions,
+      this.workspaces,
+      this.secretStore,
+      this.supervisor,
+      this.#ports,
+      (previous, execution) => this.emitStatus(previous, execution),
+      () => this.#closing,
+      this.audit,
+      this.taskExecutions,
+    );
     this.#unsubscribeSupervisor = this.supervisor.subscribe((event) => {
-      if (event.type !== 'started') {
-        void this.enqueue(event.executionId, () => this.handleProcessEvent(event));
-      }
+      if (event.type === 'output') this.handleProcessOutput(event);
     });
   }
 
@@ -65,6 +76,48 @@ export class RunExecutionService {
       ...(input.configurationId === undefined ? {} : { configurationId: input.configurationId }),
       limit: input.limit,
     });
+  }
+
+  public async inspectPort(input: InspectRunPortRequest): Promise<RunPortInspection> {
+    await this.workspaces.getById(input.workspaceId);
+    return this.#ports.inspect(input.port);
+  }
+
+  public async terminatePortProcess(
+    input: TerminateRunPortProcessRequest,
+  ): Promise<RunPortInspection> {
+    await this.workspaces.getById(input.workspaceId);
+    const inspection = await this.#ports.inspect(input.port);
+    if (inspection.available) return inspection;
+    if (inspection.processId !== input.expectedProcessId) {
+      throw new RunExecutionServiceError(
+        'RUN_PORT_OWNER_CHANGED',
+        '端口占用进程已变化，请重新检查并确认。',
+        true,
+      );
+    }
+    if (inspection.managedExecutionId !== undefined) {
+      const execution = this.executions.findById(inspection.managedExecutionId);
+      if (execution === null || execution.workspaceId !== input.workspaceId) {
+        throw new RunExecutionServiceError(
+          'RUN_PORT_OWNER_INVALID',
+          '端口对应的运行记录不属于当前工作区。',
+        );
+      }
+      await this.stop({ executionId: execution.id });
+    } else {
+      await this.#ports.terminateExternal(input.port, input.expectedProcessId);
+    }
+    this.audit?.record({
+      workspaceId: input.workspaceId,
+      actor: 'user',
+      category: 'command',
+      action: 'run.port.terminate',
+      outcome: 'allowed',
+      summary: `User confirmed termination of the process occupying TCP port ${input.port}.`,
+      metadata: { port: input.port, processId: input.expectedProcessId },
+    });
+    return this.#ports.inspect(input.port);
   }
 
   public proposeStart(input: ProposeRunStartRequest): Promise<RunExecution> {
@@ -102,7 +155,7 @@ export class RunExecutionService {
   public stop(input: StopRunExecutionRequest): Promise<RunExecution> {
     return this.enqueue(input.executionId, async () => {
       const execution = this.requireExecution(input.executionId);
-      if (terminalStatuses.has(execution.status)) {
+      if (isTerminalRunStatus(execution.status)) {
         return execution;
       }
       if (execution.status === 'pending_approval') {
@@ -124,24 +177,26 @@ export class RunExecutionService {
       if (stopping !== execution) {
         this.emitStatus(execution, stopping);
       }
-      const stopped = await this.supervisor.stop(execution.id);
-      if (!stopped) {
-        return this.finalizeMissingProcess(stopping);
-      }
-      return this.finalizeExit(stopping, await this.supervisor.waitForExit(execution.id));
+      await this.#lifecycle.stopActiveHook(execution.id);
+      await this.supervisor.stop(execution.id);
+      await this.#lifecycleRunners.get(execution.id);
+      const current = this.requireExecution(execution.id);
+      return isTerminalRunStatus(current.status) ? current : this.finalizeMissingProcess(current);
     });
   }
 
   public async restart(input: RestartRunExecutionRequest): Promise<RunExecution> {
     const original = this.requireExecution(input.executionId);
-    if (!terminalStatuses.has(original.status)) {
+    if (!isTerminalRunStatus(original.status)) {
       await this.stop({ executionId: original.id });
     }
     return this.createProposal(original.workspaceId, original.configurationId, original.id);
   }
 
   public async close(): Promise<void> {
+    this.#closing = true;
     await this.supervisor.closeAll();
+    await Promise.allSettled(this.#lifecycleRunners.values());
     await Promise.allSettled(this.#queues.values());
     this.#unsubscribeSupervisor();
     this.#listeners.clear();
@@ -152,6 +207,15 @@ export class RunExecutionService {
     configurationId: string,
     restartOfExecutionId?: string,
   ): Promise<RunExecution> {
+    const duplicate = this.executions
+      .list(workspaceId, { configurationId, limit: 1_000 })
+      .find((execution) => !isTerminalRunStatus(execution.status));
+    if (duplicate !== undefined) {
+      throw new RunExecutionServiceError(
+        'RUN_ALREADY_ACTIVE',
+        '该服务已有正在进行的运行，请先停止后再启动。',
+      );
+    }
     const execution = await createRunProposal({
       workspaceId,
       configurationId,
@@ -159,6 +223,7 @@ export class RunExecutionService {
       configurations: this.configurations,
       executions: this.executions,
       workspaces: this.workspaces,
+      ...(this.taskExecutions === undefined ? {} : { taskPlans: this.taskExecutions }),
     });
     this.emitStatus(undefined, execution);
     recordRunExecutionAudit(this.audit, execution, 'requested');
@@ -172,87 +237,39 @@ export class RunExecutionService {
       configuration.workspaceId !== execution.workspaceId ||
       configuration.updatedAt !== execution.command.configurationUpdatedAt
     ) {
-      return this.failApprovedExecution(
+      return this.#lifecycle.failApprovedExecution(
         execution,
         'RUN_CONFIGURATION_CHANGED',
         '运行配置在批准前已变化，请重新发起运行。',
         true,
       );
     }
-    try {
-      const workspace = await this.workspaces.getById(execution.workspaceId);
-      const cwd = await resolveRunWorkingDirectory(
-        workspace.rootPath,
-        execution.command.workingDirectory,
-      );
-      const environment = await resolveRunEnvironment(
-        workspace.rootPath,
-        configuration,
-        this.secretStore,
-        execution.command.environmentFileDigest,
-      );
-      const starting = this.executions.update(execution.id, {
-        status: 'starting',
-        approvalDecision: 'approve',
-        approvalDecidedAt: new Date().toISOString(),
-      });
-      this.emitStatus(execution, starting);
-      recordRunExecutionAudit(this.audit, starting, 'allowed');
-      const process = await this.supervisor.start({
-        executionId: execution.id,
-        executable: execution.command.executable,
-        args: [...execution.command.runtimeArgs, ...execution.command.args],
-        cwd,
-        resolvedEnvironment: environment.values,
-        sensitiveValues: environment.sensitiveValues,
-      });
-      const running = this.executions.update(execution.id, {
-        status: 'running',
-        processId: process.pid,
-        startedAt: process.startedAt,
-      });
-      this.emitStatus(starting, running);
-      recordRunExecutionAudit(this.audit, running, 'started');
-      return running;
-    } catch (error) {
-      const current = this.requireExecution(execution.id);
-      return this.failApprovedExecution(
-        current,
-        'RUN_START_FAILED',
-        `项目启动失败：${safeErrorMessage(error)}`,
-        true,
-      );
-    }
-  }
-
-  private failApprovedExecution(
-    previous: RunExecution,
-    code: string,
-    message: string,
-    retryable: boolean,
-  ): RunExecution {
-    const failed = this.executions.update(previous.id, {
-      status: 'failed',
+    const starting = this.executions.update(execution.id, {
+      status: 'starting',
       approvalDecision: 'approve',
-      approvalDecidedAt: previous.approvalDecidedAt ?? new Date().toISOString(),
-      processId: null,
-      error: { code, message: redactAuditText(message), retryable },
-      completedAt: new Date().toISOString(),
+      approvalDecidedAt: new Date().toISOString(),
     });
-    this.emitStatus(previous, failed);
-    recordRunExecutionAudit(this.audit, failed, 'failed');
-    return failed;
+    this.emitStatus(execution, starting);
+    recordRunExecutionAudit(this.audit, starting, 'allowed');
+    const runner = this.#lifecycle.execute(starting, configuration).catch((error: unknown) => {
+      const current = this.requireExecution(starting.id);
+      if (!isTerminalRunStatus(current.status)) {
+        this.#lifecycle.failApprovedExecution(
+          current,
+          'RUN_START_FAILED',
+          `项目启动失败：${safeRunErrorMessage(error)}`,
+          true,
+        );
+      }
+    });
+    this.#lifecycleRunners.set(starting.id, runner);
+    void runner.finally(() => this.#lifecycleRunners.delete(starting.id));
+    return starting;
   }
 
-  private async handleProcessEvent(
-    event: Exclude<RunProcessEvent, { type: 'started' }>,
-  ): Promise<void> {
+  private handleProcessOutput(event: Extract<RunProcessEvent, { type: 'output' }>): void {
     const execution = this.executions.findById(event.executionId);
-    if (execution === null || terminalStatuses.has(execution.status)) {
-      return;
-    }
-    if (event.type === 'exit') {
-      this.finalizeExit(execution, event);
+    if (execution === null || isTerminalRunStatus(execution.status)) {
       return;
     }
     const process = this.supervisor.get(event.executionId);
@@ -272,42 +289,6 @@ export class RunExecutionService {
       data: event.chunk,
       occurredAt: event.timestamp,
     });
-  }
-
-  private finalizeExit(previous: RunExecution, result: RunProcessExitResult): RunExecution {
-    const current = this.requireExecution(previous.id);
-    if (terminalStatuses.has(current.status)) {
-      return current;
-    }
-    const updated = this.executions.update(current.id, {
-      status: result.status,
-      processId: null,
-      outputTail: result.outputTail,
-      outputBytes: result.outputBytes,
-      outputTruncated: result.outputTruncated,
-      exitCode: result.exitCode,
-      terminationSignal: result.signal,
-      error:
-        result.errorMessage === undefined
-          ? null
-          : {
-              code: 'RUN_PROCESS_FAILED',
-              message: safeErrorMessage(result.errorMessage),
-              retryable: true,
-            },
-      completedAt: result.finishedAt,
-    });
-    this.emitStatus(current, updated);
-    recordRunExecutionAudit(
-      this.audit,
-      updated,
-      result.status === 'completed'
-        ? 'succeeded'
-        : result.status === 'stopped'
-          ? 'cancelled'
-          : 'failed',
-    );
-    return updated;
   }
 
   private finalizeMissingProcess(previous: RunExecution): RunExecution {
@@ -373,14 +354,4 @@ export class RunExecutionService {
 function appendOutputTail(current: string, chunk: string): string {
   const combined = `${current}${chunk}`;
   return combined.length <= 65_536 ? combined : combined.slice(-65_536);
-}
-
-function safeErrorMessage(error: unknown): string {
-  if (error instanceof RunExecutionServiceError) {
-    return redactAuditText(error.message);
-  }
-  if (error instanceof Error) {
-    return redactAuditText(error.message).slice(0, 2_000);
-  }
-  return '运行进程返回了无法识别的错误。';
 }

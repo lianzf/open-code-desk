@@ -60,7 +60,12 @@ describe('debug DAP identifier contracts', () => {
         workspaceId: sessionId,
         exceptionPauseMode: 'all',
       }),
-    ).toEqual({ workspaceId: sessionId, exceptionPauseMode: 'all' });
+    ).toEqual({
+      workspaceId: sessionId,
+      exceptionPauseMode: 'all',
+      exceptionBreakTypes: [],
+      exceptionIgnoreTypes: [],
+    });
     expect(() =>
       saveDebugSettingsRequestSchema.parse({
         workspaceId: sessionId,

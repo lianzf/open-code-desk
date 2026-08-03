@@ -11,6 +11,7 @@ export default tseslint.config(
       '**/.node_modules-backup-*/**',
       '**/.desktop-node-modules-backup-*/**',
       '**/.pnpm-stale-cache/**',
+      '**/.runtime/**',
       '**/dist/**',
       '**/out/**',
       '**/release/**',

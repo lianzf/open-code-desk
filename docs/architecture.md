@@ -6,7 +6,7 @@
 
 ## 1. 仓库现状与需求理解
 
-OpenCode Desk 已在独立 monorepo `D:\电脑\open-code-desk` 中实现。当前基线包括 Electron 安全壳、
+OpenCode Desk 已在独立 monorepo `D:\work\open-code-desk` 中实现。当前基线包括 Electron 安全壳、
 工作区与 Monaco 编辑器、多 Provider、Agent 工具循环、Diff 审批事务、受控终端/Git、运行配置、
 受管项目运行、Node.js/TypeScript 的真实 DAP 调试、由用户审核驱动的 AI 辅助修复闭环，以及高级
 断点与工作区异常暂停策略。
@@ -114,7 +114,7 @@ Domain 不读取环境变量、不访问网络、不调用 Electron，也不包�
 - 系统凭据库 Adapter。
 - 安全文件系统、路径策略、原子文件写入和回滚快照。
 - simple-git、受控子进程/PTY、日志和审计日志。
-- DAP client、Debug Adapter Registry、Node.js Debug Adapter 与受管调试器子进程。
+- DAP client、Debug Adapter Registry、Node.js/Python/浏览器内置 Debug Adapter，以及 LLDB、Delve、NetCoreDbg 外部 Adapter 与受管调试器子进程。
 - Electron BrowserWindow、dialog、IPC、CSP 和生命周期。
 
 ## 5. 运行时组件与数据流
@@ -133,7 +133,7 @@ flowchart LR
     Tools --> Git["simple-git"]
     Tools --> Proc["Command Runner / PTY"]
     Debug --> Adapter["Debug Adapter Registry"]
-    Adapter --> DAP["Node.js js-debug / DAP"]
+    Adapter --> DAP["js-debug / debugpy / Java Debug / lldb-dap / dlv / netcoredbg"]
     Repos --> SQLite["SQLite"]
     Main --> Secrets["OS Credential Store"]
 ```
@@ -199,7 +199,7 @@ Renderer 订阅基于 `subscriptionId` 的事件流。窗口刷新或重启后�
 7. 对大文件按语义边界截断并明确标注，永不静默截断。
 8. 超过预算时先移除低优先级内容，再摘要历史；仍超限则返回 `CONTEXT_TOO_LARGE`。
 
-### 5.4 Node.js/TypeScript DAP 调试
+### 5.4 多语言 DAP 调试
 
 ```mermaid
 sequenceDiagram
@@ -207,7 +207,7 @@ sequenceDiagram
     participant R as Renderer
     participant S as DebugSessionService
     participant G as DebugAdapterRegistry
-    participant D as Node Debug Adapter
+    participant D as Language Debug Adapter
     participant P as Debuggee Process
 
     U->>R: 选择配置并点击调试
@@ -227,10 +227,33 @@ sequenceDiagram
     S->>D: DAP request
 ```
 
-`DebugAdapterRegistry` 将语言适配与会话编排隔离。阶段 C 注册 `node` Provider，并使用固定版本、
-带来源和 SHA-256 记录的官方 `vscode-js-debug` 构建产物。DAP framing/client、反向
-`startDebugging` 请求、协议事件归一化和适配器进程管理位于主进程；Renderer 只接收经 Zod 校验的
-DTO。断点、监视和会话快照持久化，活动调试器与被调试进程由应用拥有并在停止或退出时清理。
+`DebugAdapterRegistry` 将语言适配与会话编排隔离。阶段 C 注册 Node Provider，阶段 F 注册 Python
+Provider，浏览器 Provider 复用 Node 的多目标 js-debug 会话；Java Provider 以 JDK 21+ 启动固定版本
+JDT LS，并通过 `initializationOptions.bundles` 加载 Microsoft Java Debug Server；JDT LS 的共享配置按操作系统与 CPU 架构选择 Intel/ARM64 目录。内置 Adapter 均使用
+带固定来源、许可证和 SHA-256 记录的官方产物。正式版语言扩展为 C/C++/Rust 注册 LLDB Provider：它只解析 PATH 中的
+`lldb-dap`/`lldb-vscode`，以 `shell: false` 的受管子进程建立 stdio DAP，并要求启动目标是已编译
+二进制而非构建工具。Go Provider 以 `dlv dap --listen=127.0.0.1:0` 建立单次 TCP DAP，并兼容简单
+`go run <package>` 的 Delve debug 模式与预编译二进制 exec 模式；.NET Provider 以
+`netcoredbg --interpreter=vscode` 建立 stdio DAP，只接受已构建 `.dll`/`.exe`。三种外部调试器均不随
+应用分发；Windows 验收基线为 LLVM 22.1.8（LLDB 运行时还需 Python 3.11）、Delve 1.26.3 和
+NetCoreDbg 3.2.0-1092。React、Vue 和 Next.js 的端口型配置由
+浏览器 Provider 先以原结构化参数和 `shell: false` 启动经审批的开发服务器，等待回环端口就绪后，
+再使用固定 js-debug 启动本机 Chrome 或 Edge；页面、Worker 与 iframe 通过反向 `startDebugging`
+请求进入同一会话。DAP framing/client、协议事件归一化和适配器进程管理位于主进程；Renderer 只
+接收经 Zod 校验的 DTO。断点、监视和会话快照持久化；launch 会话中的活动调试器、浏览器和被调试
+进程由应用拥有并在停止或退出时清理。Node.js attach 会话只拥有本机 js-debug Adapter：不可变配置
+保存 `environment`、`host`、`port` 与可选 `remoteRoot`，通过标准 `attach` 请求连接已有 Inspector。
+应用不执行 SSH/Docker、不向目标转发本地环境值，断开时发送 `terminateDebuggee=false`，因此不会把
+目标进程错误地当成本机受管进程终止。
+
+普通、条件、命中次数和日志断点通过 `setBreakpoints` 同步；函数与数据断点分别通过能力守卫的
+`setFunctionBreakpoints` 和 `setDataBreakpoints` 同步。Adapter 未声明能力时，核心层不会发送伪请求，
+而是将条目标记为 `unverified` 并保留可读原因。异常策略由基础 none/uncaught/all、指定暂停类型和
+忽略类型组成：Node Adapter 使用经过 JSON 字符串转义的过滤条件；Python Adapter 使用标准
+`exceptionOptions` 设置正向规则，并在异常暂停后以 `exceptionInfo` 识别忽略类型、命中时自动继续。
+LLDB Adapter 发送 LLVM 异常过滤器，Delve 使用 `unrecovered-panic`/`runtime-fatal-throw`，NetCoreDbg
+使用 `all`/`user-unhandled`；实际外部调试器版本的过滤器行为必须在对应原生工具链上复验。识别或
+继续失败会保守地保留暂停。规则可在活动会话中更新并通过 SQLite migration 16 恢复。
 
 当前暂停位置会驱动 Monaco 打开对应工作区文件、居中并高亮执行行。线程、调用栈、作用域、嵌套
 变量、监视表达式和调试控制台均从真实 DAP 请求取得，不从普通运行日志推断。阶段 D 增加独立
@@ -270,6 +293,21 @@ sequenceDiagram
 conversation、暂停指纹和全部分区；附加时任一值不一致都要求重新收集。用户确认后只把所选分区保存
 为 `diagnostic` ContextItem，并标注调试来源。Agent 继续使用既有上下文预算、只读工具、写入权限、
 FileChange 和命令审批，调试入口不拥有特殊写权限。应用修改不会自动继续、改变变量或重启程序。
+
+### 5.6 ProjectTask、组合运行与端口
+
+`ProjectTaskService` 将任务依赖解析为去重、有序且有环检测的不可变执行计划。计划与 executable、
+args、cwd、公开环境元数据、风险原因和审批摘要绑定；运行配置的 pre-launch/post-run 以及调试配置的
+pre-debug/post-debug 都复用同一执行器。任务失败会短路后续步骤，停止和重试创建独立历史记录，输出
+进入 SQLite 前执行 Secret 脱敏和尾部上限。
+
+`CompoundRunService` 保存由多个运行配置组成的组合，先生成一份包含全部子命令的批量提案，用户
+一次批准后并发启动独立 `RunExecution`。每个服务保留自己的状态、输出、端口和停止控制；停止全部或
+`stopAllOnSingleFailure` 只清理本组合拥有的进程。
+
+声明端口的配置在任务钩子和主进程启动前由 `RunPortService` 检查。占用信息包含 PID 和可用的进程名；
+终止外部占用者必须携带用户确认和期望 PID，并在执行前重新解析端口所有者。PID 不明、占用者变化、
+目标为应用自身或无法安全确认时均拒绝。Supervisor 还会阻止相同配置、端口或命令/cwd/args 的重复服务。
 
 ## 6. 推荐项目目录
 
@@ -327,7 +365,12 @@ open-code-desk/
 │     │     ├─ styles/
 │     │     └─ types/
 │     ├─ electron.vite.config.ts
-│     ├─ vendor/js-debug-1.117.0/    # 固定版本官方 Node Debug Adapter 产物
+│     ├─ vendor/js-debug-1.117.0/    # 固定版本官方 JavaScript/浏览器 Debug Adapter 产物
+│     ├─ vendor/debugpy-1.8.21/      # 固定版本官方 Python Debug Adapter 产物
+│     ├─ vendor/jdtls-1.60.0/        # 固定版本 Eclipse JDT Language Server
+│     ├─ vendor/java-debug-0.59.0/   # 固定版本 Microsoft Java Debug Server 插件
+│     ├─ src/main/debug/java/        # Java LSP、DAP、运行时发现与配置映射
+│     ├─ src/main/debug/external/    # 外部 LLDB 等系统 DAP 适配器边界
 │     └─ package.json
 ├─ packages/
 │  ├─ domain/                       # 纯实体、值对象、状态机、错误
@@ -743,17 +786,37 @@ Renderer，并将尾部、退出码、风险和状态写入 `run_executions`。
 ### 10.2 IDE 调试子系统
 
 调试不复用普通运行输出模拟状态。`DebugSessionService` 在开始前创建审批提案并验证摘要，随后通过
-`DebugAdapterRegistry` 选择语言适配器。Node Adapter 启动独立 js-debug 进程，通过 DAP 完成
-initialize、launch、断点同步和 configurationDone，并把协议事件归一化为领域事件。所有查询与控制
+`DebugAdapterRegistry` 选择语言适配器。Node Adapter 启动独立 js-debug，Python Adapter 使用用户
+选择的 Python 解释器启动随应用分发的 debugpy；浏览器 Adapter 先启动已审批的前端开发服务器，
+再由同一 js-debug 启动本机 Chrome/Edge；Electron Adapter 在同一 js-debug 服务中以 `pwa-node`
+启动主进程、以第二个 `pwa-chrome` 客户端附加渲染进程，并为多客户端线程、栈帧和变量引用分配
+无冲突的公开 ID；C/C++/Rust Adapter 启动 PATH 中的外部
+`lldb-dap`，Go Adapter 启动回环随机端口的 `dlv dap`，.NET Adapter 启动 stdio `netcoredbg`；各自
+拒绝无效构建命令或缺失产物。Java Adapter 通过 stdio JSON-RPC 导入 Maven/Gradle 工作区、解析主类、
+执行增量编译和解析 classpath，再连接 Java Debug Server 返回的回环 DAP 端口；语言服务器数据只写入
+应用拥有的独立临时目录。所有 Adapter 均通过 DAP 完成 initialize、launch、
+断点同步和 configurationDone，并把协议事件归一化为领域事件。所有查询与控制
 均由模块化 `debug.ipc.ts` 转发，输入输出经 Zod 校验；断点、监视和会话历史由 migration 10 持久化，
-migration 11 增加条件、命中次数、日志消息和工作区异常暂停设置。
+migration 11 增加条件、命中次数、日志消息和工作区异常暂停设置；migration 17 为运行配置增加经过
+Schema 校验的 Node Inspector 附加目标；migration 18 在保留既有配置与默认选择的前提下扩展
+`electron` 项目类型。
 
 阶段 C 支持普通行断点、启用/禁用/删除、线程、调用栈、局部与嵌套变量、监视、REPL 求值、继续、
 暂停、Step Over/Into/Out、运行到光标、重启、停止、异常信息和当前行高亮。阶段 D 通过独立
 `debug-context.ipc.ts` 增加脱敏预览和显式附加，不修改 Agent 或 FileChange 主流程。阶段 E 通过
 `DebugConfigurationCoordinator` 与独立 Repository 支持条件、命中次数、日志断点，以及
 none/uncaught/all 异常暂停策略；这些字段映射到真实 DAP 请求，并由 Adapter 能力标记反馈。
-函数/数据断点、特定异常类型和其他语言 Adapter 仍在后续阶段，不以静态 UI 冒充完成。
+阶段 F 将线程、栈帧、作用域、变量、异常和路径安全投影下沉到共享 DAP 基础设施，并增加不执行
+项目代码的 Python runtime discovery；`.venv` 等工作区环境优先，`pyvenv.cfg` 仅有界读取，用户
+选择的 executable 仍绑定原运行/调试审批快照。C/C++/Rust 的 LLDB Provider 复用相同 Registry 与
+会话接口；Go/NetCoreDbg Provider 复用相同外部会话层，并以 TCP/stdio 传输和外部工具链前置条件
+隔离。浏览器 Provider 复用 js-debug 多目标会话，自动建议常见 Vite、Next.js、CRA 和 Vue CLI
+开发端口；Electron 项目检测会生成直接运行时配置和获批渲染调试端口，Windows 真实 Electron 已
+同时命中主进程与渲染进程源码断点、读取两侧变量并验证退出清理。Windows Chrome 的真实断点、
+变量、单步及开发服务器/浏览器清理验收已通过。真实外部
+调试器版本验收仍待支持平台补充；Java 在 Windows 上的 Maven 项目导入、编译、断点、栈、变量、
+单步、异常及清理验收已通过。Node Inspector 跨环境附加已用真实独立 Node 进程验证断点、栈、变量
+与断开后目标存活；其他语言的跨环境附加和自动 SSH/容器编排仍在后续阶段。
 
 ## 11. 关键非功能需求
 
@@ -807,7 +870,15 @@ none/uncaught/all 异常暂停策略；这些字段映射到真实 DAP 请求，
 - [x] 调试上下文脱敏后由用户逐分区审核，再走“分析 → 修复 Diff → 审批 → 显式重新验证”闭环。
 - [x] 条件、命中次数和日志断点通过真实 DAP 请求生效，并在 Monaco 与断点列表中区分展示。
 - [x] none/uncaught/all 异常策略按工作区持久化，活动会话可实时切换，重启应用后恢复。
-- [ ] Java、Python、C/C++、.NET、Go、Rust 与浏览器调试 Adapter。
+- [x] Python 解释器/虚拟环境发现与真实 debugpy 断点、变量、单步、异常和停止清理。
+- [x] C/C++/Rust 的外部 LLDB Provider、真实子进程 stdio DAP 握手、断点、线程、栈帧、事件与清理集成测试。
+- [x] Go Delve TCP DAP 与 .NET NetCoreDbg stdio DAP Provider、真实子进程握手、能力、事件与清理集成测试。
+- [x] Windows 使用实际 LLVM 22.1.8 `lldb-dap`、Delve 1.26.3、NetCoreDbg 3.2.0-1092 完成 C/C++/Rust、Go、.NET 原生项目断点、栈、变量、单步、退出和零残留验收。
+- [x] 浏览器 js-debug Adapter、前端开发服务器编排，以及 Windows Chrome 的断点、变量、单步与进程清理验收。
+- [x] Electron `pwa-node` + `pwa-chrome` 双客户端会话，以及 Windows 主/渲染进程断点、变量与进程清理验收。
+- [x] Java JDT LS/Java Debug Server Adapter，以及 Windows Maven 项目的断点、栈、变量、单步、异常与进程清理验收。
+- [x] Node.js 通过现有 Inspector 端口完成远程/容器附加，真实命中断点并验证断开不终止目标进程。
+- [ ] 其他语言跨环境附加与自动 SSH/容器编排；Java 的 macOS ARM64/Linux x64 验收已进入原生打包工作流，仍待当前工作树提交后的 runner 结果。
 
 ## 13. 主要架构风险
 
@@ -820,7 +891,7 @@ none/uncaught/all 异常暂停策略；这些字段映射到真实 DAP 请求，
 7. **数据隐私风险**：会话、Diff、终端输出和 Artifact 可能包含源码或秘密，即使 API Key 已安全保存。
 8. **Renderer 性能风险**：Monaco、xterm、文件树和高频流并存，需要懒加载和背压。
 9. **调试协议风险**：DAP reference、反向请求、路径映射和适配器生命周期在不同实现间存在差异。
-10. **调试器供应链风险**：官方 js-debug 构建产物体积较大，必须固定版本、来源、许可证与校验和。
+10. **调试器供应链风险**：官方 js-debug/debugpy 产物体积较大，必须固定版本、来源、许可证与校验和；外部 `lldb-dap`、`dlv` 和 `netcoredbg` 还需明确最低兼容版本并在目标平台复验。
 
 风险缓解和不可妥协控制见 [security.md](./security.md)，交付顺序与退出条件见
 [roadmap.md](./roadmap.md)。

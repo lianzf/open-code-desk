@@ -210,6 +210,29 @@ describe('run execution persistence', () => {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+      CREATE TABLE run_configurations (
+        id TEXT PRIMARY KEY NOT NULL,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        executable TEXT NOT NULL,
+        args TEXT NOT NULL,
+        runtime_args TEXT NOT NULL,
+        working_directory TEXT NOT NULL,
+        environment_variables TEXT NOT NULL,
+        environment_file TEXT,
+        pre_launch_task_id TEXT,
+        post_run_task_id TEXT,
+        console TEXT NOT NULL,
+        auto_generated INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE workspace_run_settings (
+        workspace_id TEXT PRIMARY KEY NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        default_configuration_id TEXT REFERENCES run_configurations(id) ON DELETE SET NULL,
+        updated_at TEXT NOT NULL
+      );
       PRAGMA user_version = 8;
     `);
     legacy.close();
@@ -228,7 +251,7 @@ describe('run execution persistence', () => {
       .all() as unknown as ReadonlyArray<{ readonly name: string }>;
     migrated.close();
 
-    expect(version.user_version).toBe(11);
+    expect(version.user_version).toBe(18);
     expect(indexes.map((index) => index.name)).toEqual([
       'run_executions_configuration_created_idx',
       'run_executions_workspace_created_idx',

@@ -2,42 +2,41 @@ import type {
   DebugAdapterCapabilities,
   DebugBreakpoint,
   DebugEvaluationResult,
-  DebugExceptionPauseMode,
+  DebugExceptionPolicy,
   DebugExceptionInfo,
   DebugScope,
   DebugStackFrame,
   DebugThread,
   DebugVariable,
-  RunCommandSnapshot,
 } from '@open-code-desk/domain';
 
-import { toPlatformPath } from '../../filesystem/path-policy';
-import { StreamingSecretRedactor } from '../../run/run-process-runtime';
+import type { StreamingSecretRedactor } from '../../run/run-process-runtime';
 import type { DebugAdapterEvent, DebugAdapterSession } from '../debug-adapter';
 import type { DapClient } from '../dap/dap-client';
+import { DapDataAccess } from '../dap/dap-data-access';
 import type { DapEventMessage } from '../dap/dap-message';
-import { asArray, asRecord, booleanValue, numberValue, stringValue } from './dap-values';
-import { NodeDebugDataAccess } from './node-debug-data-access';
-import { NodeDebugAdapterProcess } from './node-debug-adapter-process';
+import { setDapSpecialBreakpoints } from '../dap/dap-special-breakpoints';
+import { asRecord, booleanValue, numberValue, stringValue } from '../dap/dap-values';
 import {
   createLaunchArguments,
   initializeArguments,
   mapCapabilities,
   setNodeExceptionBreakpoints,
 } from './node-debug-launch';
+import {
+  createOutputRedactors,
+  type AdditionalJavaScriptDebugSessionInput,
+  type CreateNodeDebugAdapterSessionInput,
+  dapBreakpointEvent,
+  type OutputCategory,
+  outputCategories,
+  type JavaScriptDebugAdapterProcess,
+  runNodeToCursor,
+  sendNodeBreakpoints,
+} from './node-debug-session-support';
 
-const outputCategories = ['console', 'stdout', 'stderr', 'telemetry', 'important'] as const;
-type OutputCategory = (typeof outputCategories)[number];
-
-export interface CreateNodeDebugAdapterSessionInput {
-  readonly process: NodeDebugAdapterProcess;
-  readonly workspaceRoot: string;
-  readonly command: RunCommandSnapshot;
-  readonly environment: Readonly<Record<string, string>>;
-  readonly sensitiveValues: ReadonlyArray<string>;
-  readonly breakpoints: ReadonlyArray<DebugBreakpoint>;
-  readonly exceptionPauseMode: DebugExceptionPauseMode;
-}
+export type { CreateNodeDebugAdapterSessionInput } from './node-debug-session-support';
+export type { AdditionalJavaScriptDebugSessionInput } from './node-debug-session-support';
 
 export class NodeDebugAdapterSession implements DebugAdapterSession {
   readonly #listeners = new Set<(event: DebugAdapterEvent) => void>();
@@ -45,79 +44,109 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
   readonly #redactors: Readonly<Record<OutputCategory, StreamingSecretRedactor>>;
   readonly #clients = new Set<DapClient>();
   readonly #clientUnsubscribers = new Map<DapClient, ReadonlyArray<() => void>>();
-  readonly #dataAccess: NodeDebugDataAccess;
+  readonly #clientRoles = new Map<DapClient, 'primary' | 'child' | 'auxiliary'>();
+  readonly #dataAccess: DapDataAccess;
   readonly #breakpointsByPath = new Map<string, ReadonlyArray<DebugBreakpoint>>();
+  #functionBreakpoints: ReadonlyArray<DebugBreakpoint> = [];
+  #dataBreakpoints: ReadonlyArray<DebugBreakpoint> = [];
   readonly #entryBootstrappedClients = new Set<DapClient>();
   readonly #unsubscribeExit: () => void;
+  #debuggeeProcessId: number | undefined;
+  readonly #terminateDebuggeeOnDisconnect = new Map<DapClient, boolean>();
 
   private constructor(
-    private readonly process: NodeDebugAdapterProcess,
+    private readonly process: JavaScriptDebugAdapterProcess,
     private readonly workspaceRoot: string,
+    private readonly dapInitializeArguments: Readonly<Record<string, unknown>>,
+    private readonly applyExceptionPolicy: (
+      client: DapClient,
+      policy: DebugExceptionPolicy,
+    ) => Promise<void>,
     public readonly capabilities: DebugAdapterCapabilities,
     sensitiveValues: ReadonlyArray<string>,
     breakpoints: ReadonlyArray<DebugBreakpoint>,
-    private exceptionPauseMode: DebugExceptionPauseMode,
+    private exceptionPolicy: DebugExceptionPolicy,
+    terminateDebuggeeOnDisconnect: boolean,
   ) {
-    this.#dataAccess = new NodeDebugDataAccess(
+    this.#dataAccess = new DapDataAccess(
       process.client,
       () => this.#clients,
       workspaceRoot,
       sensitiveValues,
     );
-    this.#redactors = Object.fromEntries(
-      outputCategories.map((category) => [category, new StreamingSecretRedactor(sensitiveValues)]),
-    ) as Readonly<Record<OutputCategory, StreamingSecretRedactor>>;
-    for (const path of new Set(breakpoints.map((item) => item.relativePath))) {
+    this.#redactors = createOutputRedactors(sensitiveValues);
+    this.#functionBreakpoints = breakpoints.filter((item) => item.kind === 'function');
+    this.#dataBreakpoints = breakpoints.filter((item) => item.kind === 'data');
+    for (const path of new Set(
+      breakpoints.filter((item) => item.kind === 'line').map((item) => item.relativePath),
+    )) {
       this.#breakpointsByPath.set(
         path,
-        breakpoints.filter((item) => item.relativePath === path),
+        breakpoints.filter((item) => item.kind === 'line' && item.relativePath === path),
       );
     }
-    this.attachClient(process.client);
+    this.attachClient(process.client, terminateDebuggeeOnDisconnect, 'primary');
     this.#unsubscribeExit = process.onExit(() => this.emit({ type: 'terminated', restart: false }));
   }
 
   public static async create(
     input: CreateNodeDebugAdapterSessionInput,
   ): Promise<NodeDebugAdapterSession> {
-    const initializedEvent = input.process.client.waitForEvent('initialized');
-    const initializeBody = await input.process.client.request<unknown>(
-      'initialize',
-      initializeArguments,
-    );
-    const session = new NodeDebugAdapterSession(
-      input.process,
-      input.workspaceRoot,
-      mapCapabilities(initializeBody),
-      input.sensitiveValues,
-      input.breakpoints,
-      input.exceptionPauseMode,
-    );
-    await initializedEvent;
-    const launchPromise = input.process.client.request<unknown>(
-      'launch',
-      createLaunchArguments(input.command, input.workspaceRoot, input.environment),
-      60_000,
-    );
+    const dapInitializeArguments = input.initializeArguments ?? initializeArguments;
+    const applyExceptionPolicy = input.applyExceptionPolicy ?? setNodeExceptionBreakpoints;
+    const initializedEvent = input.process.client.waitForEvent('initialized', 60_000);
+    void initializedEvent.catch(() => undefined);
+    let session: NodeDebugAdapterSession | undefined;
     try {
-      for (const path of new Set(input.breakpoints.map((item) => item.relativePath))) {
+      const initializeBody = await input.process.client.request<unknown>(
+        'initialize',
+        dapInitializeArguments,
+        60_000,
+      );
+      session = new NodeDebugAdapterSession(
+        input.process,
+        input.workspaceRoot,
+        dapInitializeArguments,
+        applyExceptionPolicy,
+        mapCapabilities(initializeBody),
+        input.sensitiveValues,
+        input.breakpoints,
+        input.exceptionPolicy,
+        input.terminateDebuggeeOnDisconnect ?? true,
+      );
+      await initializedEvent;
+      const launchPromise = input.process.client.request<unknown>(
+        input.requestCommand ?? 'launch',
+        input.launchArguments ??
+          createLaunchArguments(input.command, input.workspaceRoot, input.environment),
+        60_000,
+      );
+      void launchPromise.catch(() => undefined);
+      for (const path of new Set(
+        input.breakpoints.filter((item) => item.kind === 'line').map((item) => item.relativePath),
+      )) {
         await session.setBreakpoints(
           path,
           input.breakpoints.filter((item) => item.relativePath === path),
         );
       }
-      await setNodeExceptionBreakpoints(input.process.client, input.exceptionPauseMode);
+      await session.setFunctionBreakpoints(
+        input.breakpoints.filter((item) => item.kind === 'function'),
+      );
+      await session.setDataBreakpoints(input.breakpoints.filter((item) => item.kind === 'data'));
+      await applyExceptionPolicy(input.process.client, input.exceptionPolicy);
       await input.process.client.request('configurationDone');
       await launchPromise;
       return session;
     } catch (error) {
-      await session.disconnect();
+      if (session === undefined) await input.process.dispose();
+      else await session.disconnect();
       throw error;
     }
   }
 
   public get processId(): number {
-    return this.process.processId;
+    return this.#debuggeeProcessId ?? this.process.processId;
   }
 
   public subscribe(listener: (event: DebugAdapterEvent) => void): () => void {
@@ -129,47 +158,46 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
   }
 
   public continue(threadId: number): Promise<void> {
-    return this.#dataAccess.threadClient(threadId).request('continue', { threadId });
+    return this.#dataAccess.threadClient(threadId).request('continue', {
+      threadId: this.#dataAccess.threadAdapterId(threadId),
+    });
   }
-
   public pause(threadId: number): Promise<void> {
-    return this.#dataAccess.threadClient(threadId).request('pause', { threadId });
+    return this.#dataAccess.threadClient(threadId).request('pause', {
+      threadId: this.#dataAccess.threadAdapterId(threadId),
+    });
   }
-
   public next(threadId: number): Promise<void> {
-    return this.#dataAccess
-      .threadClient(threadId)
-      .request('next', { threadId, granularity: 'statement' });
+    return this.#dataAccess.threadClient(threadId).request('next', {
+      threadId: this.#dataAccess.threadAdapterId(threadId),
+      granularity: 'statement',
+    });
   }
-
   public stepIn(threadId: number): Promise<void> {
-    return this.#dataAccess
-      .threadClient(threadId)
-      .request('stepIn', { threadId, granularity: 'statement' });
+    return this.#dataAccess.threadClient(threadId).request('stepIn', {
+      threadId: this.#dataAccess.threadAdapterId(threadId),
+      granularity: 'statement',
+    });
   }
-
   public stepOut(threadId: number): Promise<void> {
-    return this.#dataAccess
-      .threadClient(threadId)
-      .request('stepOut', { threadId, granularity: 'statement' });
+    return this.#dataAccess.threadClient(threadId).request('stepOut', {
+      threadId: this.#dataAccess.threadAdapterId(threadId),
+      granularity: 'statement',
+    });
   }
 
   public threads(): Promise<ReadonlyArray<DebugThread>> {
     return this.#dataAccess.threads();
   }
-
   public stackTrace(threadId: number): Promise<ReadonlyArray<DebugStackFrame>> {
     return this.#dataAccess.stackTrace(threadId);
   }
-
   public scopes(frameId: number): Promise<ReadonlyArray<DebugScope>> {
     return this.#dataAccess.scopes(frameId);
   }
-
   public variables(reference: number): Promise<ReadonlyArray<DebugVariable>> {
     return this.#dataAccess.variables(reference);
   }
-
   public async evaluate(
     expression: string,
     frameId: number | undefined,
@@ -187,49 +215,48 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
     breakpoints: ReadonlyArray<DebugBreakpoint>,
   ): Promise<ReadonlyArray<DebugBreakpoint>> {
     this.#breakpointsByPath.set(relativePath, [...breakpoints]);
-    return this.sendBreakpoints(this.process.client, relativePath, breakpoints);
+    const results = await Promise.all(
+      [...this.#clients].map((client) =>
+        sendNodeBreakpoints(client, this.workspaceRoot, relativePath, breakpoints),
+      ),
+    );
+    return results[0] ?? breakpoints;
   }
 
-  private async sendBreakpoints(
-    client: DapClient,
-    relativePath: string,
+  public async setFunctionBreakpoints(
     breakpoints: ReadonlyArray<DebugBreakpoint>,
   ): Promise<ReadonlyArray<DebugBreakpoint>> {
-    const enabled = breakpoints.filter((item) => item.enabled);
-    const body = asRecord(
-      await client.request<unknown>('setBreakpoints', {
-        source: { path: toPlatformPath(this.workspaceRoot, relativePath) },
-        breakpoints: enabled.map((item) => ({
-          line: item.line,
-          ...(item.column === undefined ? {} : { column: item.column }),
-          ...(item.condition === undefined ? {} : { condition: item.condition }),
-          ...(item.hitCondition === undefined ? {} : { hitCondition: item.hitCondition }),
-          ...(item.logMessage === undefined ? {} : { logMessage: item.logMessage }),
-        })),
-        sourceModified: false,
-      }),
+    this.#functionBreakpoints = [...breakpoints];
+    const results = await Promise.all(
+      [...this.#clients].map((client) =>
+        setDapSpecialBreakpoints(
+          client,
+          'function',
+          breakpoints,
+          this.capabilities.functionBreakpoints,
+        ),
+      ),
     );
-    const results = asArray(body.breakpoints);
-    let enabledIndex = 0;
-    return breakpoints.map((item) => {
-      if (!item.enabled) return { ...item, status: 'disabled' };
-      const result = asRecord(results[enabledIndex++]);
-      const adapterBreakpointId = numberValue(result, 'id');
-      const message = stringValue(result, 'message');
-      return {
-        ...item,
-        status: booleanValue(result, 'verified') === true ? 'verified' : 'unverified',
-        ...(adapterBreakpointId === undefined ? {} : { adapterBreakpointId }),
-        ...(message === undefined ? {} : { message }),
-      };
-    });
+    return results[0] ?? breakpoints;
   }
 
-  public async setExceptionBreakpoints(mode: DebugExceptionPauseMode): Promise<void> {
-    await Promise.all(
-      [...this.#clients].map((client) => setNodeExceptionBreakpoints(client, mode)),
+  public async setDataBreakpoints(
+    breakpoints: ReadonlyArray<DebugBreakpoint>,
+  ): Promise<ReadonlyArray<DebugBreakpoint>> {
+    this.#dataBreakpoints = [...breakpoints];
+    const results = await Promise.all(
+      [...this.#clients].map((client) =>
+        setDapSpecialBreakpoints(client, 'data', breakpoints, this.capabilities.dataBreakpoints),
+      ),
     );
-    this.exceptionPauseMode = mode;
+    return results[0] ?? breakpoints;
+  }
+
+  public async setExceptionBreakpoints(policy: DebugExceptionPolicy): Promise<void> {
+    await Promise.all(
+      [...this.#clients].map((client) => this.applyExceptionPolicy(client, policy)),
+    );
+    this.exceptionPolicy = policy;
   }
 
   public async runToCursor(
@@ -239,16 +266,50 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
     column?: number,
   ): Promise<void> {
     const client = this.#dataAccess.threadClient(threadId);
-    const body = asRecord(
-      await client.request<unknown>('gotoTargets', {
-        source: { path: toPlatformPath(this.workspaceRoot, relativePath) },
-        line,
-        ...(column === undefined ? {} : { column }),
-      }),
+    await runNodeToCursor(
+      client,
+      this.workspaceRoot,
+      this.#dataAccess.threadAdapterId(threadId),
+      relativePath,
+      line,
+      column,
     );
-    const targetId = numberValue(asRecord(asArray(body.targets)[0]), 'id');
-    if (targetId === undefined) throw new Error('当前光标位置没有可执行的调试目标。');
-    await client.request('goto', { threadId, targetId });
+  }
+
+  public async attachAdditionalClient(input: AdditionalJavaScriptDebugSessionInput): Promise<void> {
+    const client = await this.process.connectClient();
+    const applyExceptionPolicy = input.applyExceptionPolicy ?? this.applyExceptionPolicy;
+    this.attachClient(client, input.terminateDebuggeeOnDisconnect ?? false, 'auxiliary');
+    try {
+      const initializedEvent = client.waitForEvent('initialized', 60_000);
+      void initializedEvent.catch(() => undefined);
+      await client.request('initialize', input.initializeArguments, 60_000);
+      await initializedEvent;
+      const launchPromise = client.request(input.requestCommand, input.launchArguments, 60_000);
+      void launchPromise.catch(() => undefined);
+      for (const [relativePath, breakpoints] of this.#breakpointsByPath) {
+        await sendNodeBreakpoints(client, this.workspaceRoot, relativePath, breakpoints);
+      }
+      await setDapSpecialBreakpoints(
+        client,
+        'function',
+        this.#functionBreakpoints,
+        this.capabilities.functionBreakpoints,
+      );
+      await setDapSpecialBreakpoints(
+        client,
+        'data',
+        this.#dataBreakpoints,
+        this.capabilities.dataBreakpoints,
+      );
+      await applyExceptionPolicy(client, this.exceptionPolicy);
+      await client.request('configurationDone');
+      await launchPromise;
+    } catch (error) {
+      this.detachClient(client);
+      client.dispose();
+      throw error;
+    }
   }
 
   public async restart(): Promise<void> {
@@ -260,7 +321,11 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
       [...this.#clients].map((client) =>
         client.request(
           'disconnect',
-          { restart: false, terminateDebuggee: true, suspendDebuggee: false },
+          {
+            restart: false,
+            terminateDebuggee: this.#terminateDebuggeeOnDisconnect.get(client) ?? false,
+            suspendDebuggee: false,
+          },
           3_000,
         ),
       ),
@@ -270,19 +335,35 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
       disposers.forEach((dispose) => dispose());
     this.#clientUnsubscribers.clear();
     this.#clients.clear();
+    this.#clientRoles.clear();
+    this.#terminateDebuggeeOnDisconnect.clear();
     this.#unsubscribeExit();
     this.#listeners.clear();
     await this.process.dispose();
   }
 
-  private attachClient(client: DapClient): void {
+  private attachClient(
+    client: DapClient,
+    terminateDebuggeeOnDisconnect: boolean,
+    role: 'primary' | 'child' | 'auxiliary',
+  ): void {
     this.#clients.add(client);
+    this.#clientRoles.set(client, role);
+    this.#terminateDebuggeeOnDisconnect.set(client, terminateDebuggeeOnDisconnect);
     this.#clientUnsubscribers.set(client, [
       client.onEvent((event) => this.handleEvent(client, event)),
       client.onReverseRequest((command, argumentsValue) =>
         this.handleReverseRequest(command, argumentsValue),
       ),
     ]);
+  }
+
+  private detachClient(client: DapClient): void {
+    this.#clientUnsubscribers.get(client)?.forEach((dispose) => dispose());
+    this.#clientUnsubscribers.delete(client);
+    this.#clientRoles.delete(client);
+    this.#terminateDebuggeeOnDisconnect.delete(client);
+    this.#clients.delete(client);
   }
 
   private async handleReverseRequest(command: string, argumentsValue: unknown): Promise<unknown> {
@@ -296,15 +377,30 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
       throw new Error('调试器请求了无效的子会话类型。');
     }
     const client = await this.process.connectClient();
-    this.attachClient(client);
-    const initializedEvent = client.waitForEvent('initialized');
-    await client.request('initialize', initializeArguments);
+    this.attachClient(client, true, 'child');
+    const initializedEvent = client.waitForEvent('initialized', 60_000);
+    void initializedEvent.catch(() => undefined);
+    await client.request('initialize', this.dapInitializeArguments, 60_000);
     await initializedEvent;
-    const launchPromise = client.request('launch', configuration, 60_000);
+    const requestCommand = stringValue(request, 'request') as 'launch' | 'attach';
+    const launchPromise = client.request(requestCommand, configuration, 60_000);
+    void launchPromise.catch(() => undefined);
     for (const [relativePath, breakpoints] of this.#breakpointsByPath) {
-      await this.sendBreakpoints(client, relativePath, breakpoints);
+      await sendNodeBreakpoints(client, this.workspaceRoot, relativePath, breakpoints);
     }
-    await setNodeExceptionBreakpoints(client, this.exceptionPauseMode);
+    await setDapSpecialBreakpoints(
+      client,
+      'function',
+      this.#functionBreakpoints,
+      this.capabilities.functionBreakpoints,
+    );
+    await setDapSpecialBreakpoints(
+      client,
+      'data',
+      this.#dataBreakpoints,
+      this.capabilities.dataBreakpoints,
+    );
+    await this.applyExceptionPolicy(client, this.exceptionPolicy);
     await client.request('configurationDone');
     await launchPromise;
     return {};
@@ -312,7 +408,11 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
 
   private handleEvent(client: DapClient, event: DapEventMessage): void {
     const body = asRecord(event.body);
-    if (event.event === 'output') {
+    if (event.event === 'process') {
+      if (this.#clientRoles.get(client) !== 'auxiliary') {
+        this.#debuggeeProcessId = numberValue(body, 'systemProcessId');
+      }
+    } else if (event.event === 'output') {
       const rawCategory = stringValue(body, 'category');
       const category = outputCategories.find((value) => value === rawCategory) ?? 'console';
       const data = this.#redactors[category].push(stringValue(body, 'output') ?? '');
@@ -320,61 +420,61 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
     } else if (event.event === 'stopped') {
       const threadId = numberValue(body, 'threadId');
       if (threadId !== undefined) {
-        this.#dataAccess.rememberThread(threadId, client);
+        const publicThreadId = this.#dataAccess.rememberThread(threadId, client);
         if (
           stringValue(body, 'reason') === 'entry' &&
           !this.#entryBootstrappedClients.has(client)
         ) {
           this.#entryBootstrappedClients.add(client);
-          void this.installBreakpointsAndContinue(client, threadId);
+          void this.installBreakpointsAndContinue(client, threadId, publicThreadId);
           return;
         }
         const description = stringValue(body, 'description');
         this.emit({
           type: 'stopped',
-          threadId,
+          threadId: publicThreadId,
           reason: stringValue(body, 'reason') ?? 'pause',
           ...(description === undefined ? {} : { description }),
         });
       }
     } else if (event.event === 'continued') {
       const threadId = numberValue(body, 'threadId');
-      this.emit({ type: 'continued', ...(threadId === undefined ? {} : { threadId }) });
+      const publicThreadId =
+        threadId === undefined ? undefined : this.#dataAccess.rememberThread(threadId, client);
+      this.emit({
+        type: 'continued',
+        ...(publicThreadId === undefined ? {} : { threadId: publicThreadId }),
+      });
     } else if (event.event === 'terminated' || event.event === 'exited') {
       this.flushOutput();
-      this.emit({ type: 'terminated', restart: booleanValue(body, 'restart') ?? false });
+      if (this.#clientRoles.get(client) !== 'auxiliary') {
+        this.emit({ type: 'terminated', restart: booleanValue(body, 'restart') ?? false });
+      } else {
+        this.emit({
+          type: 'output',
+          category: 'telemetry',
+          data: 'Electron renderer debug target disconnected.\n',
+        });
+      }
     } else if (event.event === 'breakpoint') {
-      this.emitBreakpoint(asRecord(body.breakpoint));
+      this.emit(dapBreakpointEvent(asRecord(body.breakpoint)));
     }
   }
 
-  private emitBreakpoint(value: Readonly<Record<string, unknown>>): void {
-    const adapterBreakpointId = numberValue(value, 'id');
-    const message = stringValue(value, 'message');
-    const line = numberValue(value, 'line');
-    const column = numberValue(value, 'column');
-    const sourcePath = stringValue(asRecord(value.source), 'path');
-    this.emit({
-      type: 'breakpoint',
-      ...(adapterBreakpointId === undefined ? {} : { adapterBreakpointId }),
-      verified: booleanValue(value, 'verified') ?? false,
-      ...(message === undefined ? {} : { message }),
-      ...(line === undefined ? {} : { line }),
-      ...(column === undefined ? {} : { column }),
-      ...(sourcePath === undefined ? {} : { sourcePath }),
-    });
-  }
-
-  private async installBreakpointsAndContinue(client: DapClient, threadId: number): Promise<void> {
+  private async installBreakpointsAndContinue(
+    client: DapClient,
+    threadId: number,
+    publicThreadId: number,
+  ): Promise<void> {
     try {
       for (const [relativePath, breakpoints] of this.#breakpointsByPath) {
-        await this.sendBreakpoints(client, relativePath, breakpoints);
+        await sendNodeBreakpoints(client, this.workspaceRoot, relativePath, breakpoints);
       }
       await client.request('continue', { threadId });
     } catch (error) {
       this.emit({
         type: 'stopped',
-        threadId,
+        threadId: publicThreadId,
         reason: 'entry',
         description:
           error instanceof Error ? `断点初始化失败：${error.message}` : '断点初始化失败。',

@@ -37,13 +37,10 @@ export class WorkspaceService {
   }
 
   public async getById(workspaceId: string): Promise<WorkspaceInfo> {
-    const workspace =
-      this.currentWorkspace?.id === workspaceId
-        ? this.currentWorkspace
-        : this.repository.findById(workspaceId);
+    const workspace = this.currentWorkspace;
 
-    if (workspace === null) {
-      throw new Error('工作区不存在或尚未打开。');
+    if (workspace === null || workspace.id !== workspaceId) {
+      throw new Error('The requested workspace is not the active workspace.');
     }
 
     const canonicalPath = await realpath(workspace.rootPath);

@@ -2,13 +2,12 @@ import { randomUUID } from 'node:crypto';
 
 import { AgentStateMachine } from '@open-code-desk/application';
 import type { ConversationMessage, MessageToolCall } from '@open-code-desk/domain';
-import type { ChatStreamEvent, ChatToolCall } from '@open-code-desk/provider-core';
+import type { ChatToolCall } from '@open-code-desk/provider-core';
 import {
   DefaultPermissionPolicy,
   ToolDispatcher,
   type PermissionPolicy,
   type ToolRegistry,
-  type ToolResult,
 } from '@open-code-desk/tool-core';
 
 import type { ConversationRepository } from '../conversations/conversation.repository';
@@ -21,12 +20,14 @@ import type { ProviderService } from '../providers/provider.service';
 import type { AgentTaskRepository } from './agent-task.repository';
 import { AgentTaskPlan } from './agent-task-plan';
 import {
+  addToolResultMessage,
+  consumeProviderEvent,
   maximumAgentRounds,
   maximumToolCalls,
   parseToolArguments,
   previewOf,
   rejectedToolErrorCodes,
-  stringifyToolResult,
+  toolResultStatus,
   unexpectedError,
   type AccumulatedResponse,
 } from './agent-run-support';
@@ -188,7 +189,7 @@ export class AgentService {
           profile.maxOutputTokens,
         );
         for await (const event of stream) {
-          this.consumeProviderEvent(event, activeAssistantMessage.id, response, emit);
+          consumeProviderEvent(event, activeAssistantMessage.id, response, emit);
         }
 
         const modelToolCalls: ReadonlyArray<ChatToolCall> = [...response.toolCalls.entries()].map(
@@ -296,29 +297,6 @@ export class AgentService {
     emit(event);
   }
 
-  private consumeProviderEvent(
-    event: ChatStreamEvent,
-    messageId: string,
-    response: AccumulatedResponse,
-    emit: AgentEventListener,
-  ): void {
-    if (event.type === 'text_delta') {
-      response.content += event.delta;
-      emit({ type: 'text_delta', messageId, delta: event.delta });
-    } else if (event.type === 'reasoning_delta') {
-      response.reasoning += event.delta;
-      emit({ type: 'reasoning_delta', messageId, delta: event.delta });
-    } else if (event.type === 'tool_call_start') {
-      response.toolCalls.set(event.callId, { name: event.name, arguments: '' });
-    } else if (event.type === 'tool_call_delta') {
-      const current = response.toolCalls.get(event.callId) ?? { name: '', arguments: '' };
-      current.arguments += event.argumentsDelta;
-      response.toolCalls.set(event.callId, current);
-    } else if (event.type === 'usage') {
-      emit({ type: 'usage', messageId, usage: event.usage });
-    }
-  }
-
   private async executeToolCall(
     input: AgentRunInput,
     taskId: string,
@@ -355,7 +333,10 @@ export class AgentService {
         status: 'rejected',
         error,
       });
-      this.addToolResult(input.conversationId, modelToolCall.id, { ok: false, error });
+      addToolResultMessage(this.conversations, input.conversationId, modelToolCall.id, {
+        ok: false,
+        error,
+      });
       return;
     }
 
@@ -393,29 +374,9 @@ export class AgentService {
       callId,
       modelCallId: modelToolCall.id,
       name: modelToolCall.name,
-      status: result.ok
-        ? 'completed'
-        : result.error.code === 'CANCELLED'
-          ? 'cancelled'
-          : rejectedToolErrorCodes.has(result.error.code) ||
-              result.error.code === 'TOOL_APPROVAL_REJECTED'
-            ? 'rejected'
-            : 'failed',
+      status: toolResultStatus(result),
       ...(result.ok ? { outputPreview: previewOf(result) } : { error: result.error }),
     });
-    this.addToolResult(input.conversationId, modelToolCall.id, result);
-  }
-
-  private addToolResult(
-    conversationId: string,
-    modelCallId: string,
-    result: ToolResult<unknown>,
-  ): void {
-    this.conversations.addMessage({
-      conversationId,
-      role: 'tool',
-      content: stringifyToolResult(result),
-      toolCallId: modelCallId,
-    });
+    addToolResultMessage(this.conversations, input.conversationId, modelToolCall.id, result);
   }
 }

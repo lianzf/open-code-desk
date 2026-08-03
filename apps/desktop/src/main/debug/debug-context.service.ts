@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 import type {
   DebugContextSection,
@@ -18,7 +18,13 @@ import type { ConversationRepository } from '../conversations/conversation.repos
 import type { ContextItemService } from '../context/context-item.service';
 import type { WorkspaceFileService } from '../filesystem/workspace-file.service';
 import type { GitService } from '../git/git.service';
-import { isSensitiveName, redactSensitiveText } from '../security/sensitive-text';
+import { isSensitiveName } from '../security/sensitive-text';
+import {
+  debugContextText,
+  safeDebugContextError,
+  safePauseFingerprint,
+  sha256,
+} from './debug-context-locale';
 import type { DebugSessionRepository } from './debug-session.repository';
 import type { DebugSessionService } from './debug-session.service';
 import {
@@ -38,17 +44,11 @@ type PausedDebugSession = DebugSession & { readonly pause: NonNullable<DebugSess
 interface CachedSnapshot {
   readonly snapshot: DebugContextSnapshot;
   readonly expiresAtMs: number;
+  readonly locale: PreviewDebugContextRequest['locale'];
 }
 
 const snapshotTtlMs = 10 * 60 * 1_000;
 const maximumSnapshots = 50;
-const modelPrompt =
-  '请分析我刚刚明确附加的调试上下文，定位根因，并按需读取相关工作区文件。请先说明判断依据；如需修复，只能通过文件变更工具生成待审核 FileChange 和 Diff，不要直接写入文件，不要自动重新启动调试，也不要执行未获批准的命令。';
-
-function sha256(value: unknown): string {
-  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
-}
-
 export class DebugContextService {
   readonly #cache = new Map<string, CachedSnapshot>();
 
@@ -72,7 +72,7 @@ export class DebugContextService {
       throw new Error('调试上下文只能发送到同一工作区的会话。');
     }
 
-    const sections = await this.collectSections(session, input.conversationId);
+    const sections = await this.collectSections(session, input.conversationId, input.locale);
     const createdAt = new Date();
     const pauseFingerprint = safePauseFingerprint(session);
     const digest = sha256({
@@ -94,7 +94,11 @@ export class DebugContextService {
       createdAt: createdAt.toISOString(),
       expiresAt: new Date(createdAt.getTime() + snapshotTtlMs).toISOString(),
     };
-    this.#cache.set(snapshot.id, { snapshot, expiresAtMs: createdAt.getTime() + snapshotTtlMs });
+    this.#cache.set(snapshot.id, {
+      snapshot,
+      expiresAtMs: createdAt.getTime() + snapshotTtlMs,
+      locale: input.locale,
+    });
     this.pruneCache();
     return snapshot;
   }
@@ -104,6 +108,8 @@ export class DebugContextService {
     const cached = this.#cache.get(input.snapshotId);
     if (cached === undefined) throw new Error('调试上下文预览已过期，请重新收集。');
     const snapshot = cached.snapshot;
+    const locale = cached.locale;
+    const text = debugContextText[locale];
     if (snapshot.digest !== input.expectedDigest)
       throw new Error('调试上下文预览已变化，请重新审核。');
     if (snapshot.conversationId !== input.conversationId) {
@@ -120,8 +126,8 @@ export class DebugContextService {
     const contextItem = this.contextItems.save({
       conversationId: input.conversationId,
       type: 'diagnostic',
-      title: `调试快照 · ${new Date(snapshot.createdAt).toLocaleString('zh-CN')}`,
-      content: composeDebugContext(sections),
+      title: `${text.snapshot} · ${new Date(snapshot.createdAt).toLocaleString(locale)}`,
+      content: composeDebugContext(sections, locale),
       priority: 95,
       sourceKey: `debug:${snapshot.sessionId}`,
     });
@@ -133,7 +139,7 @@ export class DebugContextService {
       category: 'security',
       action: 'debug.context.attach',
       outcome: 'succeeded',
-      summary: '用户审核并附加了已脱敏的调试上下文。',
+      summary: text.auditSummary,
       metadata: {
         sessionId: snapshot.sessionId,
         sectionCount: sections.length,
@@ -143,62 +149,73 @@ export class DebugContextService {
     return {
       snapshotId: snapshot.id,
       contextItem: { ...contextItem, type: 'diagnostic' },
-      prompt: modelPrompt,
+      prompt: text.modelPrompt,
     };
   }
 
   private async collectSections(
     session: PausedDebugSession,
     conversationId: string,
+    locale: PreviewDebugContextRequest['locale'],
   ): Promise<ReadonlyArray<DebugContextSection>> {
+    const text = debugContextText[locale];
     const pause = session.pause;
     const stack = await this.runtime.stackTrace(session.id, pause.threadId).catch(() => []);
     const frameId = pause.frameId ?? stack[0]?.id;
     const sections: Array<DebugContextSection | null> = [
       section(
         'location',
-        '暂停位置',
+        text.location,
         [
-          `原因：${pause.reason}`,
-          ...(pause.description === undefined ? [] : [`说明：${pause.description}`]),
-          `线程：${pause.threadId}`,
-          `位置：${pause.relativePath ?? '未知'}:${pause.line ?? '未知'}:${pause.column ?? 1}`,
+          `${text.reason}: ${pause.reason}`,
+          ...(pause.description === undefined ? [] : [`${text.description}: ${pause.description}`]),
+          `${text.thread}: ${pause.threadId}`,
+          `${text.position}: ${pause.relativePath ?? text.unknown}:${pause.line ?? text.unknown}:${pause.column ?? 1}`,
         ].join('\n'),
       ),
-      await this.sourceSection(session.workspaceId, pause.relativePath, pause.line),
+      await this.sourceSection(session.workspaceId, pause.relativePath, pause.line, locale),
       pause.exception === undefined
         ? null
         : section(
             'exception',
-            '异常',
+            text.exception,
             [
-              `异常：${pause.exception.typeName ?? pause.exception.exceptionId}`,
+              `${text.exception}: ${pause.exception.typeName ?? pause.exception.exceptionId}`,
               ...(pause.exception.message === undefined
                 ? []
-                : [`消息：${pause.exception.message}`]),
+                : [`${text.message}: ${pause.exception.message}`]),
               ...(pause.exception.description === undefined
                 ? []
-                : [`说明：${pause.exception.description}`]),
+                : [`${text.description}: ${pause.exception.description}`]),
               ...(pause.exception.stackTrace === undefined
                 ? []
-                : [`调用栈：\n${pause.exception.stackTrace}`]),
+                : [`${text.stack}:\n${pause.exception.stackTrace}`]),
             ].join('\n'),
           ),
-      stack.length === 0 ? null : section('stack', '调用栈', formatDebugStack(stack)),
-      await this.variablesSection(session.id, frameId),
-      await this.watchesSection(session.id, session.workspaceId, frameId),
+      stack.length === 0 ? null : section('stack', text.stack, formatDebugStack(stack, locale)),
+      await this.variablesSection(session.id, frameId, locale),
+      await this.watchesSection(session.id, session.workspaceId, frameId, locale),
       session.outputTail.trim() === ''
         ? null
-        : section('console', '调试控制台与程序输出', session.outputTail, 16_000),
-      section('configuration', '运行配置', formatDebugConfiguration(session.command)),
-      await this.gitSection(session.workspaceId),
-      this.changesSection(conversationId),
-      await this.dependenciesSection(session.workspaceId),
+        : section('console', text.console, session.outputTail, 16_000),
+      section(
+        'configuration',
+        text.configuration,
+        formatDebugConfiguration(session.command, locale),
+      ),
+      await this.gitSection(session.workspaceId, locale),
+      this.changesSection(conversationId, locale),
+      await this.dependenciesSection(session.workspaceId, locale),
     ];
     return sections.filter((value): value is DebugContextSection => value !== null);
   }
 
-  private async sourceSection(workspaceId: string, relativePath?: string, line?: number) {
+  private async sourceSection(
+    workspaceId: string,
+    relativePath: string | undefined,
+    line: number | undefined,
+    locale: PreviewDebugContextRequest['locale'],
+  ) {
     if (relativePath === undefined || line === undefined) return null;
     try {
       const file = await this.files.readFile(workspaceId, relativePath);
@@ -209,13 +226,22 @@ export class DebugContextService {
         .slice(start, end)
         .map((value, index) => `${String(start + index + 1).padStart(5, ' ')} ${value}`)
         .join('\n');
-      return section('source', `暂停位置源码 · ${relativePath}`, excerpt, 12_000);
+      return section(
+        'source',
+        `${debugContextText[locale].source} · ${relativePath}`,
+        excerpt,
+        12_000,
+      );
     } catch {
       return null;
     }
   }
 
-  private async variablesSection(sessionId: string, frameId?: number) {
+  private async variablesSection(
+    sessionId: string,
+    frameId: number | undefined,
+    locale: PreviewDebugContextRequest['locale'],
+  ) {
     if (frameId === undefined) return null;
     try {
       const scopes = await this.runtime.scopes(sessionId, frameId);
@@ -233,13 +259,25 @@ export class DebugContextService {
         }
       }
       if (blocks.length === 0) return null;
-      return section('variables', '局部变量与作用域', blocks.join('\n'), 20_000, forcedRedactions);
+      return section(
+        'variables',
+        debugContextText[locale].variables,
+        blocks.join('\n'),
+        20_000,
+        forcedRedactions,
+      );
     } catch {
       return null;
     }
   }
 
-  private async watchesSection(sessionId: string, workspaceId: string, frameId?: number) {
+  private async watchesSection(
+    sessionId: string,
+    workspaceId: string,
+    frameId: number | undefined,
+    locale: PreviewDebugContextRequest['locale'],
+  ) {
+    const text = debugContextText[locale];
     const watches = this.runtime.listWatches({ workspaceId });
     if (watches.length === 0) return null;
     let forcedRedactions = 0;
@@ -256,14 +294,15 @@ export class DebugContextService {
           });
           return `${watch.expression}: ${sensitive ? '[REDACTED]' : result.result}`;
         } catch (error) {
-          return `${watch.expression}: 求值失败（${safeError(error)}）`;
+          return `${watch.expression}: ${text.evaluationFailed} (${safeDebugContextError(error, locale)})`;
         }
       }),
     );
-    return section('watches', '监视表达式', values.join('\n'), 12_000, forcedRedactions);
+    return section('watches', text.watches, values.join('\n'), 12_000, forcedRedactions);
   }
 
-  private async gitSection(workspaceId: string) {
+  private async gitSection(workspaceId: string, locale: PreviewDebugContextRequest['locale']) {
+    const text = debugContextText[locale];
     try {
       const status = await this.git.status(workspaceId);
       if (!status.isRepository || status.clean) return null;
@@ -272,8 +311,8 @@ export class DebugContextService {
         this.git.diff({ workspaceId, staged: true, maxCharacters: 12_000 }),
       ]);
       const content = [
-        unstaged.content === '' ? '' : `## 未暂存\n${unstaged.content}`,
-        staged.content === '' ? '' : `## 已暂存\n${staged.content}`,
+        unstaged.content === '' ? '' : `## ${text.unstaged}\n${unstaged.content}`,
+        staged.content === '' ? '' : `## ${text.staged}\n${staged.content}`,
       ]
         .filter(Boolean)
         .join('\n\n');
@@ -283,7 +322,7 @@ export class DebugContextService {
     }
   }
 
-  private changesSection(conversationId: string) {
+  private changesSection(conversationId: string, locale: PreviewDebugContextRequest['locale']) {
     const aggregates = this.changes.listForConversation(conversationId).slice(0, 5);
     if (aggregates.length === 0) return null;
     const content = aggregates
@@ -297,10 +336,13 @@ export class DebugContextService {
         ].join('\n'),
       )
       .join('\n\n');
-    return section('recent_changes', '最近文件变更', content, 8_000);
+    return section('recent_changes', debugContextText[locale].recentChanges, content, 8_000);
   }
 
-  private async dependenciesSection(workspaceId: string) {
+  private async dependenciesSection(
+    workspaceId: string,
+    locale: PreviewDebugContextRequest['locale'],
+  ) {
     try {
       const file = await this.files.readFile(workspaceId, 'package.json');
       const value: unknown = JSON.parse(file.content);
@@ -310,7 +352,7 @@ export class DebugContextService {
       const lines = groups.flatMap((group) => formatDependencyGroup(group, record[group]));
       return lines.length === 0
         ? null
-        : section('dependencies', '项目依赖', lines.join('\n'), 12_000);
+        : section('dependencies', debugContextText[locale].dependencies, lines.join('\n'), 12_000);
     } catch {
       return null;
     }
@@ -334,12 +376,4 @@ export class DebugContextService {
       this.#cache.delete(oldest);
     }
   }
-}
-
-function safeError(error: unknown): string {
-  return error instanceof Error ? error.message.slice(0, 500) : '未知错误';
-}
-
-function safePauseFingerprint(session: PausedDebugSession): string {
-  return sha256(redactSensitiveText(JSON.stringify(session.pause)));
 }

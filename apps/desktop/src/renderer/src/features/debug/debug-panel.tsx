@@ -3,21 +3,24 @@ import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { useEditorStore } from '@/features/editor/editor.store';
+import { rendererRiskReason } from '@/features/settings/command-risk-i18n';
+import { rendererErrorDetail } from '@/features/settings/error-i18n';
 import { DebugAiAction } from './debug-ai-action';
 import { DebugBreakpointList } from './debug-breakpoint-list';
+import { useDebugTranslation } from './debug-i18n';
 import { DebugSection, VariableList } from './debug-panel.components';
 import { useDebugStore } from './debug.store';
 
 const statusLabels = {
-  pending_approval: '等待批准',
-  starting: '启动中',
-  running: '运行中',
-  paused: '已暂停',
-  stopping: '停止中',
-  stopped: '已停止',
-  completed: '已完成',
-  failed: '失败',
-  rejected: '已拒绝',
+  pending_approval: 'pendingApproval',
+  starting: 'starting',
+  running: 'running',
+  paused: 'paused',
+  stopping: 'stopping',
+  stopped: 'stopped',
+  completed: 'completed',
+  failed: 'failed',
+  rejected: 'rejected',
 } as const;
 
 export function DebugPanel({
@@ -27,6 +30,7 @@ export function DebugPanel({
   readonly workspaceId: string;
   readonly onClose: () => void;
 }) {
+  const { t } = useDebugTranslation();
   const state = useDebugStore();
   const openFileAt = useEditorStore((editor) => editor.openFileAt);
   const [watchDraft, setWatchDraft] = useState('');
@@ -39,20 +43,24 @@ export function DebugPanel({
       (consoleSearch === '' ||
         entry.data.toLocaleLowerCase().includes(consoleSearch.toLocaleLowerCase())),
   );
-  const visibleError = state.errorMessage ?? session?.error?.message;
+  const visibleError =
+    state.errorMessage ??
+    (session?.error === undefined
+      ? undefined
+      : rendererErrorDetail(session.error.message, session.error.code, 'debugOperationFailed'));
 
   return (
     <section
-      className="flex h-72 min-h-0 shrink-0 flex-col border-t border-zinc-800 bg-zinc-950"
+      className="flex h-full min-h-0 flex-col border-t border-zinc-800 bg-zinc-950"
       data-testid="debug-panel"
     >
       <header className="flex h-10 items-center gap-2 border-b border-zinc-800 px-3">
-        <span className="text-xs font-semibold text-zinc-200">调试</span>
+        <span className="text-xs font-semibold text-zinc-200">{t('debug')}</span>
         <span
           className="rounded bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-500"
           data-testid="debug-status"
         >
-          {session === undefined ? '未启动' : statusLabels[session.status]}
+          {session === undefined ? t('notStarted') : t(statusLabels[session.status])}
         </span>
         {session?.pause === undefined ? null : (
           <span
@@ -66,7 +74,7 @@ export function DebugPanel({
               ? ''
               : `：${session.pause.exception.message}`}
             {' · '}
-            {session.pause.relativePath ?? '未知位置'}:{session.pause.line ?? '—'}
+            {session.pause.relativePath ?? t('unknownLocation')}:{session.pause.line ?? '—'}
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
@@ -75,7 +83,7 @@ export function DebugPanel({
             type="button"
             className="rounded p-1 text-zinc-500 hover:bg-zinc-800"
             onClick={onClose}
-            aria-label="关闭调试面板"
+            aria-label={t('closeDebugPanel')}
           >
             <X className="size-3.5" />
           </button>
@@ -86,16 +94,49 @@ export function DebugPanel({
         <div className="flex items-center gap-3 border-b border-cyan-900/50 bg-cyan-950/20 px-3 py-2 text-[11px]">
           <div className="min-w-0 flex-1">
             <p className="text-zinc-300">
-              调试将执行：
-              {[
-                session.command.executable,
-                ...session.command.runtimeArgs,
-                ...session.command.args,
-              ].join(' ')}
+              {session.command.debugAttach === undefined ? (
+                <>
+                  {t('debugWillExecute')}
+                  {[
+                    session.command.executable,
+                    ...(session.command.projectType === 'electron' &&
+                    session.command.port !== undefined
+                      ? [
+                          '--remote-debugging-address=127.0.0.1',
+                          `--remote-debugging-port=${session.command.port}`,
+                        ]
+                      : []),
+                    ...session.command.runtimeArgs,
+                    ...session.command.args,
+                  ].join(' ')}
+                </>
+              ) : (
+                t('debugWillAttach', {
+                  environment: t(
+                    session.command.debugAttach.environment === 'container'
+                      ? 'containerEnvironment'
+                      : 'remoteEnvironment',
+                  ),
+                  host: session.command.debugAttach.host,
+                  port: session.command.debugAttach.port,
+                })
+              )}
             </p>
             <p className="truncate text-zinc-500">
-              批准仅对当前命令摘要生效 · {session.riskReasons.join(' ')}
+              {t('approvalScope', {
+                reasons: session.riskReasons.map(rendererRiskReason).join(' '),
+              })}
             </p>
+            {[
+              [t('preDebugTask'), session.command.preLaunchTaskPlan] as const,
+              [t('postDebugTask'), session.command.postRunTaskPlan] as const,
+            ].map(([label, taskPlan]) =>
+              taskPlan === undefined ? null : (
+                <p key={label} className="truncate text-zinc-500">
+                  {label}：{taskPlan.plan.map((step) => step.taskName).join(' → ')}
+                </p>
+              ),
+            )}
           </div>
           <Button
             size="sm"
@@ -103,7 +144,7 @@ export function DebugPanel({
             onClick={() => void state.decideStart(session.id, 'reject')}
             data-testid="reject-debug"
           >
-            拒绝
+            {t('reject')}
           </Button>
           <Button
             size="sm"
@@ -112,14 +153,14 @@ export function DebugPanel({
             data-testid="approve-debug"
           >
             <Check className="size-3.5" />
-            批准调试
+            {t('approveDebug')}
           </Button>
         </div>
       ) : null}
 
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[240px_320px_1fr]">
         <div className="min-h-0 overflow-auto border-r border-zinc-800">
-          <DebugSection title="线程">
+          <DebugSection title={t('threads')}>
             {state.threads.map((thread) => (
               <button
                 key={thread.id}
@@ -131,7 +172,7 @@ export function DebugPanel({
               </button>
             ))}
           </DebugSection>
-          <DebugSection title="调用栈">
+          <DebugSection title={t('callStack')}>
             {state.stackFrames.map((frame) => (
               <button
                 key={frame.id}
@@ -146,7 +187,7 @@ export function DebugPanel({
               >
                 <span className="block truncate text-[11px] text-zinc-300">{frame.name}</span>
                 <span className="block truncate text-[9px] text-zinc-600">
-                  {frame.relativePath ?? frame.sourceName ?? '内部代码'}:{frame.line}
+                  {frame.relativePath ?? frame.sourceName ?? t('internalCode')}:{frame.line}
                 </span>
               </button>
             ))}
@@ -155,7 +196,7 @@ export function DebugPanel({
         </div>
 
         <div className="min-h-0 overflow-auto border-r border-zinc-800">
-          <DebugSection title="变量">
+          <DebugSection title={t('variables')}>
             {state.scopes.map((scope) => (
               <div key={scope.variablesReference} className="border-b border-zinc-900 pb-1">
                 <p className="px-3 py-1 text-[10px] font-medium text-zinc-500">{scope.name}</p>
@@ -168,7 +209,7 @@ export function DebugPanel({
               </div>
             ))}
           </DebugSection>
-          <DebugSection title="监视">
+          <DebugSection title={t('watches')}>
             <form
               className="flex gap-1 px-2 py-1"
               onSubmit={(event) => {
@@ -180,7 +221,7 @@ export function DebugPanel({
                 className="h-7 min-w-0 flex-1 rounded border border-zinc-800 bg-black px-2 text-[11px] outline-none focus:border-cyan-600"
                 value={watchDraft}
                 onChange={(event) => setWatchDraft(event.target.value)}
-                placeholder="添加表达式"
+                placeholder={t('addExpression')}
                 data-testid="debug-watch-input"
               />
               <Button size="icon" variant="ghost" type="submit" disabled={watchDraft.trim() === ''}>
@@ -194,14 +235,14 @@ export function DebugPanel({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-zinc-300">{watch.expression}</p>
                     <p className="truncate text-zinc-600">
-                      {typeof result === 'string' ? result : (result?.result ?? '未求值')}
+                      {typeof result === 'string' ? result : (result?.result ?? t('notEvaluated'))}
                     </p>
                   </div>
                   <button
                     type="button"
                     className="opacity-0 group-hover:opacity-100"
                     onClick={() => void state.deleteWatch(watch.id)}
-                    aria-label={`删除监视 ${watch.expression}`}
+                    aria-label={t('deleteWatch', { expression: watch.expression })}
                   >
                     <Trash2 className="size-3" />
                   </button>
@@ -213,15 +254,17 @@ export function DebugPanel({
 
         <div className="flex min-h-0 flex-col bg-black">
           <div className="flex h-8 shrink-0 items-center gap-1 border-b border-zinc-800 px-2">
-            <span className="mr-auto text-[10px] font-medium text-zinc-500">调试控制台</span>
+            <span className="mr-auto text-[10px] font-medium text-zinc-500">
+              {t('debugConsole')}
+            </span>
             <label className="flex items-center gap-1 rounded border border-zinc-800 px-1.5 text-zinc-600 focus-within:border-zinc-600">
               <Search className="size-3" />
               <input
                 className="h-5 w-28 bg-transparent text-[9px] text-zinc-300 outline-none"
                 value={consoleSearch}
                 onChange={(event) => setConsoleSearch(event.target.value)}
-                placeholder="搜索输出"
-                aria-label="搜索调试输出"
+                placeholder={t('searchOutput')}
+                aria-label={t('searchDebugOutput')}
               />
             </label>
             <button
@@ -232,8 +275,8 @@ export function DebugPanel({
                   visibleConsoleEntries.map((entry) => entry.data).join(''),
                 )
               }
-              title="复制当前结果"
-              aria-label="复制调试输出"
+              title={t('copyCurrentResult')}
+              aria-label={t('copyDebugOutput')}
             >
               <Copy className="size-3" />
             </button>
@@ -241,8 +284,8 @@ export function DebugPanel({
               type="button"
               className="rounded p-1 text-zinc-600 hover:bg-zinc-900 hover:text-red-300"
               onClick={state.clearConsole}
-              title="清空控制台"
-              aria-label="清空调试控制台"
+              title={t('clearConsole')}
+              aria-label={t('clearDebugConsole')}
             >
               <Trash2 className="size-3" />
             </button>
@@ -276,7 +319,9 @@ export function DebugPanel({
               value={expression}
               onChange={(event) => setExpression(event.target.value)}
               disabled={session?.status !== 'paused'}
-              placeholder={session?.status === 'paused' ? '在当前栈帧求值' : '暂停后可求值'}
+              placeholder={
+                session?.status === 'paused' ? t('evaluateCurrentFrame') : t('pauseToEvaluate')
+              }
               data-testid="debug-console-input"
             />
           </form>
@@ -290,7 +335,7 @@ export function DebugPanel({
         >
           {session?.error === undefined ? '' : `${session.error.code}：`}
           {visibleError}
-          {session?.error?.retryable === true ? ' 可检查配置后重试。' : ''}
+          {session?.error?.retryable === true ? t('retryHint') : ''}
         </p>
       )}
     </section>

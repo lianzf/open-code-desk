@@ -10,6 +10,7 @@ import type {
 } from '../debug-adapter';
 import { NodeDebugAdapterProcess } from './node-debug-adapter-process';
 import { NodeDebugAdapterSession } from './node-debug-adapter-session';
+import { createAttachArguments } from './node-debug-launch';
 
 const supportedProjectTypes = new Set(['node', 'typescript', 'react', 'vue', 'nextjs']);
 
@@ -40,12 +41,21 @@ export class NodeDebugAdapterProvider implements RuntimeDebugAdapterProvider {
     if (!(await this.isAvailable())) {
       errors.push('Node.js 调试适配器资源不可用，请重新安装 OpenCode Desk。');
     }
-    if (configuration.executable.trim() === '') {
+    if (configuration.debugAttach === undefined && configuration.executable.trim() === '') {
       errors.push('运行配置缺少可执行程序。');
     }
+    if (
+      configuration.debugAttach !== undefined &&
+      configuration.debugAttach.adapter !== this.type
+    ) {
+      errors.push(`Node.js 调试适配器不支持 ${configuration.debugAttach.adapter} 附加目标。`);
+    }
     const executableName = basename(configuration.executable).toLocaleLowerCase('en-US');
-    if (!['node', 'node.exe'].includes(executableName)) {
+    if (configuration.debugAttach === undefined && !['node', 'node.exe'].includes(executableName)) {
       warnings.push('该配置将通过自定义运行时启动，调试结果取决于运行时是否创建 Node.js 进程。');
+    }
+    if (configuration.debugAttach !== undefined) {
+      warnings.push('附加调试只连接已有目标；停止调试不会终止远程或容器内进程。');
     }
     return { valid: errors.length === 0, errors, warnings };
   }
@@ -60,6 +70,7 @@ export class NodeDebugAdapterProvider implements RuntimeDebugAdapterProvider {
       serverPath: this.options.serverPath,
       ...(this.options.environment === undefined ? {} : { environment: this.options.environment }),
     });
+    const attaching = input.command.debugAttach !== undefined;
     return NodeDebugAdapterSession.create({
       process,
       workspaceRoot: input.workspaceRoot,
@@ -67,7 +78,14 @@ export class NodeDebugAdapterProvider implements RuntimeDebugAdapterProvider {
       environment: input.environment,
       sensitiveValues: input.sensitiveValues,
       breakpoints: input.breakpoints,
-      exceptionPauseMode: input.exceptionPauseMode,
+      exceptionPolicy: input.exceptionPolicy,
+      ...(attaching
+        ? {
+            requestCommand: 'attach' as const,
+            launchArguments: createAttachArguments(input.command, input.workspaceRoot),
+            terminateDebuggeeOnDisconnect: false,
+          }
+        : {}),
     });
   }
 }

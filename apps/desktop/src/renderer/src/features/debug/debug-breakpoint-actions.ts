@@ -6,7 +6,10 @@ import {
   type DebugStoreGet,
   type DebugStoreSet,
 } from './debug-store.helpers';
-import type { DebugBreakpointDefinition } from './debug-store.types';
+import type {
+  DebugBreakpointDefinition,
+  DebugSpecialBreakpointDefinition,
+} from './debug-store.types';
 
 export async function toggleDebugBreakpoint(
   get: DebugStoreGet,
@@ -23,6 +26,7 @@ export async function toggleDebugBreakpoint(
     if (existing === undefined) {
       const saved = await window.openCodeDesk.debug.saveBreakpoint({
         workspaceId,
+        kind: 'line',
         relativePath,
         line,
         enabled: true,
@@ -57,6 +61,7 @@ export async function saveDebugBreakpointDefinition(
     const saved = await window.openCodeDesk.debug.saveBreakpoint({
       ...(existing === undefined ? {} : { id: existing.id }),
       workspaceId,
+      kind: 'line',
       relativePath: input.relativePath,
       line: input.line,
       ...(input.column === undefined ? {} : { column: input.column }),
@@ -88,9 +93,19 @@ export async function setDebugBreakpointEnabled(
     const saved = await window.openCodeDesk.debug.saveBreakpoint({
       id: existing.id,
       workspaceId,
-      relativePath: existing.relativePath,
-      line: existing.line,
-      ...(existing.column === undefined ? {} : { column: existing.column }),
+      kind: existing.kind,
+      ...(existing.kind === 'line'
+        ? {
+            relativePath: existing.relativePath,
+            line: existing.line,
+            ...(existing.column === undefined ? {} : { column: existing.column }),
+          }
+        : existing.kind === 'function'
+          ? { functionName: existing.functionName! }
+          : {
+              dataId: existing.dataId!,
+              dataAccessType: existing.dataAccessType ?? 'write',
+            }),
       enabled,
       ...(existing.condition === undefined ? {} : { condition: existing.condition }),
       ...(existing.hitCondition === undefined ? {} : { hitCondition: existing.hitCondition }),
@@ -102,6 +117,37 @@ export async function setDebugBreakpointEnabled(
   }
 }
 
+export async function saveDebugSpecialBreakpoint(
+  get: DebugStoreGet,
+  set: DebugStoreSet,
+  input: DebugSpecialBreakpointDefinition,
+): Promise<void> {
+  const workspaceId = get().workspaceId;
+  if (workspaceId === undefined) return;
+  try {
+    const saved = await window.openCodeDesk.debug.saveBreakpoint({
+      ...(input.id === undefined ? {} : { id: input.id }),
+      workspaceId,
+      kind: input.kind,
+      enabled: true,
+      ...(input.kind === 'function'
+        ? { functionName: input.functionName.trim() }
+        : { dataId: input.dataId.trim(), dataAccessType: input.dataAccessType }),
+      ...(trimmed(input.condition) === undefined ? {} : { condition: trimmed(input.condition) }),
+      ...(trimmed(input.hitCondition) === undefined
+        ? {}
+        : { hitCondition: trimmed(input.hitCondition) }),
+    });
+    set((state) => ({
+      breakpoints: mergeDebugBreakpoint(state.breakpoints, saved),
+      errorMessage: undefined,
+    }));
+  } catch (error) {
+    set({ errorMessage: readableDebugError(error) });
+    throw error;
+  }
+}
+
 export async function saveDebugExceptionPauseMode(
   get: DebugStoreGet,
   set: DebugStoreSet,
@@ -109,10 +155,31 @@ export async function saveDebugExceptionPauseMode(
 ): Promise<void> {
   const workspaceId = get().workspaceId;
   if (workspaceId === undefined) return;
+  const current = get().settings;
+  await saveDebugExceptionPolicy(get, set, {
+    exceptionPauseMode,
+    exceptionBreakTypes: current?.exceptionBreakTypes ?? [],
+    exceptionIgnoreTypes: current?.exceptionIgnoreTypes ?? [],
+  });
+}
+
+export async function saveDebugExceptionPolicy(
+  get: DebugStoreGet,
+  set: DebugStoreSet,
+  policy: {
+    readonly exceptionPauseMode: DebugSettings['exceptionPauseMode'];
+    readonly exceptionBreakTypes: ReadonlyArray<string>;
+    readonly exceptionIgnoreTypes: ReadonlyArray<string>;
+  },
+): Promise<void> {
+  const workspaceId = get().workspaceId;
+  if (workspaceId === undefined) return;
   try {
     const settings = await window.openCodeDesk.debug.saveSettings({
       workspaceId,
-      exceptionPauseMode,
+      exceptionPauseMode: policy.exceptionPauseMode,
+      exceptionBreakTypes: [...policy.exceptionBreakTypes],
+      exceptionIgnoreTypes: [...policy.exceptionIgnoreTypes],
     });
     set({ settings, errorMessage: undefined });
   } catch (error) {

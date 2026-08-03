@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import type { CrashReport } from '@open-code-desk/ipc-contracts';
 
 import { translate } from './i18n';
+import { localizeMainProcessError } from './main-process-error-i18n';
 
 interface CrashReportListProps {
   readonly locale: Parameters<typeof translate>[0];
@@ -18,7 +19,12 @@ export function CrashReportList({ locale }: CrashReportListProps) {
       .list({ limit: 10 })
       .then(setReports)
       .catch((error: unknown) => {
-        setErrorMessage(error instanceof Error ? error.message : translate(locale, 'crashReports'));
+        const fallback = translate(locale, 'crashReports');
+        setErrorMessage(
+          error instanceof Error
+            ? localizeMainProcessError(locale, error.message, undefined, fallback)
+            : fallback,
+        );
       });
   }, [locale]);
 
@@ -33,7 +39,12 @@ export function CrashReportList({ locale }: CrashReportListProps) {
         );
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : translate(locale, 'crashReports'));
+      const fallback = translate(locale, 'crashReports');
+      setErrorMessage(
+        error instanceof Error
+          ? localizeMainProcessError(locale, error.message, undefined, fallback)
+          : fallback,
+      );
     }
   };
 

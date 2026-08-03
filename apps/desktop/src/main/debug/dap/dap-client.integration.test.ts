@@ -1,4 +1,5 @@
 import { createServer, type Server, type Socket } from 'node:net';
+import { PassThrough } from 'node:stream';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -96,6 +97,45 @@ describe('DapClient integration', () => {
       success: true,
       body: { accepted: true, argumentsValue: { request: 'launch' } },
     });
+  });
+
+  it('rejects event waiters immediately when the adapter connection closes', async () => {
+    const fixture = await startServer(() => undefined);
+    const client = await DapClient.connect('127.0.0.1', fixture.port);
+    clients.push(client);
+    const waiting = client.waitForEvent('never-arrives', 60_000);
+
+    client.dispose();
+
+    await expect(waiting).rejects.toThrow('调试客户端已关闭');
+  });
+
+  it('supports separate readable and writable streams for stdio adapters', async () => {
+    const adapterToClient = new PassThrough();
+    const clientToAdapter = new PassThrough();
+    const parser = new DapFrameParser();
+    clientToAdapter.on('data', (chunk: Buffer) => {
+      for (const message of parser.push(chunk)) {
+        if (message.type !== 'request') continue;
+        adapterToClient.write(
+          encodeDapMessage({
+            seq: 20,
+            type: 'response',
+            request_seq: message.seq,
+            command: message.command,
+            success: true,
+            body: { transport: 'stdio' },
+          }),
+        );
+      }
+    });
+    const client = DapClient.fromStreams(adapterToClient, clientToAdapter, () => {
+      adapterToClient.destroy();
+      clientToAdapter.destroy();
+    });
+    clients.push(client);
+
+    await expect(client.request('transport')).resolves.toEqual({ transport: 'stdio' });
   });
 });
 

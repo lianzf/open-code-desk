@@ -21,11 +21,11 @@ function assess(executable: string, args: ReadonlyArray<string> = []) {
   });
 }
 
-function rule(value: string): PermissionRule {
+function rule(value: string, kind: PermissionRule['kind'] = 'allow_executable'): PermissionRule {
   return {
     id: 'rule-id',
     workspaceId: 'workspace-id',
-    kind: 'allow_executable',
+    kind,
     value,
     createdAt: new Date(0).toISOString(),
     updatedAt: new Date(0).toISOString(),
@@ -58,13 +58,32 @@ describe('command risk policy', () => {
     });
   });
 
-  it('matches remembered executables only for the exact executable and working directory', () => {
-    const value = executableRuleValue(process.execPath, workspaceRoot);
-    expect(matchesExecutableRule(rule(value), process.execPath, workspaceRoot)).toBe(true);
-    expect(matchesExecutableRule(rule(value), 'another-executable', workspaceRoot)).toBe(false);
-    expect(matchesExecutableRule(rule(value), process.execPath, resolve('other-workspace'))).toBe(
+  it('matches allow rules only for the exact executable, directory, and arguments', () => {
+    const value = executableRuleValue(process.execPath, workspaceRoot, ['--test', 'unit.ts']);
+    expect(
+      matchesExecutableRule(rule(value), process.execPath, workspaceRoot, ['--test', 'unit.ts']),
+    ).toBe(true);
+    expect(
+      matchesExecutableRule(rule(value), process.execPath, workspaceRoot, ['--test', 'other.ts']),
+    ).toBe(false);
+    expect(matchesExecutableRule(rule(value), 'another-executable', workspaceRoot, [])).toBe(false);
+    expect(
+      matchesExecutableRule(rule(value), process.execPath, resolve('other-workspace'), []),
+    ).toBe(false);
+    expect(matchesExecutableRule(rule('{not-json'), process.execPath, workspaceRoot, [])).toBe(
       false,
     );
-    expect(matchesExecutableRule(rule('{not-json'), process.execPath, workspaceRoot)).toBe(false);
+  });
+
+  it('fails closed for legacy allow rules while keeping deny rules broad', () => {
+    const legacyValue = executableRuleValue(process.execPath, workspaceRoot);
+    expect(matchesExecutableRule(rule(legacyValue), process.execPath, workspaceRoot, [])).toBe(
+      false,
+    );
+    expect(
+      matchesExecutableRule(rule(legacyValue, 'deny_executable'), process.execPath, workspaceRoot, [
+        'arbitrary',
+      ]),
+    ).toBe(true);
   });
 });

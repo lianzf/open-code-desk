@@ -1,6 +1,6 @@
 {
   "name": "open-code-desk",
-  "version": "0.6.0-alpha.1",
+  "version": "0.7.0-alpha.1",
   "private": true,
   "description": "A local-first, approval-driven AI coding desktop application.",
   "license": "UNLICENSED",
@@ -9,6 +9,11 @@
     "node": ">=22.12.0 <26"
   },
   "pnpm": {
+    "overrides": {
+      "brace-expansion@<1.1.17": "1.1.17",
+      "brace-expansion@>=2.0.0 <2.1.3": "2.1.3",
+      "dompurify@<=3.4.11": "3.4.12"
+    },
     "onlyBuiltDependencies": [
       "electron",
       "esbuild",
@@ -23,15 +28,28 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "docs:check": "node apps/desktop/scripts/check-documentation.mjs",
     "typecheck": "pnpm -r --if-present typecheck",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=4",
+    "test:integration": "vitest run integration --maxWorkers=4",
+    "test:providers:live": "node apps/desktop/scripts/run-live-provider-acceptance.mjs",
+    "test:performance": "vitest run --config vitest.performance.config.ts",
+    "test:stability": "playwright test --config playwright.stability.config.ts",
     "test:watch": "vitest",
     "test:e2e": "pnpm build && playwright test",
+    "test:e2e:packaged-core": "playwright test tests/e2e/provider-chat.spec.ts tests/e2e/change-review.spec.ts tests/e2e/command-git-context.spec.ts tests/e2e/run-execution.spec.ts tests/e2e/debug-session.spec.ts tests/e2e/python-debug-session.spec.ts tests/e2e/debug-ai-repair.spec.ts tests/e2e/project-tasks.spec.ts tests/e2e/compound-run.spec.ts",
+    "security:secrets": "node apps/desktop/scripts/scan-secrets.mjs --output release/secret-scan.json",
+    "security:dependency-audit": "node apps/desktop/scripts/write-dependency-audit.mjs --output release/dependency-audit.json",
+    "security:licenses": "node apps/desktop/scripts/write-license-audit.mjs --sbom release/open-code-desk.cdx.json --output release/license-audit.json",
     "build": "pnpm -r --if-present build",
     "package:dir": "pnpm --filter @open-code-desk/desktop package:dir",
-    "package:win": "pnpm --filter @open-code-desk/desktop package:win",
-    "package:mac": "pnpm --filter @open-code-desk/desktop package:mac",
-    "package:linux": "pnpm --filter @open-code-desk/desktop package:linux"
+    "package:win": "pnpm --filter @open-code-desk/desktop package:win && node apps/desktop/scripts/verify-packaged-runtime.mjs --platform win32 --release-dir release && pnpm release:metadata && pnpm release:checksums",
+    "package:mac": "pnpm --filter @open-code-desk/desktop package:mac && node apps/desktop/scripts/verify-packaged-runtime.mjs --platform darwin --release-dir release && pnpm release:metadata && pnpm release:checksums",
+    "package:mac:arm64": "pnpm --filter @open-code-desk/desktop package:mac:arm64 && node apps/desktop/scripts/verify-packaged-runtime.mjs --platform darwin --release-dir release --arch arm64 && pnpm release:metadata && pnpm release:checksums",
+    "package:linux": "pnpm --filter @open-code-desk/desktop package:linux && node apps/desktop/scripts/verify-packaged-runtime.mjs --platform linux --release-dir release && pnpm release:metadata && pnpm release:checksums",
+    "release:sbom": "node apps/desktop/scripts/write-sbom.mjs --output release/open-code-desk.cdx.json",
+    "release:metadata": "pnpm security:secrets && pnpm security:dependency-audit && pnpm release:sbom && pnpm security:licenses",
+    "release:checksums": "node apps/desktop/scripts/write-release-checksums.mjs release"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

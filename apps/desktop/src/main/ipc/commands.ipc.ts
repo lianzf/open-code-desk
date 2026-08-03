@@ -74,6 +74,7 @@ export function registerCommandsIpc(
         input.kind,
         input.executable,
         input.cwd,
+        input.args,
       ),
     );
   });

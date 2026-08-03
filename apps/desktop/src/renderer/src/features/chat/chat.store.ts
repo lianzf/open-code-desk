@@ -1,131 +1,22 @@
-import type {
-  AgentTaskCheckpoint,
-  Conversation,
-  ToolCallRecord,
-} from '@open-code-desk/ipc-contracts';
 import { create } from 'zustand';
 
-import { useProviderStore } from '@/features/providers/provider.store';
+import { rendererError, rendererErrorDetail } from '../settings/error-i18n';
+import {
+  type ChatState,
+  type DisplayChatMessage,
+  readableChatError,
+  selectedProviderInput,
+  toToolActivity,
+} from './chat-store-support';
 import { handleStreamEvent, toDisplayMessage } from './chat-stream';
 
-export type ChatMessageStatus = 'complete' | 'streaming' | 'error' | 'cancelled';
-
-export interface DisplayChatMessage {
-  readonly id: string;
-  readonly role: 'user' | 'assistant';
-  readonly content: string;
-  readonly reasoning: string;
-  readonly status: ChatMessageStatus;
-  readonly usage?: {
-    readonly inputTokens: number;
-    readonly outputTokens: number;
-  };
-}
-
-export interface DisplayToolActivity {
-  readonly id: string;
-  readonly name: string;
-  readonly status: ToolCallRecord['status'];
-  readonly input?: unknown;
-  readonly outputPreview?: string;
-  readonly errorMessage?: string;
-  readonly permissionLevel?: ToolCallRecord['permissionLevel'];
-  readonly approvalDigest?: string;
-  readonly approvalReason?: string;
-}
-
-export interface ContextStats {
-  readonly budget: number;
-  readonly usedTokens: number;
-  readonly droppedMessages: number;
-  readonly summarizedMessages: number;
-  readonly selectedContextItems: number;
-  readonly droppedContextItems: number;
-  readonly truncatedContextItems: number;
-}
-
-export interface ChatState {
-  readonly workspaceId: string | undefined;
-  readonly activeRequestId: string | undefined;
-  readonly activeConversationId: string | undefined;
-  readonly agentStatus:
-    | 'idle'
-    | 'analyzing'
-    | 'planning'
-    | 'waiting_for_approval'
-    | 'executing_tool'
-    | 'editing_files'
-    | 'running_tests'
-    | 'completed'
-    | 'failed'
-    | 'cancelled';
-  readonly conversations: ReadonlyArray<Conversation>;
-  readonly conversationQuery: string;
-  readonly contextStats: ContextStats | undefined;
-  readonly taskPlan: AgentTaskCheckpoint | undefined;
-  readonly taskAttempt: number | undefined;
-  readonly errorMessage: string | undefined;
-  readonly messages: ReadonlyArray<DisplayChatMessage>;
-  readonly toolActivity: ReadonlyArray<DisplayToolActivity>;
-  bindStream(): () => void;
-  initialize(workspaceId: string): Promise<void>;
-  newConversation(): Promise<void>;
-  selectConversation(conversationId: string): Promise<void>;
-  renameActive(title: string): Promise<void>;
-  deleteActive(): Promise<void>;
-  exportActive(): Promise<void>;
-  regenerate(): Promise<void>;
-  searchConversations(query: string): Promise<void>;
-  send(content: string): Promise<void>;
-  stop(): Promise<void>;
-}
-
-function readableError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message.replace(/^Error invoking remote method '[^']+': Error: /, '');
-  }
-  return '操作失败，请检查模型配置和网络连接。';
-}
-
-function toToolActivity(toolCall: ToolCallRecord): DisplayToolActivity {
-  let outputPreview: string | undefined;
-  if (toolCall.output !== undefined) {
-    try {
-      outputPreview = JSON.stringify(toolCall.output).slice(0, 2_000);
-    } catch {
-      outputPreview = '工具结果无法显示。';
-    }
-  }
-  return {
-    id: toolCall.id,
-    name: toolCall.toolName,
-    status: toolCall.status,
-    input: toolCall.input,
-    ...(outputPreview === undefined ? {} : { outputPreview }),
-    ...(toolCall.error === undefined ? {} : { errorMessage: toolCall.error.message }),
-    permissionLevel: toolCall.permissionLevel,
-    ...(toolCall.approvalDigest === undefined ? {} : { approvalDigest: toolCall.approvalDigest }),
-  };
-}
-
-function selectedProviderInput(openSettings = false): {
-  readonly providerId: string;
-  readonly model: string;
-} | null {
-  const state = useProviderStore.getState();
-  const providerId = state.selectedProviderId;
-  const configuration = state.configurations.find((item) => item.id === providerId);
-  if (providerId === undefined || configuration === undefined) {
-    if (openSettings) {
-      state.openSettings();
-    }
-    return null;
-  }
-  return {
-    providerId,
-    model: state.selectedModels[providerId] ?? configuration.defaultModel,
-  };
-}
+export type {
+  ChatMessageStatus,
+  ChatState,
+  ContextStats,
+  DisplayChatMessage,
+  DisplayToolActivity,
+} from './chat-store-support';
 
 export const useChatStore = create<ChatState>((set, get) => ({
   workspaceId: undefined,
@@ -188,7 +79,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         await get().selectConversation(first.id);
       }
     } catch (error) {
-      set({ errorMessage: readableError(error) });
+      set({ errorMessage: readableChatError(error) });
     }
   },
 
@@ -209,7 +100,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({ conversationQuery: '' });
       await get().selectConversation(conversation.id);
     } catch (error) {
-      set({ errorMessage: readableError(error) });
+      set({ errorMessage: readableChatError(error) });
     }
   },
 
@@ -229,10 +120,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
         contextStats: undefined,
         taskPlan: detail.latestTask?.checkpoint,
         taskAttempt: detail.latestTask?.attempt,
-        errorMessage: detail.latestTask?.error?.message,
+        errorMessage:
+          detail.latestTask?.error === undefined
+            ? undefined
+            : rendererErrorDetail(
+                detail.latestTask.error.message,
+                detail.latestTask.error.code,
+                'chatOperationFailed',
+              ),
       });
     } catch (error) {
-      set({ errorMessage: readableError(error) });
+      set({ errorMessage: readableChatError(error) });
     }
   },
 
@@ -252,7 +150,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ),
       }));
     } catch (error) {
-      set({ errorMessage: readableError(error) });
+      set({ errorMessage: readableChatError(error) });
     }
   },
 
@@ -286,7 +184,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         await get().selectConversation(next.id);
       }
     } catch (error) {
-      set({ errorMessage: readableError(error) });
+      set({ errorMessage: readableChatError(error) });
     }
   },
 
@@ -298,7 +196,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       await window.openCodeDesk.conversations.exportMarkdown({ conversationId });
     } catch (error) {
-      set({ errorMessage: readableError(error) });
+      set({ errorMessage: readableChatError(error) });
     }
   },
 
@@ -317,7 +215,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     const provider = selectedProviderInput(true);
     if (provider === null) {
-      set({ errorMessage: '请先配置并选择一个模型服务。' });
+      set({ errorMessage: rendererError('selectProvider') });
       return;
     }
     const requestId = crypto.randomUUID();
@@ -347,13 +245,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
         content: text,
       });
       if (response.requestId !== requestId) {
-        throw new Error('主进程返回了不匹配的请求标识。');
+        throw new Error(rendererError('requestIdMismatch'));
       }
     } catch (error) {
       set({
         activeRequestId: undefined,
         agentStatus: 'failed',
-        errorMessage: readableError(error),
+        errorMessage: readableChatError(error),
       });
     }
   },
@@ -391,7 +289,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           : results;
       set({ conversations, conversationQuery: query, errorMessage: undefined });
     } catch (error) {
-      set({ errorMessage: readableError(error) });
+      set({ errorMessage: readableChatError(error) });
     }
   },
 }));

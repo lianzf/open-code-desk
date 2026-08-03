@@ -21,6 +21,7 @@ export interface RunProcessStartSpec {
   readonly resolvedEnvironment?: Readonly<Record<string, string>>;
   /** Exact values that must be removed before output is emitted or retained. */
   readonly sensitiveValues?: ReadonlyArray<string>;
+  readonly port?: number;
 }
 
 export type RunProcessStatus = 'running' | 'stopping';
@@ -38,6 +39,7 @@ export interface RunProcessInfo {
   readonly forwardedOutputBytes: number;
   readonly outputTruncated: boolean;
   readonly outputTail: string;
+  readonly port?: number;
 }
 
 export interface RunProcessExitResult {
@@ -122,6 +124,18 @@ export class RunProcessSupervisor {
     if (this.#seenExecutionIds.has(spec.executionId)) {
       throw new Error(`Run execution ${spec.executionId} has already been used.`);
     }
+    const duplicate = [...this.#runs.values()].find(
+      (run) =>
+        (spec.port !== undefined && run.spec.port === spec.port) ||
+        (run.spec.executable === spec.executable &&
+          run.spec.cwd === spec.cwd &&
+          sameArguments(run.spec.args, spec.args)),
+    );
+    if (duplicate !== undefined) {
+      throw new Error(
+        `The same service is already running as execution ${duplicate.spec.executionId}.`,
+      );
+    }
 
     const command = await resolveStructuredSpawnCommand(spec.executable, spec.args);
     const child = spawn(command.executable, [...command.args], {
@@ -132,12 +146,25 @@ export class RunProcessSupervisor {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
+    // Subscribe immediately after spawn(). Fast local executables can emit
+    // `spawn` before the remaining run bookkeeping has been initialized.
+    const spawned = new Promise<void>((resolve, reject) => {
+      child.once('spawn', resolve);
+      child.once('error', reject);
+    });
     const pid = child.pid;
     if (pid === undefined) {
-      const error = await new Promise<Error>((resolve) => child.once('error', resolve));
-      throw new Error(`Run execution ${spec.executionId} could not start: ${error.message}`, {
-        cause: error,
-      });
+      try {
+        await spawned;
+      } catch (error) {
+        throw new Error(
+          `Run execution ${spec.executionId} could not start: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          { cause: error },
+        );
+      }
+      throw new Error(`Run execution ${spec.executionId} started without a process identifier.`);
     }
 
     let resolveCompletion!: (result: RunProcessExitResult) => void;
@@ -175,10 +202,7 @@ export class RunProcessSupervisor {
     child.once('close', (exitCode, signal) => this.finish(run, exitCode, signal));
 
     try {
-      await new Promise<void>((resolve, reject) => {
-        child.once('spawn', resolve);
-        child.once('error', reject);
-      });
+      await spawned;
     } catch (error) {
       this.finish(run, null, null, error);
       throw new Error(
@@ -326,6 +350,7 @@ export class RunProcessSupervisor {
       outputTruncated:
         run.outputBytes > run.forwardedOutputBytes || run.outputBytes > retainedRunOutputTailBytes,
       outputTail: run.outputTail.toString('utf8'),
+      ...(run.spec.port === undefined ? {} : { port: run.spec.port }),
     };
   }
 
@@ -338,4 +363,8 @@ export class RunProcessSupervisor {
       }
     }
   }
+}
+
+function sameArguments(left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }

@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 
 import { and, asc, eq } from 'drizzle-orm';
-import type { DebugBreakpoint, DebugBreakpointStatus } from '@open-code-desk/domain';
+import type {
+  DebugBreakpoint,
+  DebugBreakpointKind,
+  DebugBreakpointStatus,
+  DebugDataBreakpointAccessType,
+} from '@open-code-desk/domain';
 
 import type { AppDatabase } from '../database/database';
 import { debugBreakpoints } from '../database/schema';
@@ -16,6 +21,10 @@ function toBreakpoint(row: DebugBreakpointRow): DebugBreakpoint {
     line: row.line,
     ...(row.column === 1 ? {} : { column: row.column }),
     enabled: row.enabled,
+    kind: row.kind,
+    ...(row.functionName === null ? {} : { functionName: row.functionName }),
+    ...(row.dataId === null ? {} : { dataId: row.dataId }),
+    ...(row.dataAccessType === null ? {} : { dataAccessType: row.dataAccessType }),
     ...(row.condition === null ? {} : { condition: row.condition }),
     ...(row.hitCondition === null ? {} : { hitCondition: row.hitCondition }),
     ...(row.logMessage === null ? {} : { logMessage: row.logMessage }),
@@ -34,6 +43,10 @@ export interface SaveDebugBreakpointInput {
   readonly line: number;
   readonly column?: number;
   readonly enabled: boolean;
+  readonly kind?: DebugBreakpointKind;
+  readonly functionName?: string;
+  readonly dataId?: string;
+  readonly dataAccessType?: DebugDataBreakpointAccessType;
   readonly condition?: string;
   readonly hitCondition?: string;
   readonly logMessage?: string;
@@ -81,6 +94,10 @@ export class DebugBreakpointRepository {
         line: input.line,
         column: input.column ?? 1,
         enabled: input.enabled,
+        kind: input.kind ?? 'line',
+        functionName: input.functionName ?? null,
+        dataId: input.dataId ?? null,
+        dataAccessType: input.dataAccessType ?? null,
         condition: input.condition ?? null,
         hitCondition: input.hitCondition ?? null,
         logMessage: input.logMessage ?? null,
@@ -97,6 +114,10 @@ export class DebugBreakpointRepository {
           line: input.line,
           column: input.column ?? 1,
           enabled: input.enabled,
+          kind: input.kind ?? 'line',
+          functionName: input.functionName ?? null,
+          dataId: input.dataId ?? null,
+          dataAccessType: input.dataAccessType ?? null,
           condition: input.condition ?? null,
           hitCondition: input.hitCondition ?? null,
           logMessage: input.logMessage ?? null,

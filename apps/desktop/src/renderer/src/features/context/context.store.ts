@@ -4,6 +4,8 @@ import type {
 } from '@open-code-desk/ipc-contracts';
 import { create } from 'zustand';
 
+import { rendererErrorMessage } from '../settings/error-i18n';
+
 type SaveContextInput = Omit<SaveConversationContextRequest, 'conversationId'>;
 
 interface ConversationContextState {
@@ -20,10 +22,7 @@ interface ConversationContextState {
 }
 
 function readableError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message.replace(/^Error invoking remote method '[^']+': Error: /, '');
-  }
-  return '上下文操作失败，请重试。';
+  return rendererErrorMessage(error, 'contextOperationFailed');
 }
 
 function sorted(items: ReadonlyArray<ConversationContextItem>) {

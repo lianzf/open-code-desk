@@ -10,7 +10,9 @@ import {
   debugBreakpointTooltip,
 } from '@/features/debug/debug-breakpoint-format';
 import { useDebugStore } from '@/features/debug/debug.store';
+import { useAppSettingsStore } from '@/features/settings/app-settings.store';
 import { useResolvedTheme } from '@/features/settings/use-resolved-theme';
+import { translateWorkspace } from '@/features/workspace/workspace-i18n';
 import { cn } from '@/lib/utils';
 import { useEditorStore } from './editor.store';
 import './monaco-environment';
@@ -46,6 +48,11 @@ export function EditorWorkbench() {
     readonly title: string;
     readonly sourceKey: string;
   }>();
+  const locale = useAppSettingsStore((state) => state.settings.locale);
+  const t = (
+    key: Parameters<typeof translateWorkspace>[1],
+    values?: Record<string, string | number>,
+  ) => translateWorkspace(locale, key, values);
   const selectedDebugSession = debugSessions.find(
     (session) => session.id === selectedDebugSessionId,
   );
@@ -97,7 +104,7 @@ export function EditorWorkbench() {
           className: 'debug-current-line',
           linesDecorationsClassName: 'debug-current-line-number',
           glyphMarginClassName: 'debug-current-line-glyph',
-          glyphMarginHoverMessage: { value: '当前暂停位置' },
+          glyphMarginHoverMessage: { value: translateWorkspace(locale, 'currentPause') },
         },
       });
       editor.revealLineInCenter(currentLine);
@@ -106,7 +113,14 @@ export function EditorWorkbench() {
     decorationsRef.current?.clear();
     decorationsRef.current = editor.createDecorationsCollection(decorations);
     editor.render(true);
-  }, [activeRelativePath, breakpoints, currentLine, currentRelativePath, editorMountVersion]);
+  }, [
+    activeRelativePath,
+    breakpoints,
+    currentLine,
+    currentRelativePath,
+    editorMountVersion,
+    locale,
+  ]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -131,7 +145,7 @@ export function EditorWorkbench() {
     return (
       <div className="grid h-full place-items-center text-sm text-zinc-500">
         <LoaderCircle className="mb-2 size-5 animate-spin" aria-hidden="true" />
-        正在读取文件…
+        {t('readingFile')}
       </div>
     );
   }
@@ -159,14 +173,14 @@ export function EditorWorkbench() {
                 {dirty ? (
                   <span
                     className="size-1.5 shrink-0 rounded-full bg-cyan-400"
-                    aria-label="未保存"
+                    aria-label={t('unsaved')}
                   />
                 ) : null}
               </button>
               <button
                 className="ml-1 rounded p-0.5 opacity-0 hover:bg-zinc-700 group-hover:opacity-100 focus:opacity-100"
                 onClick={() => closeFile(tab.relativePath)}
-                aria-label={`关闭 ${tab.name}`}
+                aria-label={t('closeFile', { name: tab.name })}
               >
                 <X className="size-3" aria-hidden="true" />
               </button>
@@ -189,11 +203,11 @@ export function EditorWorkbench() {
                 });
               }
             }}
-            title="将当前文件加入 AI 上下文"
+            title={t('addCurrentFileContext')}
             data-testid="add-current-file-context"
           >
             <Paperclip className="size-3.5" />
-            当前文件
+            {t('currentFile')}
           </Button>
           <Button
             size="sm"
@@ -214,11 +228,11 @@ export function EditorWorkbench() {
                 });
               }
             }}
-            title="将选中代码加入 AI 上下文"
+            title={t('addSelectionContext')}
             data-testid="add-selection-context"
           >
             <TextSelect className="size-3.5" />
-            选中代码
+            {t('selectedCode')}
           </Button>
           <Button
             size="sm"
@@ -234,7 +248,7 @@ export function EditorWorkbench() {
             ) : (
               <Save className="size-3.5" />
             )}
-            保存
+            {t('saveFile')}
           </Button>
         </div>
       </div>
@@ -243,10 +257,8 @@ export function EditorWorkbench() {
         <div className="grid flex-1 place-items-center">
           <div className="max-w-sm text-center">
             <FileCode2 className="mx-auto size-9 text-zinc-700" aria-hidden="true" />
-            <p className="mt-4 text-sm text-zinc-400">从左侧文件树打开代码文件</p>
-            <p className="mt-1 text-xs text-zinc-600">
-              文件内容仅在需要时读取，不会一次加载整个项目。
-            </p>
+            <p className="mt-4 text-sm text-zinc-400">{t('openFileHint')}</p>
+            <p className="mt-1 text-xs text-zinc-600">{t('lazyFileHint')}</p>
           </div>
         </div>
       ) : (
@@ -292,7 +304,7 @@ export function EditorWorkbench() {
             });
             editor.addAction({
               id: 'open-code-desk.debug.toggle-breakpoint',
-              label: '切换断点',
+              label: t('toggleBreakpoint'),
               keybindings: [monaco.KeyCode.F9],
               contextMenuGroupId: 'debug',
               contextMenuOrder: 1,
@@ -305,7 +317,7 @@ export function EditorWorkbench() {
             });
             editor.addAction({
               id: 'open-code-desk.debug.edit-breakpoint',
-              label: '编辑条件/日志断点…',
+              label: t('editBreakpoint'),
               contextMenuGroupId: 'debug',
               contextMenuOrder: 1.5,
               run: (mountedEditor) => {
@@ -323,14 +335,14 @@ export function EditorWorkbench() {
             });
             editor.addAction({
               id: 'open-code-desk.debug.remove-file-breakpoints',
-              label: '删除当前文件全部断点',
+              label: t('deleteFileBreakpoints'),
               contextMenuGroupId: 'debug',
               contextMenuOrder: 3,
               run: () => useDebugStore.getState().deleteBreakpointsForFile(activeTab.relativePath),
             });
             editor.addAction({
               id: 'open-code-desk.debug.run-to-cursor',
-              label: '运行到光标',
+              label: t('runToCursor'),
               keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.F10],
               contextMenuGroupId: 'debug',
               contextMenuOrder: 2,

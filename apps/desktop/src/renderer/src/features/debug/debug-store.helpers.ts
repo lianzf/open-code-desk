@@ -1,5 +1,7 @@
 import type { DebugBreakpoint, DebugSession } from '@open-code-desk/ipc-contracts';
 
+import { rendererErrorMessage } from '../settings/error-i18n';
+
 import type { DebugConsoleEntry, DebugState } from './debug-store.types';
 
 export type DebugStoreGet = () => DebugState;
@@ -196,7 +198,7 @@ export function isActiveDebugStatus(status: DebugSession['status']): boolean {
 }
 
 export function readableDebugError(error: unknown): string {
-  return error instanceof Error ? error.message : '调试操作失败，请查看调试控制台。';
+  return rendererErrorMessage(error, 'debugOperationFailed');
 }
 
 export function createDebugConsoleEntry(

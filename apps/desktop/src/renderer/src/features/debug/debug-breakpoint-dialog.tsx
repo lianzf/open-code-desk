@@ -2,6 +2,7 @@ import type { DebugBreakpoint } from '@open-code-desk/ipc-contracts';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { useDebugTranslation } from './debug-i18n';
 import type { DebugBreakpointEditorTarget } from './debug-store.types';
 import { useDebugStore } from './debug.store';
 
@@ -33,6 +34,7 @@ function DebugBreakpointForm({
   readonly target: DebugBreakpointEditorTarget;
   readonly breakpoint: DebugBreakpoint | undefined;
 }) {
+  const { t } = useDebugTranslation();
   const close = useDebugStore((state) => state.closeBreakpointEditor);
   const save = useDebugStore((state) => state.saveBreakpointDefinition);
   const [condition, setCondition] = useState(() => breakpoint?.condition ?? '');
@@ -62,42 +64,40 @@ function DebugBreakpointForm({
         }}
       >
         <h2 id="debug-breakpoint-dialog-title" className="text-sm font-semibold text-zinc-100">
-          编辑断点 · {target.relativePath}:{target.line}
+          {t('editBreakpoint', { path: target.relativePath, line: target.line })}
         </h2>
-        <p className="mt-1 text-[11px] text-zinc-500">
-          留空即为普通行断点。日志断点只输出信息，不会暂停程序。
-        </p>
+        <p className="mt-1 text-[11px] text-zinc-500">{t('breakpointEditHelp')}</p>
 
         <label className="mt-4 block text-xs text-zinc-400">
-          条件表达式
+          {t('conditionExpression')}
           <input
             className="mt-1 h-9 w-full rounded border border-zinc-800 bg-black px-3 font-mono text-xs text-zinc-200 outline-none focus:border-cyan-600"
             value={condition}
             onChange={(event) => setCondition(event.target.value)}
-            placeholder="例如 request.user.id === 42"
+            placeholder={t('conditionPlaceholder')}
             maxLength={4_000}
             autoFocus
             data-testid="debug-breakpoint-condition"
           />
         </label>
         <label className="mt-3 block text-xs text-zinc-400">
-          命中次数
+          {t('hitCount')}
           <input
             className="mt-1 h-9 w-full rounded border border-zinc-800 bg-black px-3 font-mono text-xs text-zinc-200 outline-none focus:border-cyan-600"
             value={hitCondition}
             onChange={(event) => setHitCondition(event.target.value)}
-            placeholder="例如 5、> 10 或 % 3"
+            placeholder={t('hitCountPlaceholder')}
             maxLength={1_000}
             data-testid="debug-breakpoint-hit-condition"
           />
         </label>
         <label className="mt-3 block text-xs text-zinc-400">
-          日志消息
+          {t('logMessage')}
           <input
             className="mt-1 h-9 w-full rounded border border-zinc-800 bg-black px-3 font-mono text-xs text-zinc-200 outline-none focus:border-cyan-600"
             value={logMessage}
             onChange={(event) => setLogMessage(event.target.value)}
-            placeholder="例如 当前用户：{request.user.id}"
+            placeholder={t('logMessagePlaceholder')}
             maxLength={4_000}
             data-testid="debug-breakpoint-log-message"
           />
@@ -105,10 +105,10 @@ function DebugBreakpointForm({
 
         <div className="mt-5 flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={close} disabled={saving}>
-            取消
+            {t('cancel')}
           </Button>
           <Button type="submit" disabled={saving} data-testid="save-debug-breakpoint">
-            {saving ? '保存中…' : '保存断点'}
+            {saving ? t('saving') : t('saveBreakpoint')}
           </Button>
         </div>
       </form>

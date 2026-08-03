@@ -11,6 +11,7 @@ export interface CommandRiskAssessment {
 export interface ExecutableRuleValue {
   readonly executable: string;
   readonly cwd: string;
+  readonly args?: ReadonlyArray<string>;
 }
 
 const blockedExecutables = new Set([
@@ -188,10 +189,15 @@ export function assessCommandRisk(input: {
   return { level, reasons, networkAccess };
 }
 
-export function executableRuleValue(executable: string, cwd: string): string {
+export function executableRuleValue(
+  executable: string,
+  cwd: string,
+  args?: ReadonlyArray<string>,
+): string {
   return JSON.stringify({
     executable: executable.toLocaleLowerCase('en-US'),
     cwd: resolve(cwd).toLocaleLowerCase('en-US'),
+    ...(args === undefined ? {} : { args }),
   });
 }
 
@@ -199,12 +205,27 @@ export function matchesExecutableRule(
   rule: PermissionRule,
   executable: string,
   cwd: string,
+  args: ReadonlyArray<string>,
 ): boolean {
   try {
     const parsed = JSON.parse(rule.value) as Partial<ExecutableRuleValue>;
-    return (
+    const executableAndDirectoryMatch =
       parsed.executable === executable.toLocaleLowerCase('en-US') &&
-      parsed.cwd === resolve(cwd).toLocaleLowerCase('en-US')
+      parsed.cwd === resolve(cwd).toLocaleLowerCase('en-US');
+    if (!executableAndDirectoryMatch) {
+      return false;
+    }
+
+    // Deny rules intentionally remain broad. Allow rules fail closed unless
+    // they include and exactly match every argument; this also makes legacy
+    // executable-only allow rules safe after an upgrade.
+    if (rule.kind === 'deny_executable') {
+      return true;
+    }
+    return (
+      Array.isArray(parsed.args) &&
+      parsed.args.length === args.length &&
+      parsed.args.every((argument, index) => argument === args[index])
     );
   } catch {
     return false;

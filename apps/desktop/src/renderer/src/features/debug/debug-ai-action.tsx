@@ -6,9 +6,11 @@ import { useChatStore } from '@/features/chat/chat.store';
 import { useConversationContextStore } from '@/features/context/context.store';
 import { useProviderStore } from '@/features/providers/provider.store';
 import { DebugContextDialog } from './debug-context-dialog';
+import { useDebugTranslation } from './debug-i18n';
 import { useDebugStore } from './debug.store';
 
 export function DebugAiAction({ paused }: { readonly paused: boolean }) {
+  const { t } = useDebugTranslation();
   const debug = useDebugStore();
   const chat = useChatStore();
   const refreshContext = useConversationContextStore((context) => context.refresh);
@@ -38,10 +40,10 @@ export function DebugAiAction({ paused }: { readonly paused: boolean }) {
           disabled={!canAskAi || debug.contextLoading}
           title={
             selectedProviderId === undefined
-              ? '请先配置并选择模型'
+              ? t('configureModelFirst')
               : chat.activeConversationId === undefined
-                ? '请先创建会话'
-                : '先预览并选择要发送给 AI 的调试上下文'
+                ? t('createConversationFirst')
+                : t('previewDebugContextFirst')
           }
           onClick={() => {
             const conversationId = chat.activeConversationId;
@@ -54,7 +56,7 @@ export function DebugAiAction({ paused }: { readonly paused: boolean }) {
           ) : (
             <BrainCircuit className="size-3.5" />
           )}
-          交给 AI 分析
+          {t('sendToAI')}
         </Button>
       ) : null}
       {debug.contextPreview === undefined ? null : (

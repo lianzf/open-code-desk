@@ -91,24 +91,46 @@ import type {
   ProviderIdRequest,
   SaveProviderRequest,
 } from './providers';
+import type { DetectProjectRequest, ProjectDetection } from './project-detection';
 import type {
+  DecideProjectTaskStartRequest,
+  DeleteProjectTaskRequest,
+  ListProjectTaskHistoryRequest,
+  ProjectTask,
+  ProjectTaskEvent,
+  ProjectTaskExecution,
+  ProjectTaskExecutionIdRequest,
+  ProposeProjectTaskStartRequest,
+  SaveProjectTaskRequest,
+} from './project-task';
+import type {
+  CompoundRunConfiguration,
+  CompoundRunProposal,
+  CompoundRunSession,
   DecideRunStartRequest,
+  DeleteCompoundRunConfigurationRequest,
   DeleteRunConfigurationRequest,
-  DetectProjectRequest,
+  DuplicateRunConfigurationRequest,
+  InspectRunPortRequest,
   ListRunHistoryRequest,
+  ListCompoundRunSessionsRequest,
   ListRunConfigurationsRequest,
   PendingRunExecution,
-  ProjectDetection,
   ProposeRunStartRequest,
+  ProposeCompoundRunRequest,
   RestartRunExecutionRequest,
   RunConfiguration,
   RunConfigurationList,
   RunEvent,
   RunExecution,
+  RunPortInspection,
   SaveRunConfigurationRequest,
+  SaveCompoundRunConfigurationRequest,
   SetDefaultRunConfigurationRequest,
   SetDefaultRunConfigurationResponse,
   StopRunExecutionRequest,
+  StopCompoundRunRequest,
+  TerminateRunPortProcessRequest,
 } from './run';
 import type { AppSettings, UpdateAppSettingsRequest } from './settings';
 import type {
@@ -188,6 +210,7 @@ export interface DesktopApi {
     list(input: ListRunConfigurationsRequest): Promise<RunConfigurationList>;
     save(input: SaveRunConfigurationRequest): Promise<RunConfiguration>;
     delete(input: DeleteRunConfigurationRequest): Promise<{ readonly deleted: boolean }>;
+    duplicate(input: DuplicateRunConfigurationRequest): Promise<RunConfiguration>;
     setDefault(
       input: SetDefaultRunConfigurationRequest,
     ): Promise<SetDefaultRunConfigurationResponse>;
@@ -196,7 +219,32 @@ export interface DesktopApi {
     stop(input: StopRunExecutionRequest): Promise<RunExecution>;
     restart(input: RestartRunExecutionRequest): Promise<PendingRunExecution>;
     listHistory(input: ListRunHistoryRequest): Promise<ReadonlyArray<RunExecution>>;
+    listCompounds(
+      input: ListRunConfigurationsRequest,
+    ): Promise<ReadonlyArray<CompoundRunConfiguration>>;
+    saveCompound(input: SaveCompoundRunConfigurationRequest): Promise<CompoundRunConfiguration>;
+    deleteCompound(
+      input: DeleteCompoundRunConfigurationRequest,
+    ): Promise<{ readonly deleted: boolean }>;
+    listCompoundSessions(
+      input: ListCompoundRunSessionsRequest,
+    ): Promise<ReadonlyArray<CompoundRunSession>>;
+    proposeCompoundStart(input: ProposeCompoundRunRequest): Promise<CompoundRunProposal>;
+    stopCompound(input: StopCompoundRunRequest): Promise<CompoundRunSession>;
+    inspectPort(input: InspectRunPortRequest): Promise<RunPortInspection>;
+    terminatePortProcess(input: TerminateRunPortProcessRequest): Promise<RunPortInspection>;
     onEvent(listener: (event: RunEvent) => void): () => void;
+  };
+  readonly projectTasks: {
+    list(input: { readonly workspaceId: string }): Promise<ReadonlyArray<ProjectTask>>;
+    save(input: SaveProjectTaskRequest): Promise<ProjectTask>;
+    delete(input: DeleteProjectTaskRequest): Promise<{ readonly deleted: boolean }>;
+    proposeStart(input: ProposeProjectTaskStartRequest): Promise<ProjectTaskExecution>;
+    decideStart(input: DecideProjectTaskStartRequest): Promise<ProjectTaskExecution>;
+    stop(input: ProjectTaskExecutionIdRequest): Promise<ProjectTaskExecution>;
+    restart(input: ProjectTaskExecutionIdRequest): Promise<ProjectTaskExecution>;
+    listHistory(input: ListProjectTaskHistoryRequest): Promise<ReadonlyArray<ProjectTaskExecution>>;
+    onEvent(listener: (event: ProjectTaskEvent) => void): () => void;
   };
   readonly debug: {
     proposeStart(input: ProposeDebugStartRequest): Promise<DebugSession>;

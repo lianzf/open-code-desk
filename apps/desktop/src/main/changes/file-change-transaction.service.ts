@@ -1,6 +1,4 @@
-import { randomUUID } from 'node:crypto';
-import { link, open, rename, unlink } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { open, rename, unlink } from 'node:fs/promises';
 
 import type { FileChange } from '@open-code-desk/domain';
 
@@ -8,49 +6,21 @@ import type { AgentTaskRepository } from '../agent/agent-task.repository';
 import { completeAgentTaskCheckpoint } from '../agent/agent-task-plan';
 import type { AuditLogService } from '../audit/audit-log.service';
 import { ChangeArtifactStore, sha256 } from './artifact-store';
-import { ChangePathResolver, type ResolvedWorkspaceFile } from './change-path-resolver';
+import { ChangePathResolver } from './change-path-resolver';
 import type { FileChangeAggregate, FileChangeRepository } from './file-change.repository';
 import type { FileChangeService } from './file-change.service';
 import { FileChangeRollbackService } from './file-change-rollback.service';
 
-interface ApplyPlan {
-  readonly change: FileChange;
-  readonly source: ResolvedWorkspaceFile | null;
-  readonly sourcePath: string;
-  readonly destinationPath?: string | undefined;
-  readonly proposedContent?: string | undefined;
-  temporaryPath?: string | undefined;
-  backupPath?: string | undefined;
-  executed: boolean;
-}
+import {
+  conflictMessage,
+  installWithoutOverwrite,
+  type ApplyPlan,
+  transactionPath,
+  writeTemporary,
+} from './file-change-transaction-support';
 
 export interface FileTransactionFaultInjector {
   beforeMutation(index: number, change: FileChange): Promise<void>;
-}
-
-function transactionPath(targetPath: string, kind: 'tmp' | 'backup'): string {
-  return join(dirname(targetPath), `.opencode-${randomUUID()}.${kind}`);
-}
-
-async function writeTemporary(targetPath: string, content: string, mode: number): Promise<string> {
-  const temporaryPath = transactionPath(targetPath, 'tmp');
-  const handle = await open(temporaryPath, 'wx', mode);
-  try {
-    await handle.writeFile(Buffer.from(content, 'utf8'));
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  return temporaryPath;
-}
-
-async function installWithoutOverwrite(temporaryPath: string, targetPath: string): Promise<void> {
-  await link(temporaryPath, targetPath);
-  await unlink(temporaryPath);
-}
-
-function conflictMessage(change: FileChange): string {
-  return `${change.filePath} changed after the proposal was created. Reload the workspace and generate a new proposal.`;
 }
 
 export class FileChangeTransactionService {

@@ -43,7 +43,31 @@ test('launches the secure desktop shell and reaches the main process', async () 
   }
 });
 
+test('retains the main window when the main-process garbage collector runs', async () => {
+  const userDataDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-e2e-gc-user-'));
+  const application = await launchDesktop(userDataDirectory, { exposeGarbageCollector: true });
+
+  try {
+    const window = await application.firstWindow();
+    await expect(window.getByTestId('app-shell')).toBeVisible();
+
+    const garbageCollectorWasExposed = await application.evaluate(() => {
+      const collectGarbage = (globalThis as typeof globalThis & { gc?: () => void }).gc;
+      collectGarbage?.();
+      return collectGarbage !== undefined;
+    });
+
+    expect(garbageCollectorWasExposed).toBe(true);
+    await expect(window.getByTestId('app-shell')).toBeVisible();
+    expect(application.windows()).toHaveLength(1);
+  } finally {
+    await application.close();
+    await rm(userDataDirectory, { recursive: true, force: true });
+  }
+});
+
 test('persists appearance, locale, updater state, and configurable shortcuts', async () => {
+  const isPackagedRun = process.env.OPEN_CODE_DESK_E2E_EXECUTABLE_PATH !== undefined;
   const projectDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-e2e-settings-project-'));
   const userDataDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-e2e-settings-user-'));
   await writeFile(join(projectDirectory, 'README.md'), '# Settings fixture\n', 'utf8');
@@ -61,7 +85,11 @@ test('persists appearance, locale, updater state, and configurable shortcuts', a
 
     await window.getByTestId('open-app-settings').click();
     await expect(window.getByTestId('app-settings-dialog')).toBeVisible();
-    await expect(window.getByText('开发环境不执行更新检查')).toBeVisible();
+    await expect(
+      isPackagedRun
+        ? window.getByText(/^当前版本\s+\S+/)
+        : window.getByText('开发环境不执行更新检查'),
+    ).toBeVisible();
     await expect(window.getByText('尚无崩溃报告')).toBeVisible();
     await window.getByTestId('theme-select').selectOption('light');
     await window.getByTestId('locale-select').selectOption('en-US');
@@ -72,8 +100,38 @@ test('persists appearance, locale, updater state, and configurable shortcuts', a
     expect(await window.evaluate(() => document.documentElement.dataset.theme)).toBe('light');
     await window.getByTestId('open-project').click();
     await expect(window.getByTestId('workspace-page')).toBeVisible();
+    await expect(window.getByText('AI coding assistant')).toBeVisible();
+    await expect(window.getByTestId('file-search')).toHaveAttribute(
+      'placeholder',
+      'Search file names',
+    );
+    await expect(window.getByTestId('new-conversation')).toHaveAttribute(
+      'aria-label',
+      'New conversation',
+    );
+    await expect(window.getByTestId('run-toolbar')).toContainText('Compound');
+    await expect(window.getByTestId('toggle-project-tasks')).toContainText('Tasks');
+    await expect(window.getByTestId('toggle-terminal')).toContainText('Terminal');
+    await expect(window.getByTestId('toggle-audit')).toContainText('Audit');
+    await window.getByTestId('open-run-configuration').click();
+    await expect(window.getByTestId('run-configuration-dialog')).toContainText(
+      'New run configuration',
+    );
+    await window.getByLabel('Close run configuration').click();
+    await window.getByTestId('toggle-project-tasks').click();
+    await expect(window.getByTestId('project-tasks-panel')).toContainText('Project tasks');
+    await expect(window.getByTestId('project-tasks-panel')).toContainText('No tasks');
+    await window.getByTestId('toggle-audit').click();
+    await expect(window.getByTestId('audit-panel')).toContainText('Audit log');
+    await window.getByLabel('Model settings').click();
+    await expect(window.getByTestId('provider-settings')).toContainText('Model services');
+    await expect(window.getByText('Keys are protected locally on this device')).toBeVisible();
+    await window.getByLabel('Close model settings').click();
     await window.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+J' : 'Control+Shift+J');
     await expect(window.getByTestId('git-panel')).toBeVisible();
+    await expect(window.getByTestId('git-panel')).toContainText(
+      'The current workspace is not a Git repository',
+    );
 
     await application.close();
     application = undefined;
@@ -83,7 +141,11 @@ test('persists appearance, locale, updater state, and configurable shortcuts', a
     await expect(window.getByTestId('theme-select')).toHaveValue('light');
     await expect(window.getByTestId('locale-select')).toHaveValue('en-US');
     await expect(window.getByTestId('shortcut-toggleGit')).toHaveValue('Ctrl+Shift+J');
-    await expect(window.getByText('Update checks are disabled in development')).toBeVisible();
+    await expect(
+      isPackagedRun
+        ? window.getByText(/^Current version\s+\S+/)
+        : window.getByText('Update checks are disabled in development'),
+    ).toBeVisible();
   } finally {
     if (application !== undefined) {
       await application.close();
@@ -119,10 +181,13 @@ test('opens, edits, saves, and restores a recent workspace', async () => {
 
     await window.getByTestId('tree-entry-README.md').click();
     const monaco = window.locator('.monaco-editor').first();
+    const editorLines = monaco.locator('.view-lines');
     await expect(monaco).toBeVisible();
+    await expect(editorLines).toContainText('# Original');
     await monaco.click();
     await window.keyboard.press('Control+A');
     await window.keyboard.type('# Updated from desktop\n');
+    await expect(editorLines).toContainText('# Updated from desktop');
     await window.keyboard.press('Control+S');
 
     await expect.poll(async () => readFile(readmePath, 'utf8')).toBe('# Updated from desktop\n');

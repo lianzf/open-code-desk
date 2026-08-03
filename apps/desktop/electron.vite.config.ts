@@ -54,5 +54,11 @@ export default defineConfig({
       },
     },
     plugins: [react(), tailwindcss(), developmentCspPlugin],
+    build: {
+      // The renderer outDir lives outside rendererRoot. Vite otherwise keeps
+      // content-hashed bundles from every build, inflating packaged apps and
+      // making cold start progressively slower.
+      emptyOutDir: true,
+    },
   },
 });

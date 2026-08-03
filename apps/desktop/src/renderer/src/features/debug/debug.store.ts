@@ -2,6 +2,8 @@ import { create } from 'zustand';
 
 import {
   saveDebugBreakpointDefinition,
+  saveDebugExceptionPolicy,
+  saveDebugSpecialBreakpoint,
   saveDebugExceptionPauseMode,
   setDebugBreakpointEnabled,
   toggleDebugBreakpoint,
@@ -199,12 +201,24 @@ export const useDebugStore = create<DebugState>((set, get) => ({
     await saveDebugBreakpointDefinition(get, set, input);
   },
 
+  async saveSpecialBreakpoint(input) {
+    await saveDebugSpecialBreakpoint(get, set, input);
+  },
+
   async setBreakpointEnabled(breakpointId, enabled) {
     await setDebugBreakpointEnabled(get, set, breakpointId, enabled);
   },
 
   async setExceptionPauseMode(mode) {
     await saveDebugExceptionPauseMode(get, set, mode);
+  },
+
+  async setExceptionPolicy(exceptionBreakTypes, exceptionIgnoreTypes) {
+    await saveDebugExceptionPolicy(get, set, {
+      exceptionPauseMode: get().settings?.exceptionPauseMode ?? 'uncaught',
+      exceptionBreakTypes,
+      exceptionIgnoreTypes,
+    });
   },
 
   async deleteBreakpoint(breakpointId) {

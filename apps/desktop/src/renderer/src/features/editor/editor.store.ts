@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { rendererError, rendererErrorMessage } from '../settings/error-i18n';
+
 export interface EditorTab {
   readonly relativePath: string;
   readonly name: string;
@@ -47,7 +49,7 @@ function nameFromPath(relativePath: string): string {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : '文件操作失败，请重试。';
+  return rendererErrorMessage(error, 'fileOperationFailed');
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -133,7 +135,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   closeFile(relativePath) {
     const state = get();
     const tab = state.tabs.find((candidate) => candidate.relativePath === relativePath);
-    if (tab?.content !== tab?.savedContent && !window.confirm('该文件有未保存修改，确定关闭吗？')) {
+    if (
+      tab?.content !== tab?.savedContent &&
+      !window.confirm(rendererError('unsavedCloseConfirm'))
+    ) {
       return;
     }
 
@@ -219,7 +224,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
       if (tab.content !== tab.savedContent) {
         set({
-          errorMessage: `${relativePath} 已在磁盘上发生变化。请复制未保存内容并重新打开文件，系统不会覆盖外部修改。`,
+          errorMessage: rendererError('fileChangedExternally', { path: relativePath }),
         });
         return;
       }
@@ -239,7 +244,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }));
     } catch {
       set({
-        errorMessage: `${relativePath} 已被移动、删除或暂时无法读取。编辑器保留当前内容，不会自动写回磁盘。`,
+        errorMessage: rendererError('fileUnavailable', { path: relativePath }),
       });
     }
   },

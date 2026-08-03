@@ -7,6 +7,8 @@ import type {
   SaveProviderRequest,
 } from '@open-code-desk/ipc-contracts';
 
+import { rendererErrorMessage } from '../settings/error-i18n';
+
 interface ProviderState {
   readonly configurations: ReadonlyArray<ProviderConfig>;
   readonly descriptors: ReadonlyArray<ProviderDescriptor>;
@@ -31,10 +33,7 @@ interface ProviderState {
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message.replace(/^Error invoking remote method '[^']+': Error: /, '');
-  }
-  return '操作失败，请检查配置后重试。';
+  return rendererErrorMessage(error, 'providerOperationFailed');
 }
 
 export const useProviderStore = create<ProviderState>((set, get) => ({

@@ -1,5 +1,9 @@
 import type {
+  CompoundRunConfiguration,
+  CompoundRunProposal,
+  CompoundRunSession,
   ProjectDetection,
+  ProjectTask,
   RunApprovalDecision,
   RunConfiguration,
   RunConfigurationDraft,
@@ -9,22 +13,28 @@ import type {
 } from '@open-code-desk/ipc-contracts';
 import { create } from 'zustand';
 
+import { createRunCompoundActions } from './run-compound-actions';
+import { createRunConfigurationActions } from './run-configuration-actions';
+import { currentRendererLocale } from '../settings/error-i18n';
 import {
   appendRunOutput,
   isActiveRunStatus,
   mergeRunExecution,
   readableRunError,
-  suggestionToSaveRequest,
   type RunOutputChunk,
 } from './run-store-helpers';
 
 export { appendRunOutput, mergeRunExecution } from './run-store-helpers';
 
-interface RunState {
+export interface RunState {
   readonly workspaceId: string | undefined;
   readonly initialized: boolean;
   readonly loading: boolean;
   readonly configurations: ReadonlyArray<RunConfiguration>;
+  readonly compoundConfigurations: ReadonlyArray<CompoundRunConfiguration>;
+  readonly compoundSessions: ReadonlyArray<CompoundRunSession>;
+  readonly pendingCompoundProposal: CompoundRunProposal | undefined;
+  readonly projectTasks: ReadonlyArray<ProjectTask>;
   readonly defaultConfigurationId: string | null;
   readonly selectedConfigurationId: string | undefined;
   readonly detection: ProjectDetection | undefined;
@@ -35,6 +45,7 @@ interface RunState {
   readonly busyExecutionId: string | undefined;
   readonly dialogOpen: boolean;
   readonly editingConfigurationId: string | undefined;
+  readonly compoundDialogOpen: boolean;
   readonly errorMessage: string | undefined;
   initialize(workspaceId: string): Promise<void>;
   dispose(): void;
@@ -42,9 +53,22 @@ interface RunState {
   selectExecution(executionId: string): void;
   openConfigurationDialog(configurationId?: string): void;
   closeConfigurationDialog(): void;
+  openCompoundDialog(): void;
+  closeCompoundDialog(): void;
   saveConfiguration(input: SaveRunConfigurationRequest): Promise<RunConfiguration>;
   saveSuggestion(suggestion: RunConfigurationDraft): Promise<RunConfiguration>;
   deleteConfiguration(configurationId: string): Promise<void>;
+  duplicateConfiguration(configurationId: string): Promise<RunConfiguration>;
+  saveCompoundConfiguration(input: {
+    readonly id?: string;
+    readonly name: string;
+    readonly configurationIds: ReadonlyArray<string>;
+    readonly stopAllOnSingleFailure: boolean;
+  }): Promise<CompoundRunConfiguration>;
+  deleteCompoundConfiguration(compoundConfigurationId: string): Promise<void>;
+  proposeCompoundStart(compoundConfigurationId: string): Promise<void>;
+  decideCompound(decision: RunApprovalDecision): Promise<void>;
+  stopCompound(sessionId: string): Promise<void>;
   setDefaultConfiguration(configurationId: string | null): Promise<void>;
   proposeStart(configurationId?: string): Promise<RunExecution | undefined>;
   decideStart(executionId: string, decision: RunApprovalDecision): Promise<void>;
@@ -60,6 +84,10 @@ export const useRunStore = create<RunState>((set, get) => ({
   initialized: false,
   loading: false,
   configurations: [],
+  compoundConfigurations: [],
+  compoundSessions: [],
+  pendingCompoundProposal: undefined,
+  projectTasks: [],
   defaultConfigurationId: null,
   selectedConfigurationId: undefined,
   detection: undefined,
@@ -70,7 +98,11 @@ export const useRunStore = create<RunState>((set, get) => ({
   busyExecutionId: undefined,
   dialogOpen: false,
   editingConfigurationId: undefined,
+  compoundDialogOpen: false,
   errorMessage: undefined,
+
+  ...createRunConfigurationActions(set, get),
+  ...createRunCompoundActions(set, get),
 
   async initialize(workspaceId) {
     if (get().workspaceId === workspaceId && get().initialized) {
@@ -84,6 +116,10 @@ export const useRunStore = create<RunState>((set, get) => ({
       initialized: false,
       loading: true,
       configurations: [],
+      compoundConfigurations: [],
+      compoundSessions: [],
+      pendingCompoundProposal: undefined,
+      projectTasks: [],
       defaultConfigurationId: null,
       selectedConfigurationId: undefined,
       detection: undefined,
@@ -96,10 +132,20 @@ export const useRunStore = create<RunState>((set, get) => ({
     });
 
     try {
-      const [detection, configurationList, history] = await Promise.all([
-        window.openCodeDesk.run.detect({ workspaceId }),
+      const [
+        detection,
+        configurationList,
+        history,
+        projectTasks,
+        compoundConfigurations,
+        compoundSessions,
+      ] = await Promise.all([
+        window.openCodeDesk.run.detect({ workspaceId, locale: currentRendererLocale() }),
         window.openCodeDesk.run.list({ workspaceId }),
         window.openCodeDesk.run.listHistory({ workspaceId, limit: 100 }),
+        window.openCodeDesk.projectTasks.list({ workspaceId }),
+        window.openCodeDesk.run.listCompounds({ workspaceId }),
+        window.openCodeDesk.run.listCompoundSessions({ workspaceId }),
       ]);
       if (get().workspaceId !== workspaceId) {
         return;
@@ -125,6 +171,9 @@ export const useRunStore = create<RunState>((set, get) => ({
 
       set({
         configurations,
+        compoundConfigurations,
+        compoundSessions,
+        projectTasks,
         defaultConfigurationId: configurationList.defaultConfigurationId,
         selectedConfigurationId,
         detection,
@@ -155,94 +204,6 @@ export const useRunStore = create<RunState>((set, get) => ({
   selectExecution(executionId) {
     if (get().executions.some((execution) => execution.id === executionId)) {
       set({ selectedExecutionId: executionId });
-    }
-  },
-
-  openConfigurationDialog(configurationId) {
-    set({
-      dialogOpen: true,
-      editingConfigurationId: configurationId,
-      errorMessage: undefined,
-    });
-  },
-
-  closeConfigurationDialog() {
-    set({ dialogOpen: false, editingConfigurationId: undefined });
-  },
-
-  async saveConfiguration(input) {
-    set({ loading: true, errorMessage: undefined });
-    try {
-      const saved = await window.openCodeDesk.run.save(input);
-      set((state) => ({
-        configurations: [
-          saved,
-          ...state.configurations.filter((configuration) => configuration.id !== saved.id),
-        ],
-        selectedConfigurationId: saved.id,
-        editingConfigurationId: saved.id,
-        loading: false,
-      }));
-      return saved;
-    } catch (error) {
-      const message = readableRunError(error);
-      set({ loading: false, errorMessage: message });
-      throw new Error(message);
-    }
-  },
-
-  async saveSuggestion(suggestion) {
-    return get().saveConfiguration(suggestionToSaveRequest(suggestion));
-  },
-
-  async deleteConfiguration(configurationId) {
-    const workspaceId = get().workspaceId;
-    if (workspaceId === undefined) {
-      return;
-    }
-    set({ loading: true, errorMessage: undefined });
-    try {
-      await window.openCodeDesk.run.delete({ workspaceId, configurationId });
-      set((state) => {
-        const configurations = state.configurations.filter(
-          (configuration) => configuration.id !== configurationId,
-        );
-        return {
-          configurations,
-          defaultConfigurationId:
-            state.defaultConfigurationId === configurationId ? null : state.defaultConfigurationId,
-          selectedConfigurationId:
-            state.selectedConfigurationId === configurationId
-              ? configurations[0]?.id
-              : state.selectedConfigurationId,
-          editingConfigurationId: undefined,
-          dialogOpen: false,
-          loading: false,
-        };
-      });
-    } catch (error) {
-      const message = readableRunError(error);
-      set({ loading: false, errorMessage: message });
-      throw new Error(message);
-    }
-  },
-
-  async setDefaultConfiguration(configurationId) {
-    const workspaceId = get().workspaceId;
-    if (workspaceId === undefined) {
-      return;
-    }
-    set({ loading: true, errorMessage: undefined });
-    try {
-      const result = await window.openCodeDesk.run.setDefault({
-        workspaceId,
-        configurationId,
-      });
-      set({ defaultConfigurationId: result.defaultConfigurationId, loading: false });
-    } catch (error) {
-      const message = readableRunError(error);
-      set({ loading: false, errorMessage: message });
-      throw new Error(message);
     }
   },
 

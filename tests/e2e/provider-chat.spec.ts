@@ -158,6 +158,10 @@ test('runs a real read-tool Agent loop and restores the conversation after resta
     await window.getByTestId('task-plan').locator('summary').click();
     await expect(window.getByTestId('task-plan')).toContainText('执行工具 read_file');
 
+    await window.getByRole('button', { name: '重试', exact: true }).click();
+    await expect(window.getByTestId('chat-messages')).toContainText('已读取真实工作区文件');
+    await expect(window.getByTestId('agent-status')).toContainText('已完成');
+
     const actualUserData = await application.evaluate(({ app }) => app.getPath('userData'));
     const databaseFiles = (await readdir(actualUserData)).filter((name) =>
       name.startsWith('open-code-desk.sqlite'),
@@ -181,13 +185,44 @@ test('runs a real read-tool Agent loop and restores the conversation after resta
     await window.locator('[data-testid^="recent-workspace-"]').first().click();
     await expect(window.getByTestId('workspace-page')).toBeVisible();
     await expect(window.getByTestId('chat-messages')).toContainText('已读取真实工作区文件');
-    await expect(window.getByTestId('tool-activity')).toContainText('read_file');
+    const restoredToolActivities = window.getByTestId('tool-activity');
+    await expect(restoredToolActivities).toHaveCount(2);
+    await expect(restoredToolActivities).toContainText(['read_file', 'read_file']);
+
+    const renamedConversation = '已恢复的 E2E 编程任务';
+    await window.evaluate((title) => {
+      window.prompt = () => title;
+    }, renamedConversation);
+    await window.getByLabel('重命名会话').click();
+    await expect(window.getByTestId('conversation-select')).toContainText(renamedConversation);
+
+    await window.getByTestId('conversation-search').fill(renamedConversation);
+    await window.getByTestId('conversation-search').press('Enter');
+    await expect(window.getByTestId('conversation-select').locator('option')).toHaveCount(1);
+
+    const exportPath = join(projectDirectory, 'restored-conversation.md');
+    await application.evaluate(({ dialog }, selectedPath) => {
+      Object.defineProperty(dialog, 'showSaveDialog', {
+        configurable: true,
+        value: async () => ({ canceled: false, filePath: selectedPath }),
+      });
+    }, exportPath);
+    await window.getByLabel('导出 Markdown').click();
+    await expect.poll(async () => readFile(exportPath, 'utf8')).toContain(renamedConversation);
+    await expect.poll(async () => readFile(exportPath, 'utf8')).toContain('read_file');
 
     await window.getByLabel('模型设置').click();
     await window.getByRole('button', { name: /E2E Provider e2e-model/ }).click();
     await expect(window.getByTestId('provider-api-key')).toHaveValue('');
     await window.getByTestId('test-provider').click();
     await expect(window.getByTestId('provider-test-result')).toContainText('1');
+    await window.getByTestId('provider-settings').locator('header button').click();
+
+    await window.evaluate(() => {
+      window.confirm = () => true;
+    });
+    await window.getByLabel('删除会话').click();
+    await expect(window.getByTestId('conversation-select')).not.toContainText(renamedConversation);
   } finally {
     if (application !== undefined) {
       await application.close();

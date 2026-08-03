@@ -8,8 +8,8 @@ import type {
 } from '@open-code-desk/domain';
 
 import { isPathInside, normalizeRelativePath, toPlatformPath } from '../filesystem/path-policy';
+import type { StoredRunEnvironmentVariable } from '../database/schema';
 import type { SecretStore } from '../security/secret-store';
-import type { StoredRunConfiguration } from './run-configuration.repository';
 
 const maximumEnvironmentFileBytes = 1024 * 1024;
 const environmentNamePattern = /^[A-Za-z_][A-Za-z0-9_]*$/u;
@@ -24,8 +24,13 @@ export interface ResolvedRunEnvironment {
   readonly sensitiveValues: ReadonlyArray<string>;
 }
 
+export interface StoredRunEnvironmentSource {
+  readonly environmentVariables: ReadonlyArray<StoredRunEnvironmentVariable>;
+  readonly environmentFile?: string;
+}
+
 export function publicEnvironmentVariables(
-  configuration: StoredRunConfiguration,
+  configuration: StoredRunEnvironmentSource,
 ): ReadonlyArray<RunEnvironmentVariable> {
   return configuration.environmentVariables.map((variable) => ({
     name: variable.name,
@@ -70,7 +75,7 @@ export async function readEnvironmentFile(
 
 export async function resolveRunEnvironment(
   workspaceRoot: string,
-  configuration: StoredRunConfiguration,
+  configuration: StoredRunEnvironmentSource,
   secretStore: SecretStore,
   expectedEnvironmentFileDigest?: string,
 ): Promise<ResolvedRunEnvironment> {

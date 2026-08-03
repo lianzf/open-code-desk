@@ -2,15 +2,28 @@ import { join } from 'node:path';
 
 import { _electron as electron, type ElectronApplication } from '@playwright/test';
 
-export async function launchDesktop(userDataDirectory: string): Promise<ElectronApplication> {
+interface LaunchDesktopOptions {
+  readonly exposeGarbageCollector?: boolean;
+  readonly executablePath?: string;
+}
+
+export async function launchDesktop(
+  userDataDirectory: string,
+  options: LaunchDesktopOptions = {},
+): Promise<ElectronApplication> {
   const passwordStore = process.env.OPEN_CODE_DESK_E2E_PASSWORD_STORE;
+  const executablePath = options.executablePath ?? process.env.OPEN_CODE_DESK_E2E_EXECUTABLE_PATH;
   const application = await electron.launch({
+    ...(executablePath === undefined ? {} : { executablePath }),
     ...(passwordStore === undefined
       ? {}
       : { ignoreDefaultArgs: ['--password-store=basic', '--use-mock-keychain'] }),
     args: [
       ...(passwordStore === undefined ? [] : [`--password-store=${passwordStore}`]),
-      join(process.cwd(), 'apps/desktop/out/main/main.js'),
+      ...(options.exposeGarbageCollector === true ? ['--js-flags=--expose-gc'] : []),
+      ...(executablePath === undefined
+        ? [join(process.cwd(), 'apps/desktop/out/main/main.js')]
+        : []),
       `--user-data-dir=${userDataDirectory}`,
     ],
   });

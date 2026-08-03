@@ -137,6 +137,7 @@ describe('Agent command approval loop', () => {
     const workspaceRepository = new WorkspaceRepository(database);
     const workspace = workspaceRepository.upsert(await realpath(rootPath));
     const workspaceService = new WorkspaceService(workspaceRepository, picker);
+    await workspaceService.openRecent(workspace.id);
     const conversations = new ConversationRepository(database);
     const conversation = conversations.create(workspace.id);
     const providerRegistry = new ProviderRegistry();

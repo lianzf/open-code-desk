@@ -5,7 +5,8 @@ on:
   push:
     branches:
       - main
-      - 'agent/**'
+      - develop
+      - 'release/**'
   workflow_dispatch:
 
 permissions:
@@ -39,6 +40,9 @@ jobs:
       - name: Check formatting
         run: pnpm format:check
 
+      - name: Check documentation
+        run: pnpm docs:check
+
       - name: Lint
         run: pnpm lint
 
@@ -47,6 +51,24 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Integration test acceptance
+        run: pnpm test:integration
+
+      - name: Audit workspace dependencies
+        run: pnpm security:dependency-audit
+
+      - name: Scan repository for committed secrets
+        run: pnpm security:secrets
+
+      - name: Generate CycloneDX SBOM
+        run: pnpm release:sbom
+
+      - name: Audit shipped third-party licenses
+        run: pnpm security:licenses
+
+      - name: Performance acceptance
+        run: pnpm test:performance
 
       - name: Build
         run: pnpm build
@@ -84,6 +106,19 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: Upload security metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-security-metadata
+          path: |
+            release/dependency-audit.json
+            release/license-audit.json
+            release/open-code-desk.cdx.json
+            release/secret-scan.json
+          if-no-files-found: warn
+          retention-days: 14
+
   package:
     name: Package ${{ matrix.name }}
     needs: quality
@@ -95,26 +130,37 @@ jobs:
         include:
           - name: Windows x64
             os: windows-latest
+            platform: windows
             command: pnpm package:win
             artifact: open-code-desk-windows-x64
             paths: |
               release/*.exe
               release/*.blockmap
-          - name: macOS
-            os: macos-latest
-            command: pnpm package:mac
-            artifact: open-code-desk-macos
+              release/*.json
+              release/SHA256SUMS.txt
+          - name: macOS arm64
+            os: macos-15
+            platform: macos
+            java_architecture: aarch64
+            command: pnpm package:mac:arm64
+            artifact: open-code-desk-macos-arm64
             paths: |
               release/*.dmg
               release/*.zip
               release/*.blockmap
+              release/*.json
+              release/SHA256SUMS.txt
           - name: Linux x64
             os: ubuntu-latest
+            platform: linux
+            java_architecture: x64
             command: pnpm package:linux
             artifact: open-code-desk-linux-x64
             paths: |
               release/*.AppImage
               release/*.blockmap
+              release/*.json
+              release/SHA256SUMS.txt
 
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -130,6 +176,14 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
+      - name: Set up JDK 21 for native Java debugger acceptance
+        if: matrix.platform == 'macos' || matrix.platform == 'linux'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          architecture: ${{ matrix.java_architecture }}
+
       - name: Enable pinned pnpm
         shell: bash
         run: |
@@ -139,8 +193,88 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Run native Java debugger acceptance
+        if: matrix.platform == 'macos' || matrix.platform == 'linux'
+        shell: bash
+        env:
+          OPEN_CODE_DESK_JAVA_ACCEPTANCE: '1'
+        run: |
+          export OPEN_CODE_DESK_JAVA_HOME="$JAVA_HOME"
+          pnpm exec vitest run apps/desktop/src/main/debug/java/java-debug-adapter.acceptance.test.ts --maxWorkers=1
+
       - name: Build installer
         run: ${{ matrix.command }}
+
+      - name: Smoke test Windows installer
+        if: matrix.name == 'Windows x64'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem release -Filter '*.exe' | Select-Object -First 1
+          if ($null -eq $installer) { throw 'Windows installer was not created.' }
+          & ./apps/desktop/scripts/windows-installer-smoke.ps1 `
+            -InstallerPath $installer.FullName `
+            -WorkspaceRoot $env:GITHUB_WORKSPACE
+
+      - name: Test installed Windows application
+        if: matrix.name == 'Windows x64'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem release -Filter '*.exe' | Select-Object -First 1
+          if ($null -eq $installer) { throw 'Windows installer was not created.' }
+          & ./apps/desktop/scripts/windows-installed-e2e.ps1 `
+            -InstallerPath $installer.FullName `
+            -WorkspaceRoot $env:GITHUB_WORKSPACE
+
+      - name: Resolve packaged Unix executable
+        if: matrix.name != 'Windows x64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ '${{ matrix.name }}' == 'macOS arm64' ]]; then
+            executable="$(find release -type f -path '*/OpenCode Desk.app/Contents/MacOS/OpenCode Desk' -print -quit)"
+          else
+            executable="$GITHUB_WORKSPACE/release/linux-unpacked/open-code-desk"
+          fi
+          test -n "$executable"
+          if [[ "$executable" != /* ]]; then
+            executable="$GITHUB_WORKSPACE/$executable"
+          fi
+          test -x "$executable"
+          echo "OPEN_CODE_DESK_E2E_EXECUTABLE_PATH=$executable" >> "$GITHUB_ENV"
+
+      - name: Test packaged macOS application
+        if: matrix.name == 'macOS arm64'
+        run: pnpm test:e2e:packaged-core
+
+      - name: Install packaged Linux test dependencies
+        if: matrix.name == 'Linux x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes gnome-keyring libsecret-tools
+
+      - name: Test packaged Linux application
+        if: matrix.name == 'Linux x64'
+        env:
+          OPEN_CODE_DESK_E2E_PASSWORD_STORE: gnome-libsecret
+          XDG_CURRENT_DESKTOP: GNOME
+        run: |
+          dbus-run-session -- bash -euo pipefail -c '
+            keyring_password="$(openssl rand -hex 32)"
+            eval "$(printf "%s" "$keyring_password" | gnome-keyring-daemon --daemonize --unlock --components=secrets)"
+            unset keyring_password
+            xvfb-run --auto-servernum pnpm test:e2e:packaged-core
+          '
+
+      - name: Upload packaged end-to-end diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-e2e-diagnostics-${{ matrix.artifact }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload installer
         uses: actions/upload-artifact@v4

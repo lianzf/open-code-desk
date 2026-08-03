@@ -41,10 +41,16 @@ describe('debug context IPC contracts', () => {
   });
 
   it('binds preview and attach requests to UUIDs and unique selected sections', () => {
-    expect(previewDebugContextRequestSchema.parse({ sessionId, conversationId })).toEqual({
+    expect(
+      previewDebugContextRequestSchema.parse({ sessionId, conversationId, locale: 'en-US' }),
+    ).toEqual({
       sessionId,
       conversationId,
+      locale: 'en-US',
     });
+    expect(() =>
+      previewDebugContextRequestSchema.parse({ sessionId, conversationId, locale: 'fr-FR' }),
+    ).toThrow();
     expect(() =>
       attachDebugContextRequestSchema.parse({
         snapshotId: sessionId,

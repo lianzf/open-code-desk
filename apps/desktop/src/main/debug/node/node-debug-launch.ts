@@ -2,14 +2,13 @@ import { basename, isAbsolute } from 'node:path';
 
 import type {
   DebugAdapterCapabilities,
-  DebugExceptionPauseMode,
-  DebugVariable,
+  DebugExceptionPolicy,
   RunCommandSnapshot,
 } from '@open-code-desk/domain';
 
 import { toPlatformPath } from '../../filesystem/path-policy';
 import type { DapClient } from '../dap/dap-client';
-import { asRecord, booleanValue, numberValue, stringValue } from './dap-values';
+import { asRecord, booleanValue } from '../dap/dap-values';
 
 export const initializeArguments = {
   clientID: 'open-code-desk',
@@ -38,17 +37,58 @@ export function mapCapabilities(value: unknown): DebugAdapterCapabilities {
     hitConditionalBreakpoints: booleanValue(body, 'supportsHitConditionalBreakpoints') ?? false,
     logPoints: booleanValue(body, 'supportsLogPoints') ?? false,
     functionBreakpoints: booleanValue(body, 'supportsFunctionBreakpoints') ?? false,
+    dataBreakpoints: booleanValue(body, 'supportsDataBreakpoints') ?? false,
     exceptionInfo: booleanValue(body, 'supportsExceptionInfoRequest') ?? false,
   };
 }
 
 export async function setNodeExceptionBreakpoints(
   client: DapClient,
-  mode: DebugExceptionPauseMode,
+  policy: DebugExceptionPolicy,
 ): Promise<void> {
-  await client.request('setExceptionBreakpoints', {
-    filters: mode === 'none' ? [] : [mode],
-  });
+  await client.request('setExceptionBreakpoints', createNodeExceptionBreakpointArguments(policy));
+}
+
+export function createNodeExceptionBreakpointArguments(
+  policy: DebugExceptionPolicy,
+): Readonly<Record<string, unknown>> {
+  const included = normalizeExceptionTypes(policy.exceptionBreakTypes);
+  const ignored = normalizeExceptionTypes(policy.exceptionIgnoreTypes);
+  if (included.length === 0 && ignored.length === 0) {
+    return {
+      filters: policy.exceptionPauseMode === 'none' ? [] : [policy.exceptionPauseMode],
+    };
+  }
+  const filterOptions: Array<{
+    readonly filterId: 'all' | 'uncaught';
+    readonly condition: string;
+  }> = [];
+  const ignoreCondition = ignored
+    .map((name) => `error.name != ${JSON.stringify(name)}`)
+    .join(' && ');
+  if (policy.exceptionPauseMode !== 'none') {
+    filterOptions.push({
+      filterId: policy.exceptionPauseMode,
+      condition: ignoreCondition === '' ? 'true' : ignoreCondition,
+    });
+  }
+  if (policy.exceptionPauseMode !== 'all' && included.length > 0) {
+    const includeCondition = included
+      .map((name) => `error.name == ${JSON.stringify(name)}`)
+      .join(' || ');
+    filterOptions.push({
+      filterId: 'all',
+      condition:
+        ignoreCondition === ''
+          ? `(${includeCondition})`
+          : `(${includeCondition}) && (${ignoreCondition})`,
+    });
+  }
+  return { filters: [], filterOptions };
+}
+
+function normalizeExceptionTypes(values: ReadonlyArray<string>): ReadonlyArray<string> {
+  return [...new Set(values.map((value) => value.trim()).filter((value) => value !== ''))];
 }
 
 export function createLaunchArguments(
@@ -91,22 +131,27 @@ export function createLaunchArguments(
   };
 }
 
-export function mapVariable(value: unknown): ReadonlyArray<DebugVariable> {
-  const variable = asRecord(value);
-  const name = stringValue(variable, 'name');
-  const displayValue = stringValue(variable, 'value');
-  const variablesReference = numberValue(variable, 'variablesReference');
-  const type = stringValue(variable, 'type');
-  const evaluateName = stringValue(variable, 'evaluateName');
-  return name === undefined || displayValue === undefined || variablesReference === undefined
-    ? []
-    : [
-        {
-          name,
-          value: displayValue,
-          variablesReference,
-          ...(type === undefined ? {} : { type }),
-          ...(evaluateName === undefined ? {} : { evaluateName }),
-        },
-      ];
+export function createAttachArguments(
+  command: RunCommandSnapshot,
+  workspaceRoot: string,
+): Readonly<Record<string, unknown>> {
+  const target = command.debugAttach;
+  if (target === undefined || target.adapter !== 'pwa-node') {
+    throw new Error('Node.js 附加调试缺少远程或容器目标。');
+  }
+  return {
+    type: 'pwa-node',
+    request: 'attach',
+    name: command.configurationName,
+    address: target.host,
+    port: target.port,
+    localRoot: workspaceRoot,
+    ...(target.remoteRoot === undefined ? {} : { remoteRoot: target.remoteRoot }),
+    sourceMaps: true,
+    timeout: 30_000,
+    restart: false,
+    continueOnAttach: true,
+    skipFiles: ['<node_internals>/**'],
+    resolveSourceMapLocations: [`${workspaceRoot.replaceAll('\\', '/')}/**`, '!**/node_modules/**'],
+  };
 }

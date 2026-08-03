@@ -51,6 +51,7 @@ describe('DebugContextService integration', () => {
         return null;
       },
     });
+    await workspaceService.openRecent(workspace.id);
     const conversations = new ConversationRepository(database);
     const conversation = conversations.create(workspace.id, { title: '修复异常' });
     const contextRepository = new ContextItemRepository(database);
@@ -146,6 +147,7 @@ describe('DebugContextService integration', () => {
     const preview = await service.preview({
       sessionId: session.id,
       conversationId: conversation.id,
+      locale: 'en-US',
     });
     const serializedPreview = JSON.stringify(preview);
     expect(serializedPreview).not.toMatch(
@@ -173,8 +175,13 @@ describe('DebugContextService integration', () => {
     });
     const stored = contextRepository.list(conversation.id);
     expect(attached.contextItem.sourceKey).toBe(`debug:${session.id}`);
+    expect(attached.contextItem.title).toContain('Debug snapshot');
+    expect(attached.prompt).toMatch(/^Analyze the debug context/u);
     expect(stored).toHaveLength(1);
-    expect(stored[0]?.content).toContain('## 异常');
+    expect(stored[0]?.content).toContain('# User-reviewed debug context');
+    expect(stored[0]?.content).toContain('## Exception');
+    expect(stored[0]?.content).toContain('Exception: Error');
+    expect(stored[0]?.content).not.toMatch(/暂停位置|异常：|调用栈：/u);
     expect(stored[0]?.content).not.toContain('Git Diff');
     expect(JSON.stringify(stored)).not.toMatch(/never-leak/u);
   });

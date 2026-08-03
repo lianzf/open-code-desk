@@ -61,7 +61,9 @@ export class GeminiProvider implements ModelProvider {
       context.signal,
     );
     assertSuccessful(response);
-    const parsed = geminiModelListSchema.safeParse(await readLimitedJson(response));
+    const parsed = geminiModelListSchema.safeParse(
+      await readLimitedJson(response, { signal: context.signal }),
+    );
     if (!parsed.success) {
       throw incompatibleResponse('Gemini 模型列表响应格式不兼容。请检查 Base URL。');
     }
@@ -202,7 +204,9 @@ export class GeminiProvider implements ModelProvider {
       context.signal,
     );
     assertSuccessful(response);
-    const parsed = geminiResponseSchema.safeParse(await readLimitedJson(response));
+    const parsed = geminiResponseSchema.safeParse(
+      await readLimitedJson(response, { signal: context.signal }),
+    );
     if (!parsed.success) {
       throw incompatibleResponse('Gemini 消息响应格式不兼容。');
     }

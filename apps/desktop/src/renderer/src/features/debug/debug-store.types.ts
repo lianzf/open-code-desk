@@ -32,6 +32,23 @@ export interface DebugBreakpointDefinition extends DebugBreakpointEditorTarget {
   readonly logMessage?: string;
 }
 
+export type DebugSpecialBreakpointDefinition =
+  | {
+      readonly id?: string;
+      readonly kind: 'function';
+      readonly functionName: string;
+      readonly condition?: string;
+      readonly hitCondition?: string;
+    }
+  | {
+      readonly id?: string;
+      readonly kind: 'data';
+      readonly dataId: string;
+      readonly dataAccessType: 'read' | 'write' | 'readWrite';
+      readonly condition?: string;
+      readonly hitCondition?: string;
+    };
+
 export interface DebugState {
   readonly workspaceId: string | undefined;
   readonly initialized: boolean;
@@ -65,8 +82,13 @@ export interface DebugState {
   openBreakpointEditor(relativePath: string, line: number, column?: number): void;
   closeBreakpointEditor(): void;
   saveBreakpointDefinition(input: DebugBreakpointDefinition): Promise<void>;
+  saveSpecialBreakpoint(input: DebugSpecialBreakpointDefinition): Promise<void>;
   setBreakpointEnabled(breakpointId: string, enabled: boolean): Promise<void>;
   setExceptionPauseMode(mode: DebugSettings['exceptionPauseMode']): Promise<void>;
+  setExceptionPolicy(
+    exceptionBreakTypes: ReadonlyArray<string>,
+    exceptionIgnoreTypes: ReadonlyArray<string>,
+  ): Promise<void>;
   deleteBreakpoint(breakpointId: string): Promise<void>;
   deleteBreakpointsForFile(relativePath: string): Promise<void>;
   deleteAllBreakpoints(): Promise<void>;

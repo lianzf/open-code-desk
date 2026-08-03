@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 import type { DebugBreakpoint, DebugEvent } from '@open-code-desk/domain';
@@ -31,22 +32,27 @@ export class DebugBreakpointCoordinator {
   }
 
   public async save(input: SaveDebugBreakpointRequest): Promise<DebugBreakpoint> {
+    const location = breakpointStorageLocation(input);
     const saved = this.options.repository.save({
       workspaceId: input.workspaceId,
-      relativePath: input.relativePath,
-      line: input.line,
+      relativePath: location.relativePath,
+      line: location.line,
       enabled: input.enabled,
+      kind: input.kind ?? 'line',
+      ...(input.functionName === undefined ? {} : { functionName: input.functionName }),
+      ...(input.dataId === undefined ? {} : { dataId: input.dataId }),
+      ...(input.dataAccessType === undefined ? {} : { dataAccessType: input.dataAccessType }),
       ...(input.condition === undefined ? {} : { condition: input.condition }),
       ...(input.hitCondition === undefined ? {} : { hitCondition: input.hitCondition }),
       ...(input.logMessage === undefined ? {} : { logMessage: input.logMessage }),
       ...(input.id === undefined ? {} : { id: input.id }),
       ...(input.column === undefined ? {} : { column: input.column }),
     });
-    await this.syncFile(input.workspaceId, input.relativePath);
+    if ((input.kind ?? 'line') === 'line')
+      await this.syncFile(input.workspaceId, location.relativePath);
+    else await this.syncSpecialBreakpoints(input.workspaceId);
     return (
-      this.options.repository
-        .list(input.workspaceId, input.relativePath)
-        .find((item) => item.id === saved.id) ?? saved
+      this.options.repository.list(input.workspaceId).find((item) => item.id === saved.id) ?? saved
     );
   }
 
@@ -56,16 +62,21 @@ export class DebugBreakpointCoordinator {
       .find((breakpoint) => breakpoint.id === input.breakpointId);
     const deleted = this.options.repository.delete(input.workspaceId, input.breakpointId);
     if (deleted && existing !== undefined) {
-      await this.syncFile(input.workspaceId, existing.relativePath);
+      if (existing.kind === 'line') await this.syncFile(input.workspaceId, existing.relativePath);
+      else await this.syncSpecialBreakpoints(input.workspaceId);
     }
     return deleted;
   }
 
   public async refreshAll(workspaceId: string): Promise<void> {
     const paths = new Set(
-      this.options.repository.list(workspaceId).map((item) => item.relativePath),
+      this.options.repository
+        .list(workspaceId)
+        .filter((item) => item.kind === 'line')
+        .map((item) => item.relativePath),
     );
     for (const path of paths) await this.syncFile(workspaceId, path);
+    await this.syncSpecialBreakpoints(workspaceId);
   }
 
   public async updateFromAdapter(
@@ -98,8 +109,32 @@ export class DebugBreakpointCoordinator {
       this.emit(workspaceId);
       return;
     }
-    const values = this.options.repository.list(workspaceId, relativePath);
+    const values = this.options.repository
+      .list(workspaceId, relativePath)
+      .filter((breakpoint) => breakpoint.kind === 'line');
     const verified = await adapter.setBreakpoints(relativePath, values);
+    for (const breakpoint of verified) {
+      this.options.repository.updateVerification(
+        breakpoint.id,
+        breakpoint.status,
+        breakpoint.adapterBreakpointId,
+        breakpoint.message,
+      );
+    }
+    this.emit(workspaceId);
+  }
+
+  private async syncSpecialBreakpoints(workspaceId: string): Promise<void> {
+    const adapter = this.options.activeAdapter(workspaceId);
+    if (adapter === undefined) {
+      this.emit(workspaceId);
+      return;
+    }
+    const all = this.options.repository.list(workspaceId);
+    const verified = [
+      ...(await adapter.setFunctionBreakpoints(all.filter((item) => item.kind === 'function'))),
+      ...(await adapter.setDataBreakpoints(all.filter((item) => item.kind === 'data'))),
+    ];
     for (const breakpoint of verified) {
       this.options.repository.updateVerification(
         breakpoint.id,
@@ -131,4 +166,21 @@ export class DebugBreakpointCoordinator {
       occurredAt: new Date().toISOString(),
     });
   }
+}
+
+function breakpointStorageLocation(input: SaveDebugBreakpointRequest): {
+  readonly relativePath: string;
+  readonly line: number;
+} {
+  const kind = input.kind ?? 'line';
+  if (kind === 'line') {
+    if (input.relativePath === undefined || input.line === undefined) {
+      throw new Error('行断点缺少文件位置。');
+    }
+    return { relativePath: input.relativePath, line: input.line };
+  }
+  const identity = kind === 'function' ? input.functionName : input.dataId;
+  if (identity === undefined) throw new Error('特殊断点缺少调试器标识。');
+  const digest = createHash('sha256').update(identity).digest('hex');
+  return { relativePath: `@${kind}/${digest}`, line: 1 };
 }

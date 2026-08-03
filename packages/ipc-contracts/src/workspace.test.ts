@@ -20,10 +20,16 @@ describe('workspace IPC contracts', () => {
     });
   });
 
-  it('rejects oversized or empty searches', () => {
-    expect(() => searchFilesRequestSchema.parse({ workspaceId, query: '', limit: 100 })).toThrow();
+  it('validates cancellable filename searches and rejects invalid limits', () => {
+    const requestId = '6f674acb-f7a0-46ee-9f23-d74933ba7618';
+    expect(
+      searchFilesRequestSchema.parse({ requestId, workspaceId, query: 'src', limit: 100 }),
+    ).toEqual({ requestId, workspaceId, query: 'src', limit: 100 });
     expect(() =>
-      searchFilesRequestSchema.parse({ workspaceId, query: 'src', limit: 201 }),
+      searchFilesRequestSchema.parse({ requestId, workspaceId, query: '', limit: 100 }),
+    ).toThrow();
+    expect(() =>
+      searchFilesRequestSchema.parse({ requestId, workspaceId, query: 'src', limit: 201 }),
     ).toThrow();
   });
 

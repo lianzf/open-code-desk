@@ -28,9 +28,12 @@ export class DebugSettingsCoordinator {
 
   public async save(input: SaveDebugSettingsRequest): Promise<DebugSettings> {
     await this.options.workspaces.getById(input.workspaceId);
-    await this.options
-      .activeAdapter(input.workspaceId)
-      ?.setExceptionBreakpoints(input.exceptionPauseMode);
-    return this.options.repository.save(input.workspaceId, input.exceptionPauseMode);
+    const policy = {
+      exceptionPauseMode: input.exceptionPauseMode,
+      exceptionBreakTypes: input.exceptionBreakTypes,
+      exceptionIgnoreTypes: input.exceptionIgnoreTypes,
+    };
+    await this.options.activeAdapter(input.workspaceId)?.setExceptionBreakpoints(policy);
+    return this.options.repository.save(input.workspaceId, policy);
   }
 }

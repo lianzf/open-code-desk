@@ -54,7 +54,11 @@ export const debugContextSnapshotSchema = z
   .strict();
 
 export const previewDebugContextRequestSchema = z
-  .object({ sessionId: uuidSchema, conversationId: conversationIdSchema })
+  .object({
+    sessionId: uuidSchema,
+    conversationId: conversationIdSchema,
+    locale: z.enum(['zh-CN', 'en-US']),
+  })
   .strict();
 
 export const attachDebugContextRequestSchema = z

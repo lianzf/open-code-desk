@@ -48,12 +48,66 @@ describe('project detector', () => {
     );
     expect(result.suggestedConfigurations).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ executable: 'pnpm', args: ['run', 'dev'] }),
+        expect.objectContaining({
+          type: 'nextjs',
+          executable: 'pnpm',
+          args: ['run', 'dev'],
+          port: 3000,
+        }),
         expect.objectContaining({ executable: 'pnpm', args: ['run', 'build'] }),
       ]),
     );
     expect(result.suggestedConfigurations.some((draft) => draft.args.includes('--unsafe'))).toBe(
       false,
+    );
+  });
+
+  it('records safe browser-debug ports for front-end development scripts only', async () => {
+    const root = await fixture({
+      'package.json': JSON.stringify({
+        scripts: {
+          dev: 'vite --port 4310',
+          build: 'vite build',
+        },
+        dependencies: { react: '19.0.0', vite: '7.0.0' },
+      }),
+    });
+
+    const result = await detectProject(workspaceId, root);
+    expect(result.suggestedConfigurations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'react', args: ['run', 'dev'], port: 4310 }),
+      ]),
+    );
+    expect(
+      result.suggestedConfigurations.find((configuration) => configuration.args.includes('build'))
+        ?.port,
+    ).toBeUndefined();
+  });
+
+  it('detects Electron and suggests a deterministic dual-process debug configuration', async () => {
+    const root = await fixture({
+      'package.json': JSON.stringify({
+        main: 'main.cjs',
+        dependencies: { electron: '43.2.0' },
+      }),
+      'main.cjs': "const { app } = require('electron');\napp.whenReady().then(() => app.quit());\n",
+    });
+
+    const result = await detectProject(workspaceId, root, 'en-US');
+
+    expect(result.primaryType).toBe('electron');
+    expect(result.detectedTypes).toEqual(expect.arrayContaining(['electron', 'node']));
+    expect(result.suggestedConfigurations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Electron · Main and renderer',
+          type: 'electron',
+          executable: expect.stringContaining('node_modules'),
+          args: ['.'],
+          port: 9222,
+        }),
+      ]),
     );
   });
 
@@ -105,5 +159,78 @@ describe('project detector', () => {
     const result = await detectProject(workspaceId, root);
     expect(result.detectedTypes).toContain('node');
     expect(JSON.stringify(result)).not.toContain(hiddenScript);
+  });
+
+  it('uses a workspace virtual environment in suggested Python configurations', async () => {
+    const interpreterRelativePath =
+      process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python';
+    const root = await fixture({
+      'main.py': 'print("ok")\n',
+      [interpreterRelativePath]: '',
+      '.venv/pyvenv.cfg': 'version = 3.13.2\n',
+    });
+
+    const result = await detectProject(workspaceId, root);
+    const expectedExecutable = join(root, ...interpreterRelativePath.split('/'));
+
+    expect(result.runtimeCandidates[0]).toMatchObject({
+      executable: expectedExecutable,
+      source: 'workspace-venv',
+      version: '3.13.2',
+    });
+    expect(result.suggestedConfigurations[0]?.executable).toBe(expectedExecutable);
+  });
+
+  it('suggests framework and test configurations from bounded Python metadata', async () => {
+    const root = await fixture({
+      'main.py': 'from fastapi import FastAPI\napp = FastAPI()\n',
+      'app.py': 'from flask import Flask\napp = Flask(__name__)\n',
+      'requirements.txt': 'fastapi==1.0\nuvicorn==1.0\nflask==3.0\npytest==9.0\n',
+      'pytest.ini': '[pytest]\n',
+    });
+
+    const result = await detectProject(workspaceId, root);
+    expect(result.suggestedConfigurations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Python · Flask 开发服务器',
+          runtimeArgs: ['-m', 'flask'],
+        }),
+        expect.objectContaining({
+          name: 'Python · FastAPI (uvicorn)',
+          runtimeArgs: ['-m', 'uvicorn'],
+        }),
+        expect.objectContaining({ name: 'Python · pytest', runtimeArgs: ['-m', 'pytest'] }),
+      ]),
+    );
+  });
+
+  it('localizes Python detection evidence, runtimes, and framework suggestions to English', async () => {
+    const interpreterRelativePath =
+      process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python';
+    const root = await fixture({
+      'app.py': 'from flask import Flask\napp = Flask(__name__)\n',
+      'requirements.txt': 'flask==3.0\n',
+      [interpreterRelativePath]: '',
+    });
+
+    const result = await detectProject(workspaceId, root, 'en-US');
+
+    expect(result.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ reason: 'Detected python project marker.' }),
+      ]),
+    );
+    expect(result.runtimeCandidates[0]).toMatchObject({
+      label: '.venv virtual environment',
+      reason:
+        'Workspace virtual environments are preferred to reduce dependency and interpreter mismatches.',
+    });
+    expect(result.suggestedConfigurations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'Python · Flask development server' }),
+      ]),
+    );
+    expect(JSON.stringify(result)).not.toMatch(/\p{Script=Han}/u);
   });
 });

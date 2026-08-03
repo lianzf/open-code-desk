@@ -96,6 +96,65 @@ export interface ToolCallAccumulator {
 
 const maximumJsonResponseBytes = 2_000_000;
 const requestTimeoutMs = 30_000;
+const maximumJsonResponseDurationMs = 30_000;
+
+export interface ResponseReadOptions {
+  readonly maximumBytes?: number;
+  readonly idleTimeoutMs?: number;
+  readonly maximumDurationMs?: number;
+  readonly signal?: AbortSignal;
+}
+
+function responseBodyTimeoutError(): ProviderServiceError {
+  return new ProviderServiceError(
+    'PROVIDER_UNAVAILABLE',
+    '模型服务响应体超过最长读取时间。请检查网络和服务状态后重试。',
+    true,
+  );
+}
+
+async function readWithIdleTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  idleTimeoutMs: number,
+  signal?: AbortSignal,
+): Promise<Awaited<ReturnType<ReadableStreamDefaultReader<Uint8Array>['read']>>> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let abortListener: (() => void) | undefined;
+  try {
+    if (signal?.aborted === true) {
+      throw signal.reason;
+    }
+    return await Promise.race([
+      reader.read(),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          reject(
+            new ProviderServiceError(
+              'PROVIDER_UNAVAILABLE',
+              '模型服务响应体超时。请检查网络和服务状态后重试。',
+              true,
+            ),
+          );
+        }, idleTimeoutMs);
+      }),
+      ...(signal === undefined
+        ? []
+        : [
+            new Promise<never>((_resolve, reject) => {
+              abortListener = () => reject(signal.reason);
+              signal.addEventListener('abort', abortListener, { once: true });
+            }),
+          ]),
+    ]);
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    if (abortListener !== undefined && signal !== undefined) {
+      signal.removeEventListener('abort', abortListener);
+    }
+  }
+}
 
 function openAIContent(content: ChatMessageContent): unknown {
   if (typeof content === 'string') {
@@ -194,23 +253,59 @@ export async function fetchWithHeaderTimeout(
   }
 }
 
-export async function readLimitedJson(response: Response): Promise<unknown> {
+export async function readLimitedJson(
+  response: Response,
+  options: ResponseReadOptions = {},
+): Promise<unknown> {
+  const maximumBytes = options.maximumBytes ?? maximumJsonResponseBytes;
+  const idleTimeoutMs = options.idleTimeoutMs ?? requestTimeoutMs;
+  const maximumDurationMs = options.maximumDurationMs ?? maximumJsonResponseDurationMs;
+  const deadline = Date.now() + maximumDurationMs;
   const contentLength = Number(response.headers.get('content-length') ?? '0');
-  if (contentLength > maximumJsonResponseBytes) {
+  if (contentLength > maximumBytes) {
     throw new ProviderServiceError(
       'PROVIDER_UNAVAILABLE',
       '模型服务返回的数据超过安全限制。',
       false,
     );
   }
-  const text = await response.text();
-  if (Buffer.byteLength(text) > maximumJsonResponseBytes) {
-    throw new ProviderServiceError(
-      'PROVIDER_UNAVAILABLE',
-      '模型服务返回的数据超过安全限制。',
-      false,
-    );
+
+  const reader = response.body?.getReader();
+  const chunks: Uint8Array[] = [];
+  let receivedBytes = 0;
+  if (reader !== undefined) {
+    try {
+      while (true) {
+        const remainingDurationMs = deadline - Date.now();
+        if (remainingDurationMs <= 0) {
+          throw responseBodyTimeoutError();
+        }
+        const chunk = await readWithIdleTimeout(
+          reader,
+          Math.min(idleTimeoutMs, remainingDurationMs),
+          options.signal,
+        );
+        if (chunk.done) {
+          break;
+        }
+        receivedBytes += chunk.value.byteLength;
+        if (receivedBytes > maximumBytes) {
+          throw new ProviderServiceError(
+            'PROVIDER_UNAVAILABLE',
+            '模型服务返回的数据超过安全限制。',
+            false,
+          );
+        }
+        chunks.push(chunk.value);
+      }
+    } catch (error) {
+      await reader.cancel(error).catch(() => undefined);
+      throw error;
+    } finally {
+      reader.releaseLock();
+    }
   }
+  const text = Buffer.concat(chunks, receivedBytes).toString('utf8');
   try {
     return JSON.parse(text) as unknown;
   } catch {

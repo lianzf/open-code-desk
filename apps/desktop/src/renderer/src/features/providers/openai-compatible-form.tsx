@@ -1,147 +1,18 @@
 import { Eye, EyeOff, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import type {
-  ProviderConfig,
-  ProviderHeaderInput,
-  ProviderKind,
-  SaveProviderRequest,
-} from '@open-code-desk/ipc-contracts';
+import type { ProviderHeaderInput } from '@open-code-desk/ipc-contracts';
 
 import { Button } from '@/components/ui/button';
-
-interface OpenAICompatibleFormProps {
-  readonly configuration: ProviderConfig | null;
-  readonly loading: boolean;
-  readonly providerKind: ProviderKind;
-  onSave(input: SaveProviderRequest): Promise<ProviderConfig>;
-}
-
-interface HeaderDraft {
-  readonly id: string;
-  name: string;
-  value: string;
-  sensitive: boolean;
-  configured: boolean;
-}
-
-interface FormState {
-  displayName: string;
-  baseUrl: string;
-  apiKey: string;
-  defaultModel: string;
-  fastModel: string;
-  reasoningModel: string;
-  contextWindow: string;
-  toolCalling: boolean;
-  vision: boolean;
-  streaming: boolean;
-  headers: HeaderDraft[];
-}
-
-const providerPresets: Readonly<
-  Record<ProviderKind, Pick<FormState, 'displayName' | 'baseUrl' | 'contextWindow'>>
-> = {
-  'openai-compatible': {
-    displayName: 'OpenAI Compatible',
-    baseUrl: 'https://api.example.com/v1',
-    contextWindow: '128000',
-  },
-  openai: {
-    displayName: 'OpenAI',
-    baseUrl: 'https://api.openai.com/v1',
-    contextWindow: '128000',
-  },
-  anthropic: {
-    displayName: 'Anthropic Claude',
-    baseUrl: 'https://api.anthropic.com/v1',
-    contextWindow: '200000',
-  },
-  gemini: {
-    displayName: 'Google Gemini',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
-    contextWindow: '1000000',
-  },
-  openrouter: {
-    displayName: 'OpenRouter',
-    baseUrl: 'https://openrouter.ai/api/v1',
-    contextWindow: '128000',
-  },
-  deepseek: {
-    displayName: 'DeepSeek',
-    baseUrl: 'https://api.deepseek.com',
-    contextWindow: '128000',
-  },
-  qwen: {
-    displayName: 'Alibaba Cloud Qwen',
-    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    contextWindow: '128000',
-  },
-  glm: {
-    displayName: 'Zhipu GLM',
-    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    contextWindow: '128000',
-  },
-  moonshot: {
-    displayName: 'Moonshot / Kimi',
-    baseUrl: 'https://api.moonshot.cn/v1',
-    contextWindow: '128000',
-  },
-  ollama: {
-    displayName: 'Ollama',
-    baseUrl: 'http://localhost:11434/v1',
-    contextWindow: '32768',
-  },
-};
-
-function emptyForm(providerKind: ProviderKind): FormState {
-  return {
-    ...providerPresets[providerKind],
-    apiKey: '',
-    defaultModel: '',
-    fastModel: '',
-    reasoningModel: '',
-    toolCalling: true,
-    vision: false,
-    streaming: true,
-    headers: [],
-  };
-}
-
-function fromConfiguration(
-  configuration: ProviderConfig | null,
-  providerKind: ProviderKind,
-): FormState {
-  if (configuration === null) {
-    return emptyForm(providerKind);
-  }
-  return {
-    displayName: configuration.displayName,
-    baseUrl: configuration.baseUrl,
-    apiKey: '',
-    defaultModel: configuration.defaultModel,
-    fastModel: configuration.fastModel ?? '',
-    reasoningModel: configuration.reasoningModel ?? '',
-    contextWindow: String(configuration.contextWindow),
-    toolCalling: configuration.toolCalling,
-    vision: configuration.vision,
-    streaming: configuration.streaming,
-    headers: configuration.customHeaders.map((header) => ({
-      id: crypto.randomUUID(),
-      name: header.name,
-      value: header.value ?? '',
-      sensitive: header.sensitive,
-      configured: header.configured,
-    })),
-  };
-}
-
-const inputClassName =
-  'h-9 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-500';
-const capabilityToggles = [
-  { key: 'toolCalling', label: '工具调用' },
-  { key: 'vision', label: '图片输入' },
-  { key: 'streaming', label: '流式响应' },
-] as const;
+import { useAppSettingsStore } from '@/features/settings/app-settings.store';
+import { translate } from '@/features/settings/i18n';
+import {
+  capabilityToggles,
+  fromConfiguration,
+  type FormState,
+  type HeaderDraft,
+  inputClassName,
+  type OpenAICompatibleFormProps,
+} from './openai-compatible-form-state';
 
 export function OpenAICompatibleForm({
   configuration,
@@ -151,6 +22,9 @@ export function OpenAICompatibleForm({
 }: OpenAICompatibleFormProps) {
   const [form, setForm] = useState<FormState>(() => fromConfiguration(configuration, providerKind));
   const [showApiKey, setShowApiKey] = useState(false);
+  const locale = useAppSettingsStore((state) => state.settings.locale);
+  const t = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
+    translate(locale, key, values);
 
   const updateHeader = (id: string, patch: Partial<HeaderDraft>) => {
     setForm((current) => ({
@@ -195,7 +69,7 @@ export function OpenAICompatibleForm({
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-1.5 text-xs text-zinc-400">
-          <span>配置名称</span>
+          <span>{t('configurationName')}</span>
           <input
             className={inputClassName}
             value={form.displayName}
@@ -231,9 +105,7 @@ export function OpenAICompatibleForm({
           required
           data-testid="provider-base-url"
         />
-        <span className="block text-[11px] text-zinc-600">
-          远程服务必须使用 HTTPS；仅 localhost/127.0.0.1 可使用 HTTP。
-        </span>
+        <span className="block text-[11px] text-zinc-600">{t('remoteHttpsHint')}</span>
       </label>
 
       <label className="block space-y-1.5 text-xs text-zinc-400">
@@ -245,7 +117,9 @@ export function OpenAICompatibleForm({
             value={form.apiKey}
             onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))}
             placeholder={
-              configuration?.hasApiKey === true ? '已安全保存；留空保持不变' : '由你本地填写'
+              configuration?.hasApiKey === true
+                ? t('apiKeySavedPlaceholder')
+                : t('apiKeyLocalPlaceholder')
             }
             autoComplete="off"
             data-testid="provider-api-key"
@@ -254,7 +128,7 @@ export function OpenAICompatibleForm({
             type="button"
             className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-zinc-500 hover:text-zinc-200"
             onClick={() => setShowApiKey((visible) => !visible)}
-            aria-label={showApiKey ? '隐藏 API Key' : '显示 API Key'}
+            aria-label={showApiKey ? t('hideApiKey') : t('showApiKey')}
           >
             {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
           </button>
@@ -263,7 +137,7 @@ export function OpenAICompatibleForm({
 
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="space-y-1.5 text-xs text-zinc-400">
-          <span>最大上下文</span>
+          <span>{t('maximumContext')}</span>
           <input
             className={inputClassName}
             type="number"
@@ -276,7 +150,7 @@ export function OpenAICompatibleForm({
           />
         </label>
         <label className="space-y-1.5 text-xs text-zinc-400">
-          <span>快速模型（可选）</span>
+          <span>{t('fastModel')}</span>
           <input
             className={inputClassName}
             value={form.fastModel}
@@ -286,7 +160,7 @@ export function OpenAICompatibleForm({
           />
         </label>
         <label className="space-y-1.5 text-xs text-zinc-400">
-          <span>高级推理模型（可选）</span>
+          <span>{t('reasoningModel')}</span>
           <input
             className={inputClassName}
             value={form.reasoningModel}
@@ -298,7 +172,7 @@ export function OpenAICompatibleForm({
       </div>
 
       <div className="flex flex-wrap gap-4 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-xs text-zinc-300">
-        {capabilityToggles.map(({ key, label }) => (
+        {capabilityToggles.map(({ key, labelKey }) => (
           <label key={key} className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -307,7 +181,7 @@ export function OpenAICompatibleForm({
                 setForm((current) => ({ ...current, [key]: event.target.checked }))
               }
             />
-            {label}
+            {t(labelKey)}
           </label>
         ))}
       </div>
@@ -315,10 +189,8 @@ export function OpenAICompatibleForm({
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-medium text-zinc-200">自定义请求头</h3>
-            <p className="mt-1 text-[11px] text-zinc-600">
-              API Key、Token、Authorization 等名称会自动按敏感值加密保存。
-            </p>
+            <h3 className="text-sm font-medium text-zinc-200">{t('customHeaders')}</h3>
+            <p className="mt-1 text-[11px] text-zinc-600">{t('customHeadersDescription')}</p>
           </div>
           <Button
             type="button"
@@ -341,7 +213,7 @@ export function OpenAICompatibleForm({
             }
           >
             <Plus className="size-3.5" />
-            添加
+            {t('add')}
           </Button>
         </div>
         {form.headers.map((header) => (
@@ -366,7 +238,7 @@ export function OpenAICompatibleForm({
                   configured: false,
                 })
               }
-              placeholder={header.configured ? '已安全保存；留空保持' : '值'}
+              placeholder={header.configured ? t('configuredValuePlaceholder') : t('value')}
             />
             <label className="flex items-center gap-2 whitespace-nowrap text-xs text-zinc-400">
               <input
@@ -374,7 +246,7 @@ export function OpenAICompatibleForm({
                 checked={header.sensitive}
                 onChange={(event) => updateHeader(header.id, { sensitive: event.target.checked })}
               />
-              敏感
+              {t('sensitive')}
             </label>
             <button
               type="button"
@@ -385,7 +257,7 @@ export function OpenAICompatibleForm({
                   headers: current.headers.filter((item) => item.id !== header.id),
                 }))
               }
-              aria-label={`删除请求头 ${header.name}`}
+              aria-label={t('deleteHeader', { name: header.name })}
             >
               <Trash2 className="size-4" />
             </button>
@@ -395,7 +267,7 @@ export function OpenAICompatibleForm({
 
       <div className="flex justify-end">
         <Button type="submit" disabled={loading} data-testid="save-provider">
-          {loading ? '正在保存…' : '安全保存配置'}
+          {loading ? t('savingSecurely') : t('saveConfigurationSecurely')}
         </Button>
       </div>
     </form>

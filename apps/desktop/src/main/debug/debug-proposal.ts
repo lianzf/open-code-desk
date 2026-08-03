@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { DebugSession } from '@open-code-desk/domain';
 
 import type { RunConfigurationRepository } from '../run/run-configuration.repository';
-import { prepareRunProposal } from '../run/run-execution-proposal';
+import { prepareRunProposal, type ProjectTaskPlanProvider } from '../run/run-execution-proposal';
 import type { WorkspaceService } from '../workspace/workspace.service';
 import type { DebugSessionRepository } from './debug-session.repository';
 
@@ -14,12 +14,15 @@ export async function createDebugProposal(input: {
   readonly configurations: RunConfigurationRepository;
   readonly sessions: DebugSessionRepository;
   readonly workspaces: WorkspaceService;
+  readonly taskPlans?: ProjectTaskPlanProvider;
 }): Promise<DebugSession> {
   const prepared = await prepareRunProposal({
     workspaceId: input.workspaceId,
     configurationId: input.configurationId,
     configurations: input.configurations,
     workspaces: input.workspaces,
+    ...(input.taskPlans === undefined ? {} : { taskPlans: input.taskPlans }),
+    purpose: 'debug',
   });
   const sessionId = randomUUID();
   const approvalDigest = createHash('sha256')

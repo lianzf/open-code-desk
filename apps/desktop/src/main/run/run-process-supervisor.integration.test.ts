@@ -126,6 +126,15 @@ describe('RunProcessSupervisor integration', () => {
     );
   });
 
+  it('prevents the same service command from starting twice', async () => {
+    const supervisor = createSupervisor();
+    await supervisor.start(nodeSpec('service-first', 'setInterval(() => undefined, 1000);'));
+
+    await expect(
+      supervisor.start(nodeSpec('service-second', 'setInterval(() => undefined, 1000);')),
+    ).rejects.toThrow('same service is already running');
+  });
+
   it('closeAll stops every supervised process', async () => {
     const supervisor = createSupervisor();
     await Promise.all([

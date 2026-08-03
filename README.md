@@ -2,7 +2,7 @@
 
 OpenCode Desk 是一款本地优先、审批驱动的跨平台 AI 编程桌面工具。它使用 Electron、React 和 TypeScript 构建，允许用户自行配置模型服务地址、API Key 与模型名称，并通过统一 Provider 和 Tool 契约扩展新的模型或编程工具。
 
-当前阶段版本：[`0.6.0-alpha.1`](docs/releases/0.6.0-alpha.1.md)
+当前阶段版本：[`0.7.0-alpha.1`](docs/releases/0.7.0-alpha.1.md)
 
 模型输出始终被视为不可信输入。文件写入必须先生成 Diff 并由用户审核，命令执行必须经过风险评估和明确授权，渲染进程不能直接访问文件系统、数据库、密钥或系统 Shell。
 
@@ -17,18 +17,24 @@ OpenCode Desk 是一款本地优先、审批驱动的跨平台 AI 编程桌面�
 - 生成文件修改提案，在 Monaco Diff Editor 中逐项或批量审核、应用和回滚
 - 审批并执行结构化终端命令，显示实时输出、退出码、超时和取消状态
 - 识别项目类型并管理运行配置，经逐次审批后启动、停止和重新运行项目，持久化运行输出与历史
-- 使用真实 Node.js Debug Adapter 设置普通、条件、命中次数和日志断点，查看线程、调用栈、局部变量和监视表达式
-- 按工作区配置“不暂停 / 仅未捕获 / 全部异常”策略，调试中修改后立即同步到 Adapter
+- 创建构建、清理、测试、启动、打包、部署、Lint、类型检查和自定义 ProjectTask，支持依赖、运行/调试前后钩子、停止、重试、输出与历史恢复
+- 使用组合运行配置并发启动多个服务，独立查看输出和状态、分别停止或一键停止；显示端口、检测占用进程，并只在明确确认和 PID 复核后终止占用者
+- 使用真实 Node.js、Python、浏览器与 Electron 双进程 Debug Adapter 设置普通、条件、命中次数和日志断点，查看线程、调用栈、局部变量和监视表达式
+- 创建函数与数据断点，并按 Adapter 能力发送真实 DAP 请求；不支持的 Adapter 会明确保留为“未验证”，不会伪报成功
+- 自动发现 Python 工作区虚拟环境、当前激活环境和 PATH 解释器，并生成 Django、Flask、FastAPI 与 pytest 建议配置
+- 使用随应用固定分发的 debugpy 调试用户所选 Python 3.8+ 解释器，无需向项目环境安装调试依赖
+- 按工作区配置“不暂停 / 仅未捕获 / 全部异常”、指定异常类型暂停和异常忽略列表，调试中修改后立即同步到 Adapter
 - 在 Monaco 中高亮当前执行行，并继续、暂停、单步、运行到光标、重启或停止调试会话
 - 使用独立调试控制台查看脱敏输出、异常信息并执行表达式求值
 - 暂停或异常时预览已脱敏的源码、调用栈、变量、输出、Git Diff 与依赖，明确选择后交给 AI 分析
 - AI 可继续读取相关文件并生成待审核修复 Diff；应用后只能由用户显式重新调试验证
 - 查看 Git 分支、工作区状态和 Diff
 - 持久化工作区、模型配置、会话、Agent 任务、工具调用、文件变更、命令记录、权限规则和审计日志
+- 拖动或用键盘调整文件树、聊天栏与底部运行/调试面板，重启后恢复工作台布局
 - 支持主题、界面语言、快捷键、崩溃记录和受控自动更新
 
-IDE 级项目识别、运行配置、受管进程、Node.js/TypeScript DAP 调试和 AI 辅助修复已经形成真实闭环。
-调试状态来自官方 js-debug 的协议事件，不从普通运行日志推断。调试上下文只在用户点击“交给 AI
+IDE 级项目识别、运行配置、受管进程、Node.js/TypeScript、Python、浏览器与 Electron 主/渲染进程 DAP 调试和 AI 辅助修复已经
+形成真实闭环。调试状态来自官方 js-debug/debugpy 的协议事件，不从普通运行日志推断。调试上下文只在用户点击“交给 AI
 分析”、审核脱敏预览并确认后进入当前会话；模型产生的修复仍必须经过原有 FileChange Diff 审批，
 系统不会自动修改变量、执行命令或重启调试。
 
@@ -73,14 +79,19 @@ pnpm dev
 
 ```bash
 pnpm format:check
+pnpm docs:check
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm test:integration
+pnpm security:secrets
+pnpm security:dependency-audit
+pnpm security:licenses
 pnpm build
 pnpm test:e2e
 ```
 
-`pnpm test:e2e` 会先构建桌面端，再运行 Playwright Electron 场景。真实模型协议测试使用本地 HTTP/SSE 测试服务，不要求开发者提供真实厂商密钥。
+`pnpm test` 包含单元与集成测试；`pnpm test:integration` 可单独复验真实文件系统、进程、PTY、Git、DAP 和持久化集成场景。`pnpm test:e2e` 会先构建桌面端，再运行 Playwright Electron 场景。普通模型协议测试使用本地 HTTP/SSE 测试服务，不要求开发者提供真实厂商密钥。发布前如需验证真实服务，可按[模型配置指南](docs/model-configuration.md#真实服务验收发布前可选门禁)临时提供所选 Provider 的 Base URL、Model ID 和凭据，再运行 `pnpm test:providers:live`；未设置选择器时该专用命令会失败，而普通测试会明确跳过真实网络门禁。
 
 ## 构建安装包
 
@@ -96,7 +107,22 @@ pnpm package:linux
 - macOS：DMG 与 ZIP
 - Linux：AppImage
 
+打包命令会在生成产物后校验目标平台可执行文件、调试适配器和 `node-pty` 原生模块；任一运行时依赖缺失都会使打包失败。它还会生成 CycloneDX SBOM、完整工作区依赖审计、随包第三方许可证审计、Secret 扫描报告和覆盖这些元数据的 SHA-256 清单。CI 会直接启动解包后的应用运行 9 项核心端到端场景。
+
 跨平台正式发布应在对应原生 CI runner 上构建。公开发布前还必须配置 Windows 代码签名、macOS 签名与 notarization，并在干净设备上完成安装、启动、卸载和更新验证。
+
+### 正式签名发布
+
+向远端推送与根 `package.json` 版本一致的 `v*` Tag 会触发
+[`Signed release`](.github/workflows/release.yml) 工作流。该工作流会重新执行完整质量门禁，并且：
+
+- Windows 构建要求 `WIN_CSC_LINK`、`WIN_CSC_KEY_PASSWORD`，缺失或 Authenticode 验证失败时停止发布；签名安装包安装后还会执行 Provider/Agent、Diff、命令/Git、运行、Node/Python 调试、AI 修复、ProjectTask 和组合运行 E2E，再验证正常关闭与卸载。
+- macOS 构建要求 `MAC_CSC_LINK`、`MAC_CSC_KEY_PASSWORD`、`APPLE_API_KEY`、`APPLE_API_KEY_ID`、`APPLE_API_ISSUER`，并强制检查签名、Gatekeeper 和 stapled notarization ticket。
+- Linux 构建会验证 AppImage 可解包且包含可执行的 `AppRun`。
+- 正式 Tag 必须先通过独立 Windows runner 上的 240 分钟 Electron 稳定性验收；质量门禁与耐久验收都通过后才启动三平台打包。
+- 三个平台全部成功后才创建或更新 GitHub Release，并生成合并后的 SHA-256 清单。
+
+证书、私钥和密码只能配置在受保护的 `release-signing` GitHub Environment 中，不能提交到源码、普通配置文件或构建日志。该 Environment 应设置必要的人工审批者；普通分支 CI 仍生成不签名的测试产物，只有上述 Tag 工作流可以形成正式发布候选。工作流默认只有仓库读取权限，写入 Release 的权限仅授予全部平台通过后的最终发布 Job。
 
 ## 配置模型
 
@@ -119,7 +145,7 @@ OpenAI Compatible 服务的远程地址必须使用 HTTPS；本机 Ollama 等服
 - 文件路径经过规范化、真实路径和工作区边界检查
 - `.env`、SSH 私钥、浏览器凭据等敏感文件默认拒绝读取
 - AI 文件修改只有在 Diff 审核后才会写入
-- 命令使用结构化 executable/args 且 `shell: false`，高风险模式会拒绝或单独确认
+- 命令使用结构化 executable/args 且 `shell: false`，高风险模式会拒绝或单独确认；“记住允许”精确绑定完整参数，不会放行同一程序的其他载荷
 - 日志、审计、崩溃报告和公开错误会脱敏
 
 完整威胁边界与控制措施见 [安全设计](docs/security.md)。
@@ -163,25 +189,40 @@ Agent 提议的命令必须先展示可执行文件、参数、目录和风险�
 
 ## 文档
 
+- [安装与首次启动](docs/installation.md)
+- [使用指南](docs/user-guide.md)
+- [故障排查指南](docs/troubleshooting.md)
+- [隐私与本地数据说明](docs/privacy.md)
+- [模型配置指南](docs/model-configuration.md)
+- [Provider 开发指南](docs/provider-development.md)
+- [Tool 开发指南](docs/tool-development.md)
 - [更新日志](CHANGELOG.md)
+- [0.7.0-alpha.1 阶段版本说明](docs/releases/0.7.0-alpha.1.md)
 - [0.6.0-alpha.1 阶段版本说明](docs/releases/0.6.0-alpha.1.md)
 - [0.5.0-alpha.1 阶段版本说明](docs/releases/0.5.0-alpha.1.md)
 - [0.4.0-alpha.1 阶段版本说明](docs/releases/0.4.0-alpha.1.md)
 - [0.3.0-alpha.1 阶段版本说明](docs/releases/0.3.0-alpha.1.md)
 - [0.2.0-alpha.1 阶段版本说明](docs/releases/0.2.0-alpha.1.md)
 - [系统架构](docs/architecture.md)
+- [Provider 契约与扩展说明](docs/architecture.md#71-provider-契约)
+- [Tool 契约与扩展说明](docs/architecture.md#72-tool权限与执行契约)
+- [数据库设计](docs/architecture.md#9-数据库设计)
 - [安全设计](docs/security.md)
 - [开发路线图](docs/roadmap.md)
+- [10,000 文件性能验收报告](docs/reports/performance-2026-08-02.md)
+- [0.7.0-alpha.1 发布就绪审计](docs/reports/release-readiness-2026-08-02.md)
+- [项目目标完成度审计](docs/reports/objective-completion-audit-2026-08-03.md)
+- [0.7.0-alpha.1 测试报告与已知问题](docs/releases/0.7.0-alpha.1.md#验证记录)
 
 ## 当前限制
 
-- 当前完整 DAP 调试闭环仅覆盖 Node.js/TypeScript；其他语言 Adapter 尚未接入
-- 函数断点、数据断点、特定异常类型与忽略列表尚未实现
-- AI 辅助调试当前仅支持单个暂停会话快照；跨服务、多进程关联诊断尚未实现
-- 调试/运行底部面板可显示或隐藏，但尚不能拖动调整高度
+- 当前 DAP 调试闭环覆盖 Node.js/TypeScript、Python、浏览器前端、Electron 主/渲染进程、Java、C/C++/Rust、Go 和 .NET。Electron 使用同一固定 js-debug 服务的 `pwa-node` 与 `pwa-chrome` 客户端，已在 Windows 以真实 Electron 进程验证两侧源码断点、变量读取和退出清理。Java 使用固定版本 JDT LS 1.60.0 与 Microsoft Java Debug Server 0.53.2，要求本机提供 JDK 21+，并按平台与 CPU 架构选择 JDT LS 的 Intel/ARM64 配置；Windows 已分别以真实 Maven、Chrome、LLVM 22.1.8/LLDB、Go 1.26.5/Delve 1.26.3、.NET SDK 10.0.302/NetCoreDbg 3.2.0-1092 项目验证断点、栈、变量、单步、退出与进程清理。macOS ARM64/Linux x64 打包作业也已配置真实 Java 调试验收，但当前工作树尚无对应公共 runner 结果。外部 LLDB、Delve 与 NetCoreDbg 不随应用分发；Node.js 已支持通过现有 Inspector 端口附加远程或容器目标，其他语言的跨环境附加和自动 SSH/容器编排尚未完成
+- 函数/数据断点会按 DAP 能力真实发送；当前 debugpy 支持函数断点，随包 js-debug 不声明函数断点能力，两个内置 Adapter 均不声明数据断点能力，因此相应条目会明确显示“未验证”
+- Python 调试暂不支持 `-c` 内联代码、attach、远程调试，以及 Poetry/Conda 的工作区外环境管理器枚举
+- AI 辅助调试当前一次只收集一个暂停位置；Electron 双进程可在同一调试会话中切换，但跨服务自动关联诊断尚未实现
 - 正式 Windows/macOS 发布需要代码签名、notarization 和干净设备验收证据
-- 4 小时稳定性、10,000 文件性能与完整跨平台安装报告尚未形成发布门槛证据
-- 部分工作台文案尚未完全国际化
+- 10,000 文件增量加载、名称搜索与取消验收已形成[性能报告](docs/reports/performance-2026-08-02.md)，Windows 4 小时稳定性基线已通过；当前 0.7 的 Linux x64 AppImage 已在 Debian 12 容器完成原生构建、运行时校验、Secret Service 探测和已打包应用核心 E2E 9/9，macOS 当前产物与三平台公共原生 CI/干净设备证据仍待补充
+- 核心工作台、设置、运行、调试、任务、Git、终端、审计和审批界面已支持简体中文/英文切换；Renderer 错误展示已统一经过本地化边界，应用自有的中英文动态诊断受双向源码覆盖门禁约束，第三方工具或运行时返回的未知技术文本按原文保留
 
 ## 许可证
 

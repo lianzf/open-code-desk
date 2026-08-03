@@ -10,9 +10,11 @@ import {
 } from 'lucide-react';
 
 import { useConversationContextStore } from '@/features/context/context.store';
+import { useAppSettingsStore } from '@/features/settings/app-settings.store';
 import { cn } from '@/lib/utils';
 import { useEditorStore } from '@/features/editor/editor.store';
 import { useWorkspaceStore } from './workspace.store';
+import { translateWorkspace } from './workspace-i18n';
 
 interface TreeLevelProps {
   readonly directory: string;
@@ -29,9 +31,14 @@ function TreeLevel({ depth, directory, workspaceId }: TreeLevelProps) {
   const saveDirectory = useConversationContextStore((state) => state.saveDirectory);
   const contextConversationId = useConversationContextStore((state) => state.conversationId);
   const entries = directories[directory] ?? [];
+  const locale = useAppSettingsStore((state) => state.settings.locale);
+  const t = (
+    key: Parameters<typeof translateWorkspace>[1],
+    values?: Record<string, string | number>,
+  ) => translateWorkspace(locale, key, values);
 
   return (
-    <ul role="tree" aria-label={directory === '' ? '项目文件' : undefined}>
+    <ul role="tree" aria-label={directory === '' ? t('projectFiles') : undefined}>
       {entries.map((entry) => {
         const expanded = expandedDirectories.has(entry.relativePath);
         return (
@@ -48,7 +55,11 @@ function TreeLevel({ depth, directory, workspaceId }: TreeLevelProps) {
                 )}
                 style={{ paddingLeft: `${depth * 12 + 6}px` }}
                 disabled={entry.restricted}
-                title={entry.restricted ? `${entry.relativePath}（受保护）` : entry.relativePath}
+                title={
+                  entry.restricted
+                    ? t('protectedPath', { path: entry.relativePath })
+                    : entry.relativePath
+                }
                 onClick={() => {
                   if (entry.kind === 'directory') {
                     void toggleDirectory(entry.relativePath);
@@ -90,8 +101,8 @@ function TreeLevel({ depth, directory, workspaceId }: TreeLevelProps) {
                 <button
                   className="mr-1 hidden rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-cyan-300 group-hover:block focus:block"
                   onClick={() => void saveDirectory(workspaceId, entry.relativePath)}
-                  title={`将目录结构 ${entry.relativePath} 加入 AI 上下文`}
-                  aria-label={`添加目录上下文 ${entry.relativePath}`}
+                  title={t('addDirectoryStructureContext', { path: entry.relativePath })}
+                  aria-label={t('addDirectoryContext', { path: entry.relativePath })}
                 >
                   <Paperclip className="size-3" />
                 </button>
@@ -102,7 +113,7 @@ function TreeLevel({ depth, directory, workspaceId }: TreeLevelProps) {
                     className="hidden rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-cyan-300 group-hover:block focus:block"
                     onClick={() => {
                       const destinationPath = window
-                        .prompt('输入新的工作区相对路径（可用于重命名或移动）', entry.relativePath)
+                        .prompt(t('movePathPrompt'), entry.relativePath)
                         ?.trim();
                       if (
                         destinationPath === undefined ||
@@ -117,10 +128,7 @@ function TreeLevel({ depth, directory, workspaceId }: TreeLevelProps) {
                             tab.relativePath.startsWith(`${entry.relativePath}/`)) &&
                           tab.content !== tab.savedContent,
                       );
-                      if (
-                        hasDirtyTab &&
-                        !window.confirm('此路径下存在未保存的编辑器内容。继续会关闭这些标签页。')
-                      ) {
+                      if (hasDirtyTab && !window.confirm(t('unsavedMoveWarning'))) {
                         return;
                       }
                       void movePath(entry.relativePath, destinationPath).then((moved) => {
@@ -129,8 +137,8 @@ function TreeLevel({ depth, directory, workspaceId }: TreeLevelProps) {
                         }
                       });
                     }}
-                    title={`重命名或移动 ${entry.relativePath}`}
-                    aria-label={`重命名或移动 ${entry.relativePath}`}
+                    title={t('movePath', { path: entry.relativePath })}
+                    aria-label={t('movePath', { path: entry.relativePath })}
                     data-testid={`move-path-${entry.relativePath}`}
                   >
                     <Pencil className="size-3" />
@@ -145,8 +153,8 @@ function TreeLevel({ depth, directory, workspaceId }: TreeLevelProps) {
                           tab.content !== tab.savedContent,
                       );
                       const warning = hasDirtyTab
-                        ? `“${entry.relativePath}” 下存在未保存内容。删除将关闭对应标签页，确定继续吗？`
-                        : `确定删除“${entry.relativePath}”吗？非空目录不会被删除。`;
+                        ? t('unsavedDeleteWarning', { path: entry.relativePath })
+                        : t('deleteWarning', { path: entry.relativePath });
                       if (!window.confirm(warning)) {
                         return;
                       }
@@ -156,8 +164,8 @@ function TreeLevel({ depth, directory, workspaceId }: TreeLevelProps) {
                         }
                       });
                     }}
-                    title={`删除 ${entry.relativePath}`}
-                    aria-label={`删除 ${entry.relativePath}`}
+                    title={t('deletePath', { path: entry.relativePath })}
+                    aria-label={t('deletePath', { path: entry.relativePath })}
                     data-testid={`delete-path-${entry.relativePath}`}
                   >
                     <Trash2 className="size-3" />

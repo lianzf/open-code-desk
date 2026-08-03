@@ -1,195 +1,74 @@
-import { lstat, open, opendir } from 'node:fs/promises';
-import { extname, isAbsolute, resolve } from 'node:path';
+import { extname, resolve } from 'node:path';
 
 import type {
   ProjectDetection,
   ProjectDetectionEvidence,
   ProjectType,
+  RuntimeCandidate,
   RunConfigurationDraft,
 } from '@open-code-desk/domain';
+import type { AppSettings } from '@open-code-desk/ipc-contracts';
 
-interface PackageJsonShape {
-  readonly main?: unknown;
-  readonly scripts?: unknown;
-  readonly dependencies?: unknown;
-  readonly devDependencies?: unknown;
-}
-
-const PACKAGE_JSON_LIMIT = 256 * 1024;
-const TEXT_MARKER_LIMIT = 64 * 1024;
-const ROOT_ENTRY_LIMIT = 512;
-
-const fixedMarkers = `
-package.json pnpm-lock.yaml yarn.lock package-lock.json bun.lock bun.lockb tsconfig.json
-next.config.js next.config.mjs next.config.ts pom.xml mvnw mvnw.cmd build.gradle build.gradle.kts
-settings.gradle settings.gradle.kts gradlew gradlew.bat requirements.txt pyproject.toml Pipfile
-manage.py main.py app.py CMakeLists.txt Makefile main.c main.cc main.cpp main.cxx global.json
-Directory.Build.props go.mod Cargo.toml run.sh start.sh run.ps1 start.ps1 run.cmd start.cmd
-index.js index.mjs index.cjs server.js server.mjs server.cjs app.js app.mjs app.cjs
-`
-  .trim()
-  .split(/\s+/u);
-
-const primaryTypePriority: ReadonlyArray<ProjectType> = [
-  'nextjs',
-  'react',
-  'vue',
-  'spring-boot',
-  'java-maven',
-  'java-gradle',
-  'typescript',
-  'node',
-  'python',
-  'cpp',
-  'c',
-  'dotnet',
-  'go',
-  'rust',
-  'script',
-];
-
-async function isRegularMarker(rootPath: string, relativePath: string): Promise<boolean> {
-  try {
-    const metadata = await lstat(resolve(rootPath, relativePath));
-    return metadata.isFile() && !metadata.isSymbolicLink();
-  } catch {
-    return false;
-  }
-}
-
-async function existingFixedMarkers(rootPath: string): Promise<Set<string>> {
-  const checks = await Promise.all(
-    fixedMarkers.map(async (marker) => [marker, await isRegularMarker(rootPath, marker)] as const),
-  );
-  return new Set(checks.filter(([, exists]) => exists).map(([marker]) => marker));
-}
-
-async function boundedRootFileNames(rootPath: string): Promise<ReadonlyArray<string>> {
-  const names: string[] = [];
-  let directory;
-  try {
-    directory = await opendir(rootPath);
-    for await (const entry of directory) {
-      if (names.length >= ROOT_ENTRY_LIMIT) {
-        break;
-      }
-      if (entry.isFile() && !entry.isSymbolicLink()) {
-        names.push(entry.name);
-      }
-    }
-  } catch {
-    return [];
-  }
-  return names;
-}
-
-async function readBoundedText(
-  rootPath: string,
-  relativePath: string,
-  maximumBytes: number,
-  requireComplete: boolean,
-): Promise<string | undefined> {
-  if (!(await isRegularMarker(rootPath, relativePath))) {
-    return undefined;
-  }
-
-  let handle;
-  try {
-    handle = await open(resolve(rootPath, relativePath), 'r');
-    const metadata = await handle.stat();
-    if (!metadata.isFile() || (requireComplete && metadata.size > maximumBytes)) {
-      return undefined;
-    }
-    const bytesToRead = Math.min(metadata.size, maximumBytes);
-    const buffer = Buffer.alloc(bytesToRead);
-    const { bytesRead } = await handle.read(buffer, 0, bytesToRead, 0);
-    return buffer.subarray(0, bytesRead).toString('utf8');
-  } catch {
-    return undefined;
-  } finally {
-    await handle?.close().catch(() => undefined);
-  }
-}
-
-function parsePackageJson(content: string | undefined): PackageJsonShape | undefined {
-  if (content === undefined) {
-    return undefined;
-  }
-  try {
-    const parsed: unknown = JSON.parse(content);
-    return typeof parsed === 'object' && parsed !== null ? (parsed as PackageJsonShape) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function objectKeys(value: unknown): ReadonlySet<string> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return new Set();
-  }
-  return new Set(Object.keys(value));
-}
-
-function safePackageEntry(value: unknown): string | undefined {
-  if (typeof value !== 'string' || value.length === 0 || value.length > 1_000) {
-    return undefined;
-  }
-  const normalized = value.replaceAll('\\', '/');
-  if (
-    isAbsolute(normalized) ||
-    normalized.includes('\0') ||
-    normalized.split('/').some((segment) => segment === '..') ||
-    !['.js', '.mjs', '.cjs'].includes(extname(normalized).toLocaleLowerCase('en-US'))
-  ) {
-    return undefined;
-  }
-  return normalized.replace(/^\.\//u, '');
-}
-
-function packageManager(markers: ReadonlySet<string>): string {
-  if (markers.has('pnpm-lock.yaml')) return 'pnpm';
-  if (markers.has('yarn.lock')) return 'yarn';
-  if (markers.has('bun.lock') || markers.has('bun.lockb')) return 'bun';
-  return 'npm';
-}
-
-function uniqueDrafts(
-  drafts: ReadonlyArray<RunConfigurationDraft>,
-): ReadonlyArray<RunConfigurationDraft> {
-  const seen = new Set<string>();
-  return drafts.filter((draft) => {
-    const key = JSON.stringify([draft.executable, draft.args, draft.workingDirectory]);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
+import { discoverPythonInterpreters } from './python-interpreter-discovery';
+import {
+  boundedRootFileNames,
+  existingFixedMarkers,
+  expectedElectronExecutable,
+  PACKAGE_JSON_LIMIT,
+  packageManager,
+  packageScript,
+  parsePackageJson,
+  primaryTypePriority,
+  readBoundedText,
+  safePackageEntry,
+  TEXT_MARKER_LIMIT,
+  uniqueDrafts,
+  objectKeys,
+} from './project-detector-support';
 
 export async function detectProject(
   workspaceId: string,
   workspaceRoot: string,
+  locale: AppSettings['locale'] = 'zh-CN',
 ): Promise<ProjectDetection> {
   const rootPath = resolve(workspaceRoot);
-  const [markers, rootFileNames, packageContent, pomContent, gradleContent, cmakeContent] =
-    await Promise.all([
-      existingFixedMarkers(rootPath),
-      boundedRootFileNames(rootPath),
-      readBoundedText(rootPath, 'package.json', PACKAGE_JSON_LIMIT, true),
-      readBoundedText(rootPath, 'pom.xml', TEXT_MARKER_LIMIT, false),
-      Promise.all([
-        readBoundedText(rootPath, 'build.gradle', TEXT_MARKER_LIMIT, false),
-        readBoundedText(rootPath, 'build.gradle.kts', TEXT_MARKER_LIMIT, false),
-      ]).then((contents) => contents.filter(Boolean).join('\n')),
-      readBoundedText(rootPath, 'CMakeLists.txt', TEXT_MARKER_LIMIT, false),
-    ]);
+  const [
+    markers,
+    rootFileNames,
+    packageContent,
+    pomContent,
+    gradleContent,
+    cmakeContent,
+    pyprojectContent,
+    requirementsContent,
+  ] = await Promise.all([
+    existingFixedMarkers(rootPath),
+    boundedRootFileNames(rootPath),
+    readBoundedText(rootPath, 'package.json', PACKAGE_JSON_LIMIT, true),
+    readBoundedText(rootPath, 'pom.xml', TEXT_MARKER_LIMIT, false),
+    Promise.all([
+      readBoundedText(rootPath, 'build.gradle', TEXT_MARKER_LIMIT, false),
+      readBoundedText(rootPath, 'build.gradle.kts', TEXT_MARKER_LIMIT, false),
+    ]).then((contents) => contents.filter(Boolean).join('\n')),
+    readBoundedText(rootPath, 'CMakeLists.txt', TEXT_MARKER_LIMIT, false),
+    readBoundedText(rootPath, 'pyproject.toml', TEXT_MARKER_LIMIT, false),
+    readBoundedText(rootPath, 'requirements.txt', TEXT_MARKER_LIMIT, false),
+  ]);
 
   const detected = new Set<ProjectType>();
   const evidence: ProjectDetectionEvidence[] = [];
+  let runtimeCandidates: ReadonlyArray<RuntimeCandidate> = [];
   const drafts: RunConfigurationDraft[] = [];
   const addType = (projectType: ProjectType, marker: string) => {
     detected.add(projectType);
     if (!evidence.some((item) => item.path === marker)) {
-      evidence.push({ path: marker, reason: `Detected ${projectType} project marker.` });
+      evidence.push({
+        path: marker,
+        reason:
+          locale === 'zh-CN'
+            ? `检测到 ${projectType} 项目标记。`
+            : `Detected ${projectType} project marker.`,
+      });
     }
   };
   const addDraft = (
@@ -197,6 +76,8 @@ export async function detectProject(
     type: ProjectType,
     executable: string,
     args: ReadonlyArray<string>,
+    runtimeArgs: ReadonlyArray<string> = [],
+    port?: number,
   ) =>
     drafts.push({
       workspaceId,
@@ -204,11 +85,12 @@ export async function detectProject(
       type,
       executable,
       args,
-      runtimeArgs: [],
+      runtimeArgs,
       workingDirectory: '',
       environmentVariables: [],
       console: 'runOutput',
       autoGenerated: true,
+      ...(port === undefined ? {} : { port }),
     });
 
   const packageJson = parsePackageJson(packageContent);
@@ -222,6 +104,17 @@ export async function detectProject(
       addType('typescript', 'tsconfig.json');
     if (dependencies.has('react')) addType('react', 'package.json#dependencies');
     if (dependencies.has('vue')) addType('vue', 'package.json#dependencies');
+    if (dependencies.has('electron')) {
+      addType('electron', 'package.json#dependencies');
+      addDraft(
+        locale === 'zh-CN' ? 'Electron · 主进程与渲染进程' : 'Electron · Main and renderer',
+        'electron',
+        expectedElectronExecutable(rootPath),
+        ['.'],
+        [],
+        9_222,
+      );
+    }
     if (
       dependencies.has('next') ||
       [...markers].some((marker) => marker.startsWith('next.config.'))
@@ -233,7 +126,20 @@ export async function detectProject(
     const scripts = objectKeys(packageJson?.scripts);
     for (const script of [...scripts].sort().slice(0, 100)) {
       if (/^[a-z0-9][a-z0-9:_-]{0,99}$/iu.test(script)) {
-        addDraft(`package.json · ${script}`, 'node', manager, ['run', script]);
+        addDraft(
+          `package.json · ${script}`,
+          dependencies.has('next')
+            ? 'nextjs'
+            : dependencies.has('vue')
+              ? 'vue'
+              : dependencies.has('react')
+                ? 'react'
+                : 'node',
+          manager,
+          ['run', script],
+          [],
+          suggestedFrontendPort(script, packageScript(packageJson?.scripts, script), dependencies),
+        );
       }
     }
     const mainEntry = safePackageEntry(packageJson?.main);
@@ -306,14 +212,50 @@ export async function detectProject(
   ].find((marker) => markers.has(marker));
   if (pythonMarker !== undefined) {
     addType('python', pythonMarker);
+    runtimeCandidates = await discoverPythonInterpreters(rootPath, { locale });
     const entry = ['manage.py', 'main.py', 'app.py'].find((marker) => markers.has(marker));
+    const pythonMetadata = `${pyprojectContent ?? ''}\n${requirementsContent ?? ''}`;
+    const interpreter =
+      runtimeCandidates[0]?.executable ?? (process.platform === 'win32' ? 'python' : 'python3');
     if (entry !== undefined) {
       addDraft(
-        `Python · ${entry}`,
+        entry === 'manage.py'
+          ? locale === 'zh-CN'
+            ? 'Python · Django 开发服务器'
+            : 'Python · Django development server'
+          : `Python · ${entry}`,
         'python',
-        process.platform === 'win32' ? 'python' : 'python3',
+        interpreter,
         entry === 'manage.py' ? [entry, 'runserver'] : [entry],
       );
+    }
+    if (/\bflask\b/iu.test(pythonMetadata) && markers.has('app.py')) {
+      addDraft(
+        locale === 'zh-CN' ? 'Python · Flask 开发服务器' : 'Python · Flask development server',
+        'python',
+        interpreter,
+        ['--app', 'app.py', 'run'],
+        ['-m', 'flask'],
+      );
+    }
+    if (/\bfastapi\b/iu.test(pythonMetadata) && /\buvicorn\b/iu.test(pythonMetadata)) {
+      const fastApiEntry = markers.has('main.py')
+        ? 'main:app'
+        : markers.has('app.py')
+          ? 'app:app'
+          : undefined;
+      if (fastApiEntry !== undefined) {
+        addDraft(
+          'Python · FastAPI (uvicorn)',
+          'python',
+          interpreter,
+          [fastApiEntry, '--reload'],
+          ['-m', 'uvicorn'],
+        );
+      }
+    }
+    if (markers.has('pytest.ini') || /\bpytest\b/iu.test(pythonMetadata)) {
+      addDraft('Python · pytest', 'python', interpreter, [], ['-m', 'pytest']);
     }
   }
 
@@ -385,8 +327,36 @@ export async function detectProject(
     detectedTypes: detectedTypes.length === 0 ? ['custom'] : detectedTypes,
     evidence:
       detectedTypes.length === 0
-        ? [{ path: '', reason: 'No supported root project marker was found.' }]
+        ? [
+            {
+              path: '',
+              reason:
+                locale === 'zh-CN'
+                  ? '未找到支持的根目录项目标记。'
+                  : 'No supported root project marker was found.',
+            },
+          ]
         : evidence,
+    runtimeCandidates,
     suggestedConfigurations: uniqueDrafts(drafts),
   };
+}
+
+function suggestedFrontendPort(
+  scriptName: string,
+  command: string | undefined,
+  dependencies: ReadonlySet<string>,
+): number | undefined {
+  if (command === undefined || !/^(?:dev|serve|start)$/iu.test(scriptName)) return undefined;
+  const explicit = command.match(/(?:^|\s)(?:--port|-p)(?:=|\s+)(\d{1,5})(?:\s|$)/u)?.[1];
+  if (explicit !== undefined) {
+    const port = Number(explicit);
+    if (Number.isInteger(port) && port >= 1 && port <= 65_535) return port;
+  }
+  if (/\bvite\b/u.test(command)) return 5_173;
+  if (/\bnext\s+dev\b/u.test(command) || /\breact-scripts\s+start\b/u.test(command)) return 3_000;
+  if (/\bvue-cli-service\s+serve\b/u.test(command)) return 8_080;
+  if (dependencies.has('next')) return 3_000;
+  if (dependencies.has('vite')) return 5_173;
+  return undefined;
 }
