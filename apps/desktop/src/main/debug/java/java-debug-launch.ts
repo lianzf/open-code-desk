@@ -1,4 +1,4 @@
-import { basename } from 'node:path';
+import { posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import type {
@@ -37,7 +37,8 @@ const javaExecutables = new Set(['java', 'javaw']);
 
 export function isDirectJavaLaunch(command: RunCommandSnapshot): boolean {
   return javaExecutables.has(
-    basename(command.executable)
+    posix
+      .basename(command.executable.replaceAll('\\', '/'))
       .toLocaleLowerCase('en-US')
       .replace(/\.exe$/u, ''),
   );

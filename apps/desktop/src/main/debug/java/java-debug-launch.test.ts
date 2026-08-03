@@ -8,6 +8,11 @@ import {
 } from './java-debug-launch';
 
 describe('Java launch mapping', () => {
+  it('recognizes Java executables independently of host path syntax', () => {
+    expect(isDirectJavaLaunch(fixture('C:\\jdk-21\\bin\\java.exe', ['demo.Main']))).toBe(true);
+    expect(isDirectJavaLaunch(fixture('/opt/jdk-21/bin/java', ['demo.Main']))).toBe(true);
+  });
+
   it('maps an explicit Java main class without a shell', () => {
     const command = fixture('C:\\jdk-21\\bin\\java.exe', ['demo.Main', 'sample']);
     expect(isDirectJavaLaunch(command)).toBe(true);
