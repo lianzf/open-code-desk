@@ -177,7 +177,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   async saveActive() {
     const state = get();
     const tab = state.tabs.find((candidate) => candidate.relativePath === state.activePath);
-    if (state.workspaceId === null || tab === undefined || tab.content === tab.savedContent) {
+    if (
+      state.workspaceId === null ||
+      tab === undefined ||
+      tab.content === tab.savedContent ||
+      state.saving
+    ) {
       return;
     }
 
@@ -189,19 +194,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         content: tab.content,
         expectedHash: tab.contentHash,
       });
-      set((current) => ({
-        saving: false,
-        tabs: current.tabs.map((candidate) =>
-          candidate.relativePath === tab.relativePath
-            ? {
-                ...candidate,
-                savedContent: candidate.content,
-                contentHash: saved.contentHash,
-                modifiedAt: saved.modifiedAt,
-              }
-            : candidate,
-        ),
-      }));
+      set((current) =>
+        current.workspaceId === state.workspaceId
+          ? {
+              saving: false,
+              tabs: current.tabs.map((candidate) =>
+                candidate.relativePath === tab.relativePath
+                  ? {
+                      ...candidate,
+                      savedContent: tab.content,
+                      contentHash: saved.contentHash,
+                      modifiedAt: saved.modifiedAt,
+                    }
+                  : candidate,
+              ),
+            }
+          : { saving: false },
+      );
+      await get().handleFileChange(state.workspaceId, tab.relativePath);
     } catch (error) {
       set({ saving: false, errorMessage: errorMessage(error) });
     }
