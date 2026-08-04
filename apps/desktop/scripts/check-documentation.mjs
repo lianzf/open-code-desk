@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 const requiredDocuments = [
   'README.md',
   'docs/architecture.md',
+  'docs/clean-device-acceptance.md',
   'docs/installation.md',
   'docs/model-configuration.md',
   'docs/privacy.md',
@@ -14,6 +15,28 @@ const requiredDocuments = [
   'docs/tool-development.md',
   'docs/troubleshooting.md',
   'docs/user-guide.md',
+];
+const requiredAcceptanceHeadings = [
+  '## 验收角色与环境',
+  '## 候选版本记录',
+  '## 平台安装与生命周期',
+  '## 核心 AI 编程闭环（22 步）',
+  '## IDE 调试与 AI 修复闭环',
+  '## Provider 真实服务矩阵',
+  '## 安全、持久化与故障检查',
+  '## 结果与签字',
+];
+const requiredAcceptanceProviders = [
+  'OpenAI',
+  'Anthropic Claude',
+  'Google Gemini',
+  'DeepSeek',
+  'OpenRouter',
+  '通义千问',
+  '智谱 GLM',
+  'Moonshot/Kimi',
+  'Ollama',
+  'OpenAI Compatible',
 ];
 const requiredReadmeHeadings = [
   '## 当前能力',
@@ -34,6 +57,17 @@ for (const path of requiredDocuments) await access(path);
 const readme = await readFile('README.md', 'utf8');
 for (const heading of requiredReadmeHeadings) {
   if (!readme.includes(heading)) throw new Error(`README is missing required heading: ${heading}`);
+}
+const acceptance = await readFile('docs/clean-device-acceptance.md', 'utf8');
+for (const heading of requiredAcceptanceHeadings) {
+  if (!acceptance.includes(heading)) {
+    throw new Error(`Clean-device acceptance guide is missing required heading: ${heading}`);
+  }
+}
+for (const provider of requiredAcceptanceProviders) {
+  if (!acceptance.includes(`| ${provider}`)) {
+    throw new Error(`Clean-device acceptance guide is missing Provider: ${provider}`);
+  }
 }
 
 const markdownFiles = listMarkdownFiles().filter(

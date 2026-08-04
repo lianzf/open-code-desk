@@ -71,4 +71,4 @@ chmod +x 'OpenCode Desk-x.y.z.AppImage'
 4. 创建会话并发送一条消息，确认流式响应可停止。
 5. 关闭应用后检查没有残留的 OpenCode Desk 进程，再次启动确认最近项目和会话可恢复。
 
-完整操作闭环见[使用指南](user-guide.md)，模型字段说明见[模型配置指南](model-configuration.md)。
+完整操作闭环见[使用指南](user-guide.md)，模型字段说明见[模型配置指南](model-configuration.md)。正式发布验收人员必须另按[干净设备独立验收清单](clean-device-acceptance.md)逐项操作、留证并签字；自动化通过不能替代该记录。

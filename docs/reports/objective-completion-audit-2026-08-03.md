@@ -137,6 +137,7 @@ Playwright 的 Docker 建议改用共享 IPC 后原失败场景 2/2 通过。完
 | Linux x64 AppImage             | 已证明本地及公共 CI 候选 | 本地 Docker 证据与 CI artifact `open-code-desk-linux-x64`；仍不是公开 Release                                                                          |
 | macOS/Linux 构建配置           | 当前提交原生 CI 已通过   | `apps/desktop/electron-builder.yml`、目标运行时校验器、原生 CI 与签名发布 matrix；CI artifact 含 macOS ARM64 DMG/ZIP 与 Linux x64 AppImage             |
 | README/安装/使用/排障/隐私说明 | 存在                     | `README.md`、`docs/installation.md`、`docs/user-guide.md`、`docs/troubleshooting.md`、`docs/privacy.md`                                                |
+| 干净设备独立验收清单           | 存在；执行证据仍缺       | `docs/clean-device-acceptance.md` 覆盖三平台生命周期、22 步 AI 编程、IDE 调试修复、10 个 Provider、安全检查、证据记录与双人签字要求                    |
 | 模型/Provider/Tool 开发说明    | 存在                     | `docs/model-configuration.md`、`docs/provider-development.md`、`docs/tool-development.md`                                                              |
 | 架构/数据库/安全设计           | 存在                     | `docs/architecture.md` 包含数据库设计，`docs/security.md` 包含安全设计                                                                                 |
 | 测试与供应链报告               | 存在                     | 本报告、[发布就绪报告](./release-readiness-2026-08-02.md)、[性能报告](./performance-2026-08-02.md)、CycloneDX SBOM、依赖/许可证审计与 Secret 扫描 JSON |

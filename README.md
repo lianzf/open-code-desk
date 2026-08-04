@@ -109,7 +109,7 @@ pnpm package:linux
 
 打包命令会在生成产物后校验目标平台可执行文件、调试适配器和 `node-pty` 原生模块；任一运行时依赖缺失都会使打包失败。它还会生成 CycloneDX SBOM、完整工作区依赖审计、随包第三方许可证审计、Secret 扫描报告和覆盖这些元数据的 SHA-256 清单。CI 会直接启动解包后的应用运行 9 项核心端到端场景。
 
-跨平台正式发布应在对应原生 CI runner 上构建。公开发布前还必须配置 Windows 代码签名、macOS 签名与 notarization，并在干净设备上完成安装、启动、卸载和更新验证。
+跨平台正式发布应在对应原生 CI runner 上构建。公开发布前还必须配置 Windows 代码签名、macOS 签名与 notarization，并由独立人员按[干净设备验收清单](docs/clean-device-acceptance.md)完成安装、核心 AI 编程闭环、IDE 调试修复闭环、卸载和更新验证。
 
 ### 正式签名发布
 
@@ -190,6 +190,7 @@ Agent 提议的命令必须先展示可执行文件、参数、目录和风险�
 ## 文档
 
 - [安装与首次启动](docs/installation.md)
+- [干净设备独立验收清单](docs/clean-device-acceptance.md)
 - [使用指南](docs/user-guide.md)
 - [故障排查指南](docs/troubleshooting.md)
 - [隐私与本地数据说明](docs/privacy.md)
@@ -216,12 +217,12 @@ Agent 提议的命令必须先展示可执行文件、参数、目录和风险�
 
 ## 当前限制
 
-- 当前 DAP 调试闭环覆盖 Node.js/TypeScript、Python、浏览器前端、Electron 主/渲染进程、Java、C/C++/Rust、Go 和 .NET。Electron 使用同一固定 js-debug 服务的 `pwa-node` 与 `pwa-chrome` 客户端，已在 Windows 以真实 Electron 进程验证两侧源码断点、变量读取和退出清理。Java 使用固定版本 JDT LS 1.60.0 与 Microsoft Java Debug Server 0.53.2，要求本机提供 JDK 21+，并按平台与 CPU 架构选择 JDT LS 的 Intel/ARM64 配置；Windows 已分别以真实 Maven、Chrome、LLVM 22.1.8/LLDB、Go 1.26.5/Delve 1.26.3、.NET SDK 10.0.302/NetCoreDbg 3.2.0-1092 项目验证断点、栈、变量、单步、退出与进程清理。macOS ARM64/Linux x64 打包作业也已配置真实 Java 调试验收，但当前工作树尚无对应公共 runner 结果。外部 LLDB、Delve 与 NetCoreDbg 不随应用分发；Node.js 已支持通过现有 Inspector 端口附加远程或容器目标，其他语言的跨环境附加和自动 SSH/容器编排尚未完成
+- 当前 DAP 调试闭环覆盖 Node.js/TypeScript、Python、浏览器前端、Electron 主/渲染进程、Java、C/C++/Rust、Go 和 .NET。Electron 使用同一固定 js-debug 服务的 `pwa-node` 与 `pwa-chrome` 客户端，已在 Windows 以真实 Electron 进程验证两侧源码断点、变量读取和退出清理。Java 使用固定版本 JDT LS 1.60.0 与 Microsoft Java Debug Server 0.53.2，要求本机提供 JDK 21+，并按平台与 CPU 架构选择 JDT LS 的 Intel/ARM64 配置；Windows 已分别以真实 Maven、Chrome、LLVM 22.1.8/LLDB、Go 1.26.5/Delve 1.26.3、.NET SDK 10.0.302/NetCoreDbg 3.2.0-1092 项目验证断点、栈、变量、单步、退出与进程清理。Java 还在 macOS ARM64/Linux x64 公共原生 runner 完成断点、变量、单步、异常与清理验收。外部 LLDB、Delve 与 NetCoreDbg 不随应用分发；Node.js 已支持通过现有 Inspector 端口附加远程或容器目标，其他语言的跨环境附加和自动 SSH/容器编排尚未完成
 - 函数/数据断点会按 DAP 能力真实发送；当前 debugpy 支持函数断点，随包 js-debug 不声明函数断点能力，两个内置 Adapter 均不声明数据断点能力，因此相应条目会明确显示“未验证”
 - Python 调试暂不支持 `-c` 内联代码、attach、远程调试，以及 Poetry/Conda 的工作区外环境管理器枚举
 - AI 辅助调试当前一次只收集一个暂停位置；Electron 双进程可在同一调试会话中切换，但跨服务自动关联诊断尚未实现
 - 正式 Windows/macOS 发布需要代码签名、notarization 和干净设备验收证据
-- 10,000 文件增量加载、名称搜索与取消验收已形成[性能报告](docs/reports/performance-2026-08-02.md)，Windows 4 小时稳定性基线已通过；当前 0.7 的 Linux x64 AppImage 已在 Debian 12 容器完成原生构建、运行时校验、Secret Service 探测和已打包应用核心 E2E 9/9，macOS 当前产物与三平台公共原生 CI/干净设备证据仍待补充
+- 10,000 文件增量加载、名称搜索与取消验收已形成[性能报告](docs/reports/performance-2026-08-02.md)，Windows 4 小时稳定性基线已通过；当前 0.7 的 Windows x64、macOS ARM64 和 Linux x64 公共原生 CI、运行时校验与已打包应用 E2E 均已通过，仍缺正式签名/notarization、全部计划 Provider 真实公网记录和独立人员干净设备验收
 - 核心工作台、设置、运行、调试、任务、Git、终端、审计和审批界面已支持简体中文/英文切换；Renderer 错误展示已统一经过本地化边界，应用自有的中英文动态诊断受双向源码覆盖门禁约束，第三方工具或运行时返回的未知技术文本按原文保留
 
 ## 许可证
