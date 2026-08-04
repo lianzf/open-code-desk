@@ -98,7 +98,7 @@ export class JavaDebugAdapterProvider implements RuntimeDebugAdapterProvider {
         : { architecture: this.options.architecture }),
     });
     try {
-      const target = await resolveJavaMainClass(process, input.command, input.workspaceRoot);
+      const target = await resolveJavaMainClass(process, input.command);
       await process.buildWorkspace(target);
       const classpaths = await process.resolveClasspaths(target);
       const policyState = { current: input.exceptionPolicy };

@@ -1,5 +1,4 @@
 import { posix } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 import type {
   DebugAdapterCapabilities,
@@ -59,11 +58,10 @@ export function parseDirectJavaMainClass(command: RunCommandSnapshot): JavaMainC
 export async function resolveJavaMainClass(
   process: JavaDebugAdapterProcess,
   command: RunCommandSnapshot,
-  workspaceRoot: string,
 ): Promise<JavaMainClass> {
   const direct = parseDirectJavaMainClass(command);
   if (direct !== undefined) return direct;
-  const candidates = await process.resolveMainClasses(pathToFileURL(workspaceRoot).href);
+  const candidates = await process.resolveMainClasses();
   if (candidates.length === 0) {
     throw new Error(
       'No Java main class was found. Wait for project import to finish and ensure the project has public static void main(String[] args).',
