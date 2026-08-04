@@ -5,6 +5,7 @@ npmRebuild: false
 asarUnpack:
   - node_modules/node-pty/**/*
 electronDist: node_modules/electron/dist
+afterPack: scripts/after-pack.mjs
 
 directories:
   output: ../../release
