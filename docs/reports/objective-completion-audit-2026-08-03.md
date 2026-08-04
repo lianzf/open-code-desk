@@ -6,9 +6,9 @@
 
 ## 审计结论
 
-提交 `12841daffc7082e532ed1a355ab2b09a7b67e015` 已形成可安装、可运行、可配置、具备真实 AI 编程闭环和
+提交 `319a25d277de1d610aae877b92c30452dd647518` 已形成可安装、可运行、可配置、具备真实 AI 编程闭环和
 Node.js/Python/浏览器/Electron 主渲染双进程 DAP 调试闭环的 0.7 alpha 候选。Windows 已完成
-Java、C/C++/Rust、Go、.NET 的真实 DAP 验收；公共 CI run `30892174210` 又在 Windows x64、macOS
+Java、C/C++/Rust、Go、.NET 的真实 DAP 验收；公共 CI run `30914375533` 又在 Windows x64、macOS
 ARM64 和 Linux x64 原生 runner 完成冻结依赖安装、真实 Java 调试验收、NSIS/DMG/ZIP/AppImage 构建、
 目标运行时完整性校验及已打包应用 E2E，四个 job 全部成功。三平台产物与质量/安全元数据均已作为
 Actions artifact 上传。核心自动化、性能、安全静态门禁、4 小时稳定性、安装后验收和 400 行结构约束均已通过。
@@ -21,18 +21,18 @@ Actions artifact 上传。核心自动化、性能、安全静态门禁、4 小�
 
 Renderer 错误展示点已统一经过本地化边界；应用自有的主进程/DAP 英文与中文诊断均受双向源码覆盖测试约束，项目检测、命令风险和工具批准原因也有双语测试。第三方原始诊断按原文保留，因此产品自有动态诊断的完整双语要求已满足。
 
-2026-08-04 使用当前 GitHub 身份重新执行只读核验：产品代码提交 `12841daffc7082e532ed1a355ab2b09a7b67e015` 已推送到远端 `release/0.7.0-alpha.1`；CI run `30892174210` 的 Quality gates、Windows x64、macOS ARM64、Linux x64 四个 job 全部成功，并上传约 182.6 MB、409.1 MB、212.6 MB 的三平台 artifact。最新发布仍为 `v0.6.0-alpha.1`，仓库 Environment 和 Secret 名称总数均为 0。
+2026-08-04 使用当前 GitHub 身份重新执行只读核验：产品代码提交 `319a25d277de1d610aae877b92c30452dd647518` 已推送到远端 `release/0.7.0-alpha.1`；CI run `30914375533` 的 Quality gates、Windows x64、macOS ARM64、Linux x64 四个 job 全部成功，并上传约 182.6 MB、409.1 MB、212.6 MB 的三平台 artifact。最新发布仍为 `v0.6.0-alpha.1`，仓库 Environment 和 Secret 名称总数均为 0。
 
 ## 当前权威基线
 
 | 证据                               | 当前结果                                                  |
 | ---------------------------------- | --------------------------------------------------------- |
 | `pnpm format:check`                | 通过                                                      |
-| `pnpm docs:check`                  | 11 必需文档 / 45 链接通过                                 |
+| `pnpm docs:check`                  | 12 必需文档 / 49 链接通过                                 |
 | `pnpm lint`                        | 通过，0 error / 0 warning                                 |
 | `pnpm typecheck`                   | 7 个工作区项目通过                                        |
 | `pnpm build`                       | 通过                                                      |
-| `pnpm test`                        | 111 个文件 / 381 项测试通过；7 个门禁文件 / 18 项默认跳过 |
+| `pnpm test`                        | 112 个文件 / 393 项测试通过；7 个门禁文件 / 18 项默认跳过 |
 | `pnpm test:integration`            | 29 个文件 / 92 项测试通过                                 |
 | 真实 Chrome 调试门禁               | 显式启用后 1 / 1 通过                                     |
 | 真实 Electron 双进程调试门禁       | 显式启用后 1 / 1 通过                                     |
@@ -46,15 +46,15 @@ Renderer 错误展示点已统一经过本地化边界；应用自有的主进�
 | 安装后核心 E2E                     | 9 / 9 通过                                                |
 | 安装后桌面壳与持久化 E2E           | 6 / 6 通过                                                |
 | Windows 打包运行时完整性           | 通过                                                      |
-| 公共 Windows x64 打包/安装态 E2E   | CI run `30892174210` 通过                                 |
-| 公共 macOS ARM64 打包/应用 E2E     | CI run `30892174210` 通过                                 |
-| 公共 Linux x64 打包/应用 E2E       | CI run `30892174210` 通过                                 |
+| 公共 Windows x64 打包/安装态 E2E   | CI run `30914375533` 通过                                 |
+| 公共 macOS ARM64 打包/应用 E2E     | CI run `30914375533` 通过                                 |
+| 公共 Linux x64 打包/应用 E2E       | CI run `30914375533` 通过                                 |
 | Linux x64 AppImage 打包/自解包     | 通过                                                      |
 | Linux 打包运行时完整性             | 通过                                                      |
 | Linux 已打包应用核心 E2E           | 9 / 9 通过                                                |
 | Linux GNOME Secret Service         | 写入、读取、清除通过                                      |
 | `pnpm security:dependency-audit`   | 710 项 / 全部严重级别 0                                   |
-| `pnpm security:secrets`            | 554 文件 / 0 未允许发现                                   |
+| `pnpm security:secrets`            | 557 文件 / 0 未允许发现                                   |
 | `pnpm security:licenses`           | 149 组件 / 0 待复核                                       |
 | CycloneDX 1.6 SBOM                 | Windows 588 / Linux 587 组件，Schema 通过                 |
 | `git diff --check`                 | 通过                                                      |
@@ -65,7 +65,9 @@ Renderer 错误展示点已统一经过本地化边界；应用自有的主进�
 | Windows 安装包签名                 | `NotSigned`                                               |
 
 Windows 安装包 SHA-256：
-`0076E23B269D4878826191CE69DE975142B49991A55160356D9E380EE27D34AA`。
+`B027E549F28F7360643AB861E1B8CEDDBB375C94D870924527ABFE34DE99ACC8`（CI run
+`30914375533`，182,382,737 字节；下载后重算与随包 `SHA256SUMS.txt` 一致；Authenticode 为
+`NotSigned`）。
 
 Linux x64 AppImage 为 214,339,141 字节，SHA-256：
 `31D2C23A18AC8168B6D9BCAE9E62D0652C6BF9CF39D05D5A1C110D964BCEB45E`。
@@ -132,7 +134,7 @@ Playwright 的 Docker 建议改用共享 IPC 后原失败场景 2/2 通过。完
 
 | 交付物                         | 判定                     | 位置或缺口                                                                                                                                             |
 | ------------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 完整源代码                     | 已提交并推送             | 产品代码提交 `12841daffc7082e532ed1a355ab2b09a7b67e015` 已进入 `release/0.7.0-alpha.1` 并取得公共 CI 证据                                              |
+| 完整源代码                     | 已提交并推送             | 产品代码提交 `319a25d277de1d610aae877b92c30452dd647518` 已进入 `release/0.7.0-alpha.1` 并取得公共 CI 证据                                              |
 | Windows 安装包                 | 已证明本地候选           | `release/OpenCode Desk Setup 0.7.0-alpha.1.exe`                                                                                                        |
 | Linux x64 AppImage             | 已证明本地及公共 CI 候选 | 本地 Docker 证据与 CI artifact `open-code-desk-linux-x64`；仍不是公开 Release                                                                          |
 | macOS/Linux 构建配置           | 当前提交原生 CI 已通过   | `apps/desktop/electron-builder.yml`、目标运行时校验器、原生 CI 与签名发布 matrix；CI artifact 含 macOS ARM64 DMG/ZIP 与 Linux x64 AppImage             |

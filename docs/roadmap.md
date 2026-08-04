@@ -1,6 +1,6 @@
 # OpenCode Desk 开发路线图
 
-> 状态：IDE 扩展阶段 F（Python 解释器与真实调试）本地发布门禁通过，待原生 CI 与 GitHub Release
+> 状态：0.7 alpha 本地与三平台原生 CI 门禁通过，待正式签名、公网 Provider 和独立人工验收
 > 日期：2026-08-02
 > 目标：以可验证的纵向闭环交付 Windows/macOS MVP
 
@@ -42,8 +42,8 @@
 - [x] **阶段 C / 0.4.0-alpha.1**：Node.js/TypeScript DAP client、真实断点、线程、调用栈、变量、监视与单步控制。
 - [x] **阶段 D / 0.5.0-alpha.1**：异常定位、调试上下文脱敏预览、AI 分析、Diff 审批与重新调试闭环。
 - [x] **阶段 E / 0.6.0-alpha.1**：条件、命中次数、日志断点与工作区异常暂停策略。
-- [x] **阶段 F / 0.7.0-alpha.1 本地交付**：Python 调试、ProjectTask、组合运行、端口管理、高级断点与完整本地门禁已通过；Windows NSIS 与 Linux x64 AppImage 均有当前源码本地安装态/打包态证据，公共原生 CI 与 GitHub Release 仍需形成提交后证据。
-- [ ] **阶段 G / 正式版语言扩展（进行中）**：浏览器 js-debug、Electron 主/渲染双进程 js-debug、Java JDT LS/Java Debug Server、C/C++/Rust `lldb-dap`、Go Delve 和 .NET NetCoreDbg 均已完成 Windows 真实项目的断点、栈、变量与退出清理验收；浏览器、Java 和外部调试器还覆盖单步，LLDB 实测修复了 `launch`/`initialized` 握手顺序。Node.js 已通过随包 js-debug 支持现有 Inspector 的远程/容器附加，并用真实独立目标验证断点、变量和断开后目标存活。JDT LS 已按平台与 CPU 架构选择 Intel/ARM64 配置，公共 CI 的 macOS 构建固定为 `macos-15` ARM64，并让 macOS ARM64/Linux x64 打包作业运行真实 Java 调试验收；仍需提交当前工作树取得这两项原生 runner 结果，以及补齐其他语言跨环境附加和自动隧道编排。
+- [x] **阶段 F / 0.7.0-alpha.1 候选交付**：Python 调试、ProjectTask、组合运行、端口管理、高级断点与完整本地门禁已通过；提交 `319a25d` 的公共 CI run `30914375533` 已在 Windows x64、macOS ARM64 和 Linux x64 构建三平台产物并完成运行时与已打包应用 E2E。
+- [ ] **阶段 G / 正式版语言扩展（进行中）**：浏览器 js-debug、Electron 主/渲染双进程 js-debug、Java JDT LS/Java Debug Server、C/C++/Rust `lldb-dap`、Go Delve 和 .NET NetCoreDbg 均已完成 Windows 真实项目的断点、栈、变量与退出清理验收；浏览器、Java 和外部调试器还覆盖单步，LLDB 实测修复了 `launch`/`initialized` 握手顺序。Node.js 与 Python 已支持现有 DAP 端点的远程/容器附加，并用真实独立目标验证源码映射、断点、变量和断开清理/所有权；JDT LS 已按平台与 CPU 架构选择 Intel/ARM64 配置，macOS ARM64/Linux x64 公共 runner 也完成真实 Java 调试验收。正式发布仍需签名/notarization、10 个 Provider 公网验证、独立干净设备验收，以及按后续范围补齐其他语言跨环境附加和自动隧道编排。
 
 阶段 B 的项目运行服务与 Agent 命令、用户交互终端相互独立；阶段 C 的调试状态来自真实 DAP 事件，
 不复用普通进程输出伪装断点、调用栈或变量；阶段 D 只在用户审核脱敏预览后把选中数据加入会话。
@@ -59,7 +59,7 @@
 - [x] DAP 值投影与路径/Secret 防护下沉为共享基础设施，Node 与 Python Adapter 复用且业务流程无语言分支扩散。
 - [x] CI 对 `develop`、`release/**` 与 `main` 运行质量门禁，阶段分支先验证后才能并入基线。
 - [x] ProjectTask、组合运行、端口占用安全处理、函数/数据断点能力协商、指定/忽略异常规则和三向可调布局形成持久化闭环。
-- [x] 当前源码本地完整门禁通过：380 项 Vitest（111 个文件通过；7 个真实环境门禁文件 / 18 项默认跳过，其中 10 项为真实 Provider 公网门禁；独立集成门禁 29 文件 / 92 项），真实 Chrome、Electron、Java、Go、.NET 门禁分别 1/1 通过，C/C++/Rust LLDB 门禁 3/3 通过；16 项开发构建 Electron E2E、9 项已安装应用核心 E2E、6 项已安装桌面壳/持久化 E2E、10,000 文件性能验收、依赖审计及类型/Lint/格式/构建全部通过；Windows NSIS 候选已通过运行时完整性校验，独立安装后 1.61 秒创建产品窗口，正常退出零残留并可静默卸载。
+- [x] 当前源码本地完整门禁通过：393 项 Vitest（112 个文件通过；7 个真实环境门禁文件 / 18 项默认跳过，其中 10 项为真实 Provider 公网门禁；独立集成门禁 29 文件 / 92 项），真实 Chrome、Electron、Java、Go、.NET 门禁分别 1/1 通过，C/C++/Rust LLDB 门禁 3/3 通过；16 项开发构建 Electron E2E、9 项已安装应用核心 E2E、6/6 已安装桌面壳/持久化 E2E、10,000 文件性能验收、依赖审计及类型/Lint/格式/构建全部通过；Windows NSIS 候选已通过运行时完整性校验，独立安装后 1.61 秒创建产品窗口，正常退出零残留并可静默卸载。
 - [x] 当前工作树快照在 Debian 12 Linux x64 容器完成冻结依赖安装、原生 `node-pty` 编译、AppImage 打包/自解包、运行时完整性校验、GNOME Secret Service 探测与已打包应用核心 E2E 9/9；AppImage 为 214,339,141 字节，SHA-256 `31D2C23A18AC8168B6D9BCAE9E62D0652C6BF9CF39D05D5A1C110D964BCEB45E`。
 - [x] 发布元数据门禁生成确定性的 CycloneDX 1.6 SBOM（588 个组件）、710 个完整 workspace 依赖的审计、149 个随包第三方组件的许可证审计和 Secret 扫描报告；四份 JSON 均进入 SHA-256 清单，未知许可证、新增凭据或失效的测试夹具白名单会阻断 CI。
 - [x] 排除测试、产物与 vendor 后，TypeScript/TSX 生产源码超过 400 行的文件为 0。
