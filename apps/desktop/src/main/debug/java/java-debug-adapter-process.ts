@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -79,11 +79,22 @@ export class JavaDebugAdapterProcess implements ExternalDebugAdapterProcess {
     const timeoutMs = options.startupTimeoutMs ?? 120_000;
     const resources = await validateResources(options);
     const temporaryDirectory = await mkdtemp(join(tmpdir(), temporaryDirectoryPrefix));
+    const configurationDirectory = join(temporaryDirectory, 'configuration');
+    const workspaceDirectory = join(temporaryDirectory, 'workspace');
+    await Promise.all([
+      mkdir(configurationDirectory, { recursive: true }),
+      mkdir(workspaceDirectory, { recursive: true }),
+    ]);
     const workspaceUri = pathToFileURL(resolve(options.workspaceRoot)).href;
     const javaHome = dirname(dirname(resolve(options.javaExecutable)));
     const child = spawn(
       options.javaExecutable,
-      createJdtLsArguments(resources, temporaryDirectory, options.javaMajorVersion),
+      createJdtLsArguments(
+        resources,
+        configurationDirectory,
+        workspaceDirectory,
+        options.javaMajorVersion,
+      ),
       {
         cwd: options.workspaceRoot,
         detached: process.platform !== 'win32',
@@ -244,7 +255,8 @@ async function validateResources(
 
 function createJdtLsArguments(
   resources: ValidatedResources,
-  temporaryDirectory: string,
+  configurationDirectory: string,
+  workspaceDirectory: string,
   javaMajorVersion: number,
 ): ReadonlyArray<string> {
   const argumentsValue = [
@@ -265,8 +277,10 @@ function createJdtLsArguments(
     'java.base/java.lang=ALL-UNNAMED',
     '-jar',
     resources.launcherPath,
+    '-configuration',
+    configurationDirectory,
     '-data',
-    temporaryDirectory,
+    workspaceDirectory,
   ];
   return javaMajorVersion >= 24
     ? [
@@ -403,7 +417,12 @@ async function removeTemporaryDirectory(path: string): Promise<void> {
   ) {
     throw new Error('Refusing to remove an unexpected Java language server directory.');
   }
-  await rm(resolvedPath, { recursive: true, force: true });
+  await rm(resolvedPath, {
+    recursive: true,
+    force: true,
+    maxRetries: process.platform === 'win32' ? 20 : 0,
+    retryDelay: 100,
+  });
 }
 
 function waitForSpawn(child: ChildProcess, displayName: string): Promise<void> {
