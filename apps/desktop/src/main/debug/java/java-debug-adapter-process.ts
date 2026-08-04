@@ -149,12 +149,20 @@ export class JavaDebugAdapterProcess implements ExternalDebugAdapterProcess {
   }
 
   public async resolveMainClasses(scope: string): Promise<ReadonlyArray<JavaMainClass>> {
-    const result = await retryRequest<unknown>(
-      () => this.executeCommand('vscode.java.resolveMainClass', [scope]),
-      90_000,
-      'Java project import did not finish in time.',
-    );
-    return Array.isArray(result) ? result.map(toMainClass).filter(isJavaMainClass) : [];
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      const result = await retryRequest<unknown>(
+        () => this.executeCommand('vscode.java.resolveMainClass', [scope]),
+        Math.max(1, deadline - Date.now()),
+        'Java project import did not finish in time.',
+      );
+      const candidates = Array.isArray(result)
+        ? result.map(toMainClass).filter(isJavaMainClass)
+        : [];
+      if (candidates.length > 0) return candidates;
+      await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 500));
+    }
+    return [];
   }
 
   public async updateDebugSettings(settings: Readonly<Record<string, unknown>>): Promise<void> {
