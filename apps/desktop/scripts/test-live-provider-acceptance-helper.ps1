@@ -81,10 +81,10 @@ try {
   Assert-Condition ($global:acceptanceCaptured.Command -eq 'test:providers:live') 'The helper invoked an unexpected command.'
   Assert-Condition (($successOutput -join "`n") -notmatch 'masked-alpha|masked-beta') 'A prompted secret appeared in helper output.'
   Assert-Condition ($env:OPEN_CODE_DESK_PROVIDER_ACCEPTANCE -eq 'original-selection') 'The original selector was not restored.'
-  Assert-Condition ($null -eq $env:OPEN_CODE_DESK_PROVIDER_OPENAI_BASE_URL) 'The temporary Base URL was not cleared.'
-  Assert-Condition ($null -eq $env:OPEN_CODE_DESK_PROVIDER_OPENAI_MODEL) 'The temporary Model ID was not cleared.'
-  Assert-Condition ($null -eq $env:OPEN_CODE_DESK_PROVIDER_OPENAI_API_KEY) 'The temporary API Key was not cleared.'
-  Assert-Condition ($null -eq $env:OPEN_CODE_DESK_PROVIDER_OPENAI_HEADERS_JSON) 'The temporary Header JSON was not cleared.'
+  Assert-Condition ([string]::IsNullOrEmpty($env:OPEN_CODE_DESK_PROVIDER_OPENAI_BASE_URL)) 'The temporary Base URL was not cleared.'
+  Assert-Condition ([string]::IsNullOrEmpty($env:OPEN_CODE_DESK_PROVIDER_OPENAI_MODEL)) 'The temporary Model ID was not cleared.'
+  Assert-Condition ([string]::IsNullOrEmpty($env:OPEN_CODE_DESK_PROVIDER_OPENAI_API_KEY)) 'The temporary API Key was not cleared.'
+  Assert-Condition ([string]::IsNullOrEmpty($env:OPEN_CODE_DESK_PROVIDER_OPENAI_HEADERS_JSON)) 'The temporary Header JSON was not cleared.'
   Assert-Condition ($global:acceptanceAnswers.Count -eq 0) 'The success prompts were not all consumed.'
 
   $global:acceptanceAnswers = [System.Collections.Generic.Queue[string]]::new()
@@ -98,9 +98,9 @@ try {
   $null = @(& $helperPath -Providers ollama 6>&1)
   Assert-Condition ($LASTEXITCODE -eq 7) 'The child failure exit code was not preserved.'
   Assert-Condition ($env:OPEN_CODE_DESK_PROVIDER_ACCEPTANCE -eq 'original-selection') 'The selector was not restored after failure.'
-  Assert-Condition ($null -eq $env:OPEN_CODE_DESK_PROVIDER_OLLAMA_BASE_URL) 'The failure-path Base URL was not cleared.'
-  Assert-Condition ($null -eq $env:OPEN_CODE_DESK_PROVIDER_OLLAMA_MODEL) 'The failure-path Model ID was not cleared.'
-  Assert-Condition ($null -eq $env:OPEN_CODE_DESK_PROVIDER_OLLAMA_API_KEY) 'The failure-path API Key was not cleared.'
+  Assert-Condition ([string]::IsNullOrEmpty($env:OPEN_CODE_DESK_PROVIDER_OLLAMA_BASE_URL)) 'The failure-path Base URL was not cleared.'
+  Assert-Condition ([string]::IsNullOrEmpty($env:OPEN_CODE_DESK_PROVIDER_OLLAMA_MODEL)) 'The failure-path Model ID was not cleared.'
+  Assert-Condition ([string]::IsNullOrEmpty($env:OPEN_CODE_DESK_PROVIDER_OLLAMA_API_KEY)) 'The failure-path API Key was not cleared.'
   Assert-Condition ($global:acceptanceAnswers.Count -eq 0) 'The failure prompts were not all consumed.'
 
   $invalidRejected = $false
