@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 
 import type { DebugValidationResult, RunCommandSnapshot } from '@open-code-desk/domain';
 
@@ -83,12 +83,13 @@ export class JavaDebugAdapterProvider implements RuntimeDebugAdapterProvider {
     if (!validation.valid) throw new Error(validation.errors.join(' '));
     const runtime = await this.runtime(input.command);
     if (runtime === undefined) throw new Error('JDK 21 or newer was not found.');
+    const workspaceRoot = await realpath(input.workspaceRoot);
     const process = await JavaDebugAdapterProcess.start({
       javaExecutable: runtime.executable,
       javaMajorVersion: runtime.majorVersion,
       jdtLsRoot: this.options.jdtLsRoot,
       debugPluginPath: this.options.debugPluginPath,
-      workspaceRoot: input.workspaceRoot,
+      workspaceRoot,
       ...(this.options.startupTimeoutMs === undefined
         ? {}
         : { startupTimeoutMs: this.options.startupTimeoutMs }),
@@ -104,7 +105,7 @@ export class JavaDebugAdapterProvider implements RuntimeDebugAdapterProvider {
       const policyState = { current: input.exceptionPolicy };
       return await ExternalDebugAdapterSession.create({
         process,
-        workspaceRoot: input.workspaceRoot,
+        workspaceRoot,
         adapterName: 'Java debug adapter',
         initializeArguments: javaInitializeArguments,
         mapCapabilities: mapJavaCapabilities,
@@ -114,7 +115,7 @@ export class JavaDebugAdapterProvider implements RuntimeDebugAdapterProvider {
         launchBeforeInitialized: true,
         launchArguments: createJavaLaunchArguments(
           input.command,
-          input.workspaceRoot,
+          workspaceRoot,
           input.environment,
           target,
           classpaths,
