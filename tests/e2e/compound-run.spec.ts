@@ -1,11 +1,11 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 
-import { launchDesktop } from './desktop-fixture';
+import { launchDesktop, removeTestDirectory } from './desktop-fixture';
 
 async function reserveFreePort(): Promise<number> {
   const server = createServer();
@@ -146,7 +146,7 @@ test('creates, batch-approves, monitors, stops, and restores a compound run', as
     await expect(window.getByTestId('compound-run-dialog')).toContainText('full stack');
   } finally {
     if (application !== undefined) await application.close();
-    await rm(projectDirectory, { recursive: true, force: true });
-    await rm(userDataDirectory, { recursive: true, force: true });
+    await removeTestDirectory(projectDirectory);
+    await removeTestDirectory(userDataDirectory);
   }
 });

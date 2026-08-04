@@ -159,6 +159,7 @@ export const useDebugStore = create<DebugState>((set, get) => ({
   },
 
   async control(action) {
+    if (get().loading) return;
     const session = selectedDebugSession(get());
     const threadId = get().selectedThreadId ?? session?.pause?.threadId;
     if (session === undefined || threadId === undefined) return;

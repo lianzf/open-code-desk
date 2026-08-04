@@ -1,10 +1,10 @@
-import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 
-import { launchDesktop } from './desktop-fixture';
+import { launchDesktop, removeTestDirectory } from './desktop-fixture';
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -219,7 +219,7 @@ test('creates a dependency task plan, approves it, and restores its history', as
     await expect(window.getByTestId('project-task-output')).toContainText('TASK_E2E_READY');
   } finally {
     if (application !== undefined) await application.close();
-    await rm(projectDirectory, { recursive: true, force: true });
-    await rm(userDataDirectory, { recursive: true, force: true });
+    await removeTestDirectory(projectDirectory);
+    await removeTestDirectory(userDataDirectory);
   }
 });

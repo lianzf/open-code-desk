@@ -1,10 +1,10 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { expect, test, type ElectronApplication } from '@playwright/test';
 
-import { launchDesktop } from './desktop-fixture';
+import { launchDesktop, removeTestDirectory } from './desktop-fixture';
 
 test('discovers a Python interpreter and completes a real breakpoint debug flow', async () => {
   const projectDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-python-e2e-'));
@@ -64,13 +64,15 @@ test('discovers a Python interpreter and completes a real breakpoint debug flow'
     await window.getByTestId('debug-next').click();
     await expect(window.getByTestId('debug-status')).toHaveText('已暂停', { timeout: 10_000 });
     await expect(window.getByTestId('debug-panel')).toContainText('main.py:5');
-    await window.getByTestId('debug-toggle-pause').click();
+    const togglePause = window.getByTestId('debug-toggle-pause');
+    await expect(togglePause).toBeEnabled();
+    await togglePause.click();
     await expect(window.getByTestId('debug-panel')).toContainText('PYTHON_DEBUG_READY:42');
     await window.getByTestId('stop-debug').click();
     await expect(window.getByTestId('debug-status')).toHaveText('已停止');
   } finally {
     if (application !== undefined) await application.close();
-    await rm(projectDirectory, { recursive: true, force: true });
-    await rm(userDataDirectory, { recursive: true, force: true });
+    await removeTestDirectory(projectDirectory);
+    await removeTestDirectory(userDataDirectory);
   }
 });

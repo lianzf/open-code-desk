@@ -1,9 +1,9 @@
 import { expect, test, type ElectronApplication } from '@playwright/test';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { launchDesktop } from './desktop-fixture';
+import { launchDesktop, removeTestDirectory } from './desktop-fixture';
 
 test('launches the secure desktop shell and reaches the main process', async () => {
   const userDataDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-e2e-user-'));
@@ -39,7 +39,7 @@ test('launches the secure desktop shell and reaches the main process', async () 
     expect(securityPreferences.sandbox).toBe(true);
   } finally {
     await application.close();
-    await rm(userDataDirectory, { recursive: true, force: true });
+    await removeTestDirectory(userDataDirectory);
   }
 });
 
@@ -62,7 +62,7 @@ test('retains the main window when the main-process garbage collector runs', asy
     expect(application.windows()).toHaveLength(1);
   } finally {
     await application.close();
-    await rm(userDataDirectory, { recursive: true, force: true });
+    await removeTestDirectory(userDataDirectory);
   }
 });
 
@@ -150,8 +150,8 @@ test('persists appearance, locale, updater state, and configurable shortcuts', a
     if (application !== undefined) {
       await application.close();
     }
-    await rm(projectDirectory, { recursive: true, force: true });
-    await rm(userDataDirectory, { recursive: true, force: true });
+    await removeTestDirectory(projectDirectory);
+    await removeTestDirectory(userDataDirectory);
   }
 });
 
@@ -210,8 +210,8 @@ test('opens, edits, saves, and restores a recent workspace', async () => {
     if (application !== undefined) {
       await application.close();
     }
-    await rm(projectDirectory, { recursive: true, force: true });
-    await rm(userDataDirectory, { recursive: true, force: true });
+    await removeTestDirectory(projectDirectory);
+    await removeTestDirectory(userDataDirectory);
   }
 });
 
@@ -283,8 +283,8 @@ test('manages workspace paths and performs cancellable source-text search', asyn
     await expect(window.getByText('path.delete', { exact: true }).first()).toBeVisible();
   } finally {
     await application.close();
-    await rm(projectDirectory, { recursive: true, force: true });
-    await rm(userDataDirectory, { recursive: true, force: true });
+    await removeTestDirectory(projectDirectory);
+    await removeTestDirectory(userDataDirectory);
   }
 });
 
@@ -342,8 +342,8 @@ test('persists read approvals, blocked paths, and explicit external directory gr
     if (application !== undefined) {
       await application.close();
     }
-    await rm(projectDirectory, { recursive: true, force: true });
-    await rm(externalDirectory, { recursive: true, force: true });
-    await rm(userDataDirectory, { recursive: true, force: true });
+    await removeTestDirectory(projectDirectory);
+    await removeTestDirectory(externalDirectory);
+    await removeTestDirectory(userDataDirectory);
   }
 });

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 
 import { expect, test, type ElectronApplication } from '@playwright/test';
 
-import { launchDesktop } from './desktop-fixture';
+import { launchDesktop, removeTestDirectory } from './desktop-fixture';
 
 const execFileAsync = promisify(execFile);
 const apiKey = 'sk-e2e-command-context';
@@ -240,7 +240,7 @@ test('persists selected context and completes an approved command plus Git workf
       await application.close();
     }
     await new Promise<void>((resolve) => fixture.server.close(() => resolve()));
-    await rm(projectDirectory, { recursive: true, force: true });
-    await rm(userDataDirectory, { recursive: true, force: true });
+    await removeTestDirectory(projectDirectory);
+    await removeTestDirectory(userDataDirectory);
   }
 });

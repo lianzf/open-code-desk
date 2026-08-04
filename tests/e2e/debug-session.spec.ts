@@ -1,10 +1,10 @@
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { expect, test, type ElectronApplication } from '@playwright/test';
 
-import { launchDesktop } from './desktop-fixture';
+import { launchDesktop, removeTestDirectory } from './desktop-fixture';
 
 test('sets a real breakpoint, inspects locals, steps, evaluates and restores debug state', async () => {
   const projectDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-debug-project-'));
@@ -132,7 +132,7 @@ test('sets a real breakpoint, inspects locals, steps, evaluates and restores deb
     await expect(window.getByTestId('debug-breakpoint-item')).toContainText('program.js:3');
   } finally {
     if (application !== undefined) await application.close();
-    await rm(projectDirectory, { recursive: true, force: true });
-    await rm(userDataDirectory, { recursive: true, force: true });
+    await removeTestDirectory(projectDirectory);
+    await removeTestDirectory(userDataDirectory);
   }
 });

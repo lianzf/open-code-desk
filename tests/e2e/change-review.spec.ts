@@ -1,12 +1,12 @@
 import { createServer, type Server } from 'node:http';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { expect, test, type ElectronApplication } from '@playwright/test';
 
-import { launchDesktop } from './desktop-fixture';
+import { launchDesktop, removeTestDirectory } from './desktop-fixture';
 
 const apiKey = 'sk-e2e-change-review';
 const proposedContent = '# AI reviewed update\n';
@@ -129,7 +129,7 @@ test('reviews, applies, persists, and rolls back an Agent file proposal', async 
       await application.close();
     }
     await new Promise<void>((resolve) => fixture.server.close(() => resolve()));
-    await rm(projectDirectory, { recursive: true, force: true });
-    await rm(userDataDirectory, { recursive: true, force: true });
+    await removeTestDirectory(projectDirectory);
+    await removeTestDirectory(userDataDirectory);
   }
 });

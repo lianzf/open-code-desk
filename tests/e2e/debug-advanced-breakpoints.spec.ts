@@ -1,10 +1,10 @@
-import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { expect, test, type ElectronApplication } from '@playwright/test';
 
-import { launchDesktop } from './desktop-fixture';
+import { launchDesktop, removeTestDirectory } from './desktop-fixture';
 
 test('edits, executes and restores advanced breakpoints and exception rules', async () => {
   const projectDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-debug-advanced-project-'));
@@ -130,7 +130,7 @@ test('edits, executes and restores advanced breakpoints and exception rules', as
     await expect(window.getByTestId('exception-ignore-types')).toHaveValue('AbortError');
   } finally {
     if (application !== undefined) await application.close();
-    await rm(projectDirectory, { recursive: true, force: true });
-    await rm(userDataDirectory, { recursive: true, force: true });
+    await removeTestDirectory(projectDirectory);
+    await removeTestDirectory(userDataDirectory);
   }
 });

@@ -1,12 +1,12 @@
 import { createServer, type Server } from 'node:http';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { expect, test, type ElectronApplication } from '@playwright/test';
 
-import { launchDesktop } from '../e2e/desktop-fixture';
+import { launchDesktop, removeTestDirectory } from '../e2e/desktop-fixture';
 
 const apiKey = 'stability-acceptance-secret';
 const conversationCount = 20;
@@ -135,8 +135,8 @@ test('survives 20 conversations, repeated model switches, restart, and the confi
   } finally {
     if (application !== undefined) await application.close();
     await closeServer(fixture.server);
-    await rm(projectDirectory, { recursive: true, force: true });
-    await rm(userDataDirectory, { recursive: true, force: true });
+    await removeTestDirectory(projectDirectory);
+    await removeTestDirectory(userDataDirectory);
   }
 });
 

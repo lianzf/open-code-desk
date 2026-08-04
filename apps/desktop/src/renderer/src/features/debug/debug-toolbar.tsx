@@ -76,7 +76,7 @@ export function DebugToolbar({ workspaceId, onShowDebug }: DebugToolbarProps) {
         type="button"
         size="icon"
         variant="ghost"
-        disabled={active === undefined || !['running', 'paused'].includes(active.status)}
+        disabled={loading || active === undefined || !['running', 'paused'].includes(active.status)}
         onClick={() => void control(paused ? 'continue' : 'pause')}
         title={paused ? t('continue') : t('pause')}
         aria-label={paused ? t('continueDebug') : t('pauseDebug')}
@@ -87,7 +87,7 @@ export function DebugToolbar({ workspaceId, onShowDebug }: DebugToolbarProps) {
       <DebugStepButton
         testId="debug-next"
         title={t('stepOver')}
-        disabled={!paused}
+        disabled={loading || !paused}
         onClick={() => void control('next')}
       >
         <StepForward className="size-3.5" />
@@ -95,7 +95,7 @@ export function DebugToolbar({ workspaceId, onShowDebug }: DebugToolbarProps) {
       <DebugStepButton
         testId="debug-step-in"
         title={t('stepInto')}
-        disabled={!paused}
+        disabled={loading || !paused}
         onClick={() => void control('stepIn')}
       >
         <ArrowDownToLine className="size-3.5" />
@@ -103,7 +103,7 @@ export function DebugToolbar({ workspaceId, onShowDebug }: DebugToolbarProps) {
       <DebugStepButton
         testId="debug-step-out"
         title={t('stepOut')}
-        disabled={!paused}
+        disabled={loading || !paused}
         onClick={() => void control('stepOut')}
       >
         <ArrowUpFromLine className="size-3.5" />
@@ -111,7 +111,9 @@ export function DebugToolbar({ workspaceId, onShowDebug }: DebugToolbarProps) {
       <DebugStepButton
         testId="restart-debug"
         title={t('restartDebug')}
-        disabled={selected === undefined || !['running', 'paused'].includes(selected.status)}
+        disabled={
+          loading || selected === undefined || !['running', 'paused'].includes(selected.status)
+        }
         onClick={() => void restart(selected?.id)}
       >
         <RotateCw className="size-3.5" />

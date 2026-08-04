@@ -1,3 +1,4 @@
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { _electron as electron, type ElectronApplication } from '@playwright/test';
@@ -32,4 +33,13 @@ export async function launchDesktop(
   // require the renderer lifecycle to be ready before stubbing Electron APIs.
   await application.firstWindow();
   return application;
+}
+
+export async function removeTestDirectory(path: string): Promise<void> {
+  await rm(path, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 200,
+  });
 }
