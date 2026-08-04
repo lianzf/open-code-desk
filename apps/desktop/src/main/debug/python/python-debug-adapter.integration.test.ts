@@ -61,15 +61,24 @@ describe('PythonDebugAdapterProvider integration', () => {
         logPoints: true,
         exceptionInfo: true,
       });
+      let stoppedObserved = false;
+      let redactedOutputObserved = false;
       const observed = await collectEventsUntil(
         session,
-        'Python breakpoint',
-        (event) => event.type === 'stopped',
+        'Python breakpoint and redacted output',
+        (event) => {
+          if (event.type === 'stopped') stoppedObserved = true;
+          if (event.type === 'output' && event.data.includes('[REDACTED]')) {
+            redactedOutputObserved = true;
+          }
+          return stoppedObserved && redactedOutputObserved;
+        },
       );
       expect(JSON.stringify(observed.events)).not.toContain(secret);
-      expect(JSON.stringify(observed.events)).toContain('[REDACTED]');
-      if (observed.event.type !== 'stopped') throw new Error('Expected a stopped event.');
-      const frames = await session.stackTrace(observed.event.threadId);
+      expect(redactedOutputObserved).toBe(true);
+      const stopped = observed.events.find((event) => event.type === 'stopped');
+      if (stopped?.type !== 'stopped') throw new Error('Expected a stopped event.');
+      const frames = await session.stackTrace(stopped.threadId);
       expect(frames[0]).toMatchObject({ relativePath: 'main.py', line: 3 });
       const scopes = await session.scopes(frames[0]?.id ?? 0);
       const variables = (
@@ -84,7 +93,7 @@ describe('PythonDebugAdapterProvider integration', () => {
         'Python step over',
         (event) => event.type === 'stopped',
       );
-      await session.next(observed.event.threadId);
+      await session.next(stopped.threadId);
       const stepEvent = await stepped;
       expect(stepEvent).toMatchObject({ type: 'stopped', reason: 'step' });
       if (stepEvent.type !== 'stopped') throw new Error('Expected a step event.');
