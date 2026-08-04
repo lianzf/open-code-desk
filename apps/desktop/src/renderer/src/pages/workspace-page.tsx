@@ -41,6 +41,7 @@ export function WorkspacePage() {
   const openEditorFileAt = useEditorStore((state) => state.openFileAt);
   const resetEditor = useEditorStore((state) => state.reset);
   const handleEditorFileChange = useEditorStore((state) => state.handleFileChange);
+  const activeEditorPath = useEditorStore((state) => state.activePath);
   const handleWorkspaceFileChange = useWorkspaceStore((state) => state.handleFileChange);
   const [bottomPanel, setBottomPanel] = useState<
     'terminal' | 'git' | 'audit' | 'run' | 'debug' | 'tasks' | null
@@ -84,6 +85,26 @@ export function WorkspacePage() {
       void handleEditorFileChange(event.workspaceId, event.relativePath);
     });
   }, [handleEditorFileChange, handleWorkspaceFileChange]);
+
+  useEffect(() => {
+    if (current === null || activeEditorPath === null) {
+      return;
+    }
+
+    let reconciling = false;
+    const reconcile = async () => {
+      if (reconciling) return;
+      reconciling = true;
+      try {
+        await handleEditorFileChange(current.id, activeEditorPath);
+      } finally {
+        reconciling = false;
+      }
+    };
+    const interval = window.setInterval(() => void reconcile(), 1_000);
+    void reconcile();
+    return () => window.clearInterval(interval);
+  }, [activeEditorPath, current, handleEditorFileChange]);
 
   useEffect(() => {
     const relativePath = pausedSession?.pause?.relativePath;

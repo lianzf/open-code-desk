@@ -219,14 +219,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   async handleFileChange(workspaceId, relativePath) {
     const state = get();
-    const tab = state.tabs.find((candidate) => candidate.relativePath === relativePath);
+    const open = state.tabs.some((candidate) => candidate.relativePath === relativePath);
 
-    if (state.workspaceId !== workspaceId || tab === undefined || state.saving) {
+    if (state.workspaceId !== workspaceId || !open || state.saving) {
       return;
     }
 
     try {
       const file = await window.openCodeDesk.files.readFile({ workspaceId, relativePath });
+      const current = get();
+      const tab = current.tabs.find((candidate) => candidate.relativePath === relativePath);
+
+      if (current.workspaceId !== workspaceId || tab === undefined || current.saving) {
+        return;
+      }
 
       if (file.contentHash === tab.contentHash) {
         return;
