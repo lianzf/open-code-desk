@@ -63,6 +63,7 @@ test('discovers a Python interpreter and completes a real breakpoint debug flow'
 
     await window.getByTestId('debug-next').click();
     await expect(window.getByTestId('debug-status')).toHaveText('已暂停', { timeout: 10_000 });
+    await expect(window.getByTestId('debug-panel')).toContainText('main.py:5');
     await window.getByTestId('debug-toggle-pause').click();
     await expect(window.getByTestId('debug-panel')).toContainText('PYTHON_DEBUG_READY:42');
     await window.getByTestId('stop-debug').click();
