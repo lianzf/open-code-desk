@@ -202,6 +202,11 @@ jobs:
           export OPEN_CODE_DESK_JAVA_HOME="$JAVA_HOME"
           pnpm exec vitest run apps/desktop/src/main/debug/java/java-debug-adapter.acceptance.test.ts --maxWorkers=1
 
+      - name: Test secure live Provider helper
+        if: matrix.name == 'Windows x64'
+        shell: pwsh
+        run: ./apps/desktop/scripts/test-live-provider-acceptance-helper.ps1
+
       - name: Build installer
         run: ${{ matrix.command }}
 

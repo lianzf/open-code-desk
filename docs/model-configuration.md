@@ -54,14 +54,12 @@ URL 不得包含用户名或密码。应用拒绝危险重定向、不安全的�
 - `OPEN_CODE_DESK_PROVIDER_<SUFFIX>_API_KEY`：除 `openai-compatible` 和 `ollama` 外必填。
 - `OPEN_CODE_DESK_PROVIDER_<SUFFIX>_HEADERS_JSON`：可选的 JSON 字符串请求头；所有值均按敏感数据处理。
 
-PowerShell 单 Provider 示例：
+Windows PowerShell 推荐使用仓库内的安全提示脚本。Provider 名称、Base URL 和 Model ID 使用普通提示，API Key 使用掩码提示；脚本只在自己的进程环境中设置凭据，测试子进程结束后会在 `finally` 中恢复原环境，不写入文件、命令历史或测试输出：
 
 ```powershell
-$env:OPEN_CODE_DESK_PROVIDER_ACCEPTANCE='openai'
-$env:OPEN_CODE_DESK_PROVIDER_OPENAI_BASE_URL='<provider-base-url>'
-$env:OPEN_CODE_DESK_PROVIDER_OPENAI_MODEL='<provider-model-id>'
-$env:OPEN_CODE_DESK_PROVIDER_OPENAI_API_KEY='<temporary-acceptance-key>'
-pnpm test:providers:live
+powershell -NoProfile -ExecutionPolicy Bypass -File .\apps\desktop\scripts\run-live-provider-acceptance.ps1 -Providers openai
 ```
 
-不要把这些值写入 `.env`、脚本、测试快照或 Git。运行后关闭该终端，或删除相应进程环境变量。专用脚本未设置选择器时会失败退出；普通 `pnpm test` 只报告这些真实网络门禁为跳过，不能把默认跳过结果视为公网验收成功。
+选择多个 Provider 时传入逗号分隔名称，全部验收使用 `-Providers all`。需要自定义 Header 时增加 `-PromptCustomHeaders`；Header JSON 也使用掩码提示。脚本会复用调用进程中已经存在的变量但不显示其值，仅负责恢复自己临时设置的变量。
+
+也可以自行设置上述进程环境变量后运行 `pnpm test:providers:live`，但不要把真实 Key 直接写入会保存命令历史的赋值语句。不要把这些值写入 `.env`、脚本、测试快照或 Git。运行后关闭对应终端，或删除相应进程环境变量。专用 Node.js 入口未设置选择器时会失败退出；普通 `pnpm test` 只报告这些真实网络门禁为跳过，不能把默认跳过结果视为公网验收成功。
