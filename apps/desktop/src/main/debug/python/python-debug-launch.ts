@@ -102,6 +102,27 @@ export function createPythonLaunchArguments(
   };
 }
 
+export function createPythonAttachArguments(
+  command: RunCommandSnapshot,
+  workspaceRoot: string,
+): Readonly<Record<string, unknown>> {
+  const target = command.debugAttach;
+  if (target === undefined || target.adapter !== 'debugpy') {
+    throw new Error('Python 附加调试缺少远程或容器 debugpy 目标。');
+  }
+  return {
+    type: 'debugpy',
+    request: 'attach',
+    name: command.configurationName,
+    ...(target.remoteRoot === undefined
+      ? {}
+      : { pathMappings: [{ localRoot: workspaceRoot, remoteRoot: target.remoteRoot }] }),
+    justMyCode: true,
+    subProcess: false,
+    showReturnValue: true,
+  };
+}
+
 export function mapPythonCapabilities(value: unknown): DebugAdapterCapabilities {
   const body = asRecord(value);
   return {

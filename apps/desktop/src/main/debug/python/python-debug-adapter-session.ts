@@ -38,6 +38,9 @@ export interface CreatePythonDebugAdapterSessionInput {
   readonly sensitiveValues: ReadonlyArray<string>;
   readonly breakpoints: ReadonlyArray<DebugBreakpoint>;
   readonly exceptionPolicy: DebugExceptionPolicy;
+  readonly requestCommand?: 'launch' | 'attach';
+  readonly requestArguments?: Readonly<Record<string, unknown>>;
+  readonly terminateDebuggeeOnDisconnect?: boolean;
 }
 
 export class PythonDebugAdapterSession implements DebugAdapterSession {
@@ -57,6 +60,7 @@ export class PythonDebugAdapterSession implements DebugAdapterSession {
     sensitiveValues: ReadonlyArray<string>,
     breakpoints: ReadonlyArray<DebugBreakpoint>,
     private exceptionPolicy: DebugExceptionPolicy,
+    private readonly terminateDebuggeeOnDisconnect: boolean,
   ) {
     this.#dataAccess = new DapDataAccess(
       process.client,
@@ -104,10 +108,12 @@ export class PythonDebugAdapterSession implements DebugAdapterSession {
         input.sensitiveValues,
         input.breakpoints,
         input.exceptionPolicy,
+        input.terminateDebuggeeOnDisconnect ?? true,
       );
       const launchPromise = input.process.client.request<unknown>(
-        'launch',
-        createPythonLaunchArguments(input.command, input.workspaceRoot, input.environment),
+        input.requestCommand ?? 'launch',
+        input.requestArguments ??
+          createPythonLaunchArguments(input.command, input.workspaceRoot, input.environment),
         60_000,
       );
       void launchPromise.catch(() => undefined);
@@ -283,7 +289,11 @@ export class PythonDebugAdapterSession implements DebugAdapterSession {
     await this.process.client
       .request(
         'disconnect',
-        { restart: false, terminateDebuggee: true, suspendDebuggee: false },
+        {
+          restart: false,
+          terminateDebuggee: this.terminateDebuggeeOnDisconnect,
+          suspendDebuggee: false,
+        },
         3_000,
       )
       .catch(() => undefined);

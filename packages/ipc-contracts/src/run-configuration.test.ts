@@ -37,6 +37,28 @@ describe('debug attach configuration contracts', () => {
     });
   });
 
+  it('accepts a Python debugpy target only for Python projects', () => {
+    const target = {
+      adapter: 'debugpy' as const,
+      environment: 'remote' as const,
+      host: 'python.internal.test',
+      port: 5678,
+      remoteRoot: '/srv/python-app',
+    };
+    expect(
+      saveRunConfigurationRequestSchema.safeParse({
+        ...base,
+        name: 'Remote Python',
+        type: 'python',
+        executable: 'python',
+        debugAttach: target,
+      }).success,
+    ).toBe(true);
+    expect(
+      saveRunConfigurationRequestSchema.safeParse({ ...base, debugAttach: target }).success,
+    ).toBe(false);
+  });
+
   it('rejects unsupported project types, URL-shaped hosts and relative remote roots', () => {
     const target = {
       adapter: 'pwa-node' as const,

@@ -21,15 +21,17 @@ import type { AgentTaskRepository } from './agent-task.repository';
 import { AgentTaskPlan } from './agent-task-plan';
 import {
   addToolResultMessage,
+  AgentRunLimitError,
   consumeProviderEvent,
-  maximumAgentRounds,
-  maximumToolCalls,
+  defaultAgentRunLimits,
   parseToolArguments,
   previewOf,
+  rejectToolCallForBudget,
   rejectedToolErrorCodes,
   toolResultStatus,
   unexpectedError,
   type AccumulatedResponse,
+  type AgentRunLimits,
 } from './agent-run-support';
 import type { AgentEventListener, AgentRunInput } from './agent.types';
 import { ConversationContextBuilder } from './conversation-context';
@@ -52,6 +54,7 @@ export class AgentService {
     private readonly contextItems?: ContextItemRepository,
     private readonly projectRules?: ProjectRulesService,
     private readonly approvals?: ToolApprovalService,
+    private readonly runLimits: AgentRunLimits = defaultAgentRunLimits,
   ) {
     this.#dispatcher = new ToolDispatcher(tools, permissionPolicy, toolCalls, approvals);
   }
@@ -136,7 +139,7 @@ export class AgentService {
       transition('planning');
 
       let executedToolCalls = 0;
-      for (let round = 0; round < maximumAgentRounds; round += 1) {
+      for (let round = 0; round < this.runLimits.maximumAgentRounds; round += 1) {
         plan.setRound(round + 1);
         signal.throwIfAborted();
         const history = this.conversations.listMessages(input.conversationId);
@@ -227,17 +230,31 @@ export class AgentService {
           return;
         }
 
+        let toolBudgetExhausted = false;
         for (const modelToolCall of modelToolCalls) {
-          executedToolCalls += 1;
-          if (executedToolCalls > maximumToolCalls) {
-            throw new Error('The Agent exceeded the maximum number of tool calls.');
+          if (executedToolCalls >= this.runLimits.maximumToolCalls) {
+            toolBudgetExhausted = true;
+            rejectToolCallForBudget({
+              input,
+              taskId: task.id,
+              modelToolCall,
+              maximumToolCalls: this.runLimits.maximumToolCalls,
+              conversations: this.conversations,
+              toolCalls: this.toolCalls,
+              emit,
+            });
+            continue;
           }
+          executedToolCalls += 1;
           transition('executing_tool', `执行工具 ${modelToolCall.name}`);
           await this.executeToolCall(input, task.id, modelToolCall, signal, emit);
         }
+        if (toolBudgetExhausted) {
+          throw new AgentRunLimitError('tool_calls', this.runLimits.maximumToolCalls);
+        }
         transition('planning');
       }
-      throw new Error('The Agent exceeded the maximum number of model rounds.');
+      throw new AgentRunLimitError('model_rounds', this.runLimits.maximumAgentRounds);
     } catch (error) {
       const appError = unexpectedError(error);
       if (activeAssistantMessage?.status === 'streaming') {

@@ -23,6 +23,7 @@ OpenCode Desk 是一款本地优先、审批驱动的跨平台 AI 编程桌面�
 - 创建函数与数据断点，并按 Adapter 能力发送真实 DAP 请求；不支持的 Adapter 会明确保留为“未验证”，不会伪报成功
 - 自动发现 Python 工作区虚拟环境、当前激活环境和 PATH 解释器，并生成 Django、Flask、FastAPI 与 pytest 建议配置
 - 使用随应用固定分发的 debugpy 调试用户所选 Python 3.8+ 解释器，无需向项目环境安装调试依赖
+- 通过现有 `debugpy.listen()` 端点附加远程或容器内 Python 进程，支持源码映射，并在断开时保留目标进程
 - 按工作区配置“不暂停 / 仅未捕获 / 全部异常”、指定异常类型暂停和异常忽略列表，调试中修改后立即同步到 Adapter
 - 在 Monaco 中高亮当前执行行，并继续、暂停、单步、运行到光标、重启或停止调试会话
 - 使用独立调试控制台查看脱敏输出、异常信息并执行表达式求值
@@ -217,9 +218,9 @@ Agent 提议的命令必须先展示可执行文件、参数、目录和风险�
 
 ## 当前限制
 
-- 当前 DAP 调试闭环覆盖 Node.js/TypeScript、Python、浏览器前端、Electron 主/渲染进程、Java、C/C++/Rust、Go 和 .NET。Electron 使用同一固定 js-debug 服务的 `pwa-node` 与 `pwa-chrome` 客户端，已在 Windows 以真实 Electron 进程验证两侧源码断点、变量读取和退出清理。Java 使用固定版本 JDT LS 1.60.0 与 Microsoft Java Debug Server 0.53.2，要求本机提供 JDK 21+，并按平台与 CPU 架构选择 JDT LS 的 Intel/ARM64 配置；Windows 已分别以真实 Maven、Chrome、LLVM 22.1.8/LLDB、Go 1.26.5/Delve 1.26.3、.NET SDK 10.0.302/NetCoreDbg 3.2.0-1092 项目验证断点、栈、变量、单步、退出与进程清理。Java 还在 macOS ARM64/Linux x64 公共原生 runner 完成断点、变量、单步、异常与清理验收。外部 LLDB、Delve 与 NetCoreDbg 不随应用分发；Node.js 已支持通过现有 Inspector 端口附加远程或容器目标，其他语言的跨环境附加和自动 SSH/容器编排尚未完成
+- 当前 DAP 调试闭环覆盖 Node.js/TypeScript、Python、浏览器前端、Electron 主/渲染进程、Java、C/C++/Rust、Go 和 .NET。Electron 使用同一固定 js-debug 服务的 `pwa-node` 与 `pwa-chrome` 客户端，已在 Windows 以真实 Electron 进程验证两侧源码断点、变量读取和退出清理。Java 使用固定版本 JDT LS 1.60.0 与 Microsoft Java Debug Server 0.53.2，要求本机提供 JDK 21+，并按平台与 CPU 架构选择 JDT LS 的 Intel/ARM64 配置；Windows 已分别以真实 Maven、Chrome、LLVM 22.1.8/LLDB、Go 1.26.5/Delve 1.26.3、.NET SDK 10.0.302/NetCoreDbg 3.2.0-1092 项目验证断点、栈、变量、单步、退出与进程清理。Java 还在 macOS ARM64/Linux x64 公共原生 runner 完成断点、变量、单步、异常与清理验收。外部 LLDB、Delve 与 NetCoreDbg 不随应用分发；Node.js Inspector 与 Python debugpy 已支持附加远程或容器目标，应用不自动建立 SSH/容器通道，其他语言的跨环境附加尚未完成
 - 函数/数据断点会按 DAP 能力真实发送；当前 debugpy 支持函数断点，随包 js-debug 不声明函数断点能力，两个内置 Adapter 均不声明数据断点能力，因此相应条目会明确显示“未验证”
-- Python 调试暂不支持 `-c` 内联代码、attach、远程调试，以及 Poetry/Conda 的工作区外环境管理器枚举
+- Python 调试暂不支持 `-c` 内联代码，以及 Poetry/Conda 的工作区外环境管理器枚举
 - AI 辅助调试当前一次只收集一个暂停位置；Electron 双进程可在同一调试会话中切换，但跨服务自动关联诊断尚未实现
 - 正式 Windows/macOS 发布需要代码签名、notarization 和干净设备验收证据
 - 10,000 文件增量加载、名称搜索与取消验收已形成[性能报告](docs/reports/performance-2026-08-02.md)，Windows 4 小时稳定性基线已通过；当前 0.7 的 Windows x64、macOS ARM64 和 Linux x64 公共原生 CI、运行时校验与已打包应用 E2E 均已通过，仍缺正式签名/notarization、全部计划 Provider 真实公网记录和独立人员干净设备验收

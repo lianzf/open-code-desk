@@ -10,6 +10,7 @@ export function RunDebugAttachEditor({
   readonly onChange: (draft: ConfigurationDraft) => void;
 }) {
   const { t } = useRunTranslation();
+  const python = draft.type === 'python';
   return (
     <section className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
       <label className="flex items-start gap-2 text-xs text-zinc-300">
@@ -22,15 +23,27 @@ export function RunDebugAttachEditor({
               ...draft,
               debugAttachEnabled: event.target.checked,
               executable:
-                event.target.checked && draft.executable.trim() === '' ? 'node' : draft.executable,
+                event.target.checked && draft.executable.trim() === ''
+                  ? python
+                    ? 'python'
+                    : 'node'
+                  : draft.executable,
+              debugAttachPort:
+                event.target.checked && !draft.debugAttachEnabled
+                  ? python
+                    ? '5678'
+                    : '9229'
+                  : draft.debugAttachPort,
             })
           }
           data-testid="run-config-debug-attach"
         />
         <span>
-          <span className="block font-medium">{t('attachExistingNode')}</span>
+          <span className="block font-medium">
+            {t(python ? 'attachExistingPython' : 'attachExistingNode')}
+          </span>
           <span className="mt-1 block text-[11px] leading-5 text-zinc-500">
-            {t('attachExistingNodeHelp')}
+            {t(python ? 'attachExistingPythonHelp' : 'attachExistingNodeHelp')}
           </span>
         </span>
       </label>
@@ -66,7 +79,7 @@ export function RunDebugAttachEditor({
               />
             </label>
             <label className="space-y-1.5 text-xs text-zinc-400">
-              <span>{t('debugPort')}</span>
+              <span>{t(python ? 'debugpyPort' : 'debugPort')}</span>
               <input
                 className={runConfigurationInputClassName}
                 type="number"

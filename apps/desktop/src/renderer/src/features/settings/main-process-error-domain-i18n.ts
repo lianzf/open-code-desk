@@ -138,6 +138,21 @@ export const domainExactChinese = new Map<string, string>([
 
 export const domainChineseRules: ReadonlyArray<readonly [RegExp, MatchTranslator]> = [
   [
+    /^The Agent reached the (\d+)-tool-call safety limit\. Completed progress was saved\. Retry to continue from the conversation history\.$/,
+    (match) =>
+      `智能体已达到 ${value(match, 1)} 次工具调用安全上限。已保存完成进度；点击“重试”可从当前会话继续。`,
+  ],
+  [
+    /^The Agent reached the (\d+)-model-round safety limit\. Completed progress was saved\. Retry to continue from the conversation history\.$/,
+    (match) =>
+      `智能体已达到 ${value(match, 1)} 轮模型调用安全上限。已保存完成进度；点击“重试”可从当前会话继续。`,
+  ],
+  [
+    /^Tool execution was skipped because the Agent reached its (\d+)-tool-call safety limit\. Retry the task to continue\.$/,
+    (match) =>
+      `智能体已达到 ${value(match, 1)} 次工具调用安全上限，因此跳过了该工具；重试任务即可继续。`,
+  ],
+  [
     /^(.+) cannot be restored from its snapshot\.$/,
     (match) => `${value(match, 1)} 无法从快照恢复。`,
   ],

@@ -70,13 +70,21 @@ export const saveRunConfigurationRequestSchema = z
   })
   .strict()
   .superRefine((configuration, context) => {
-    if (
-      configuration.debugAttach !== undefined &&
-      !['node', 'typescript', 'react', 'vue', 'nextjs'].includes(configuration.type)
-    ) {
+    const target = configuration.debugAttach;
+    const nodeCompatible = ['node', 'typescript', 'react', 'vue', 'nextjs'].includes(
+      configuration.type,
+    );
+    if (target?.adapter === 'pwa-node' && !nodeCompatible) {
       context.addIssue({
         code: 'custom',
-        message: 'Remote/container attach currently requires a Node.js-compatible project type.',
+        message: 'Node.js remote/container attach requires a Node.js-compatible project type.',
+        path: ['debugAttach'],
+      });
+    }
+    if (target?.adapter === 'debugpy' && configuration.type !== 'python') {
+      context.addIssue({
+        code: 'custom',
+        message: 'Python remote/container attach requires a Python project type.',
         path: ['debugAttach'],
       });
     }

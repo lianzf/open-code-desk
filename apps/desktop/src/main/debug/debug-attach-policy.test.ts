@@ -21,6 +21,17 @@ describe('debug attach risk policy', () => {
     });
   });
 
+  it('identifies the Python runtime in a remote debugpy approval', () => {
+    expect(
+      assessDebugAttachRisk({
+        adapter: 'debugpy',
+        environment: 'remote',
+        host: 'python.internal.test',
+        port: 5678,
+      }).reasons,
+    ).toEqual(expect.arrayContaining([expect.stringContaining('remote Python target')]));
+  });
+
   it('marks a locally forwarded container endpoint as medium risk', () => {
     expect(
       assessDebugAttachRisk({

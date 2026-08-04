@@ -22,12 +22,14 @@ export type RunConsole = 'integratedTerminal' | 'runOutput';
 export type DebugAttachEnvironment = 'remote' | 'container';
 
 /**
- * Connects the bundled Node.js DAP adapter to an already running inspector.
+ * Connects the debugger to an already running Node.js Inspector or Python
+ * debugpy DAP endpoint. Node.js uses the bundled adapter; Python connects to
+ * the adapter created by debugpy.listen().
  * Container targets use a user-created port forward; OpenCode Desk never
  * invokes Docker or a remote shell implicitly.
  */
 export interface DebugAttachConfiguration {
-  readonly adapter: 'pwa-node';
+  readonly adapter: 'pwa-node' | 'debugpy';
   readonly environment: DebugAttachEnvironment;
   readonly host: string;
   readonly port: number;

@@ -33,6 +33,30 @@ describe('remote debug configuration draft', () => {
     });
   });
 
+  it('serializes a Python debugpy attach target', () => {
+    const request = toSaveRunConfigurationRequest(
+      {
+        ...blankRunConfigurationDraft(),
+        name: 'Remote Python',
+        type: 'python',
+        executable: 'python',
+        debugAttachEnabled: true,
+        debugAttachHost: 'python.internal.test',
+        debugAttachPort: '5678',
+        debugAttachRemoteRoot: '/srv/python-app',
+      },
+      '00000000-0000-4000-8000-000000000001',
+      undefined,
+    );
+    expect(request.debugAttach).toEqual({
+      adapter: 'debugpy',
+      environment: 'remote',
+      host: 'python.internal.test',
+      port: 5678,
+      remoteRoot: '/srv/python-app',
+    });
+  });
+
   it('rejects invalid attach endpoints before save', () => {
     const base = {
       ...blankRunConfigurationDraft(),

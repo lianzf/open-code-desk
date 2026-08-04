@@ -34,6 +34,7 @@ export const appErrorSchema = z
       'PATCH_CONFLICT',
       'DATABASE_ERROR',
       'VALIDATION_ERROR',
+      'AGENT_BUDGET_EXCEEDED',
       'CANCELLED',
       'UNKNOWN_ERROR',
     ]),

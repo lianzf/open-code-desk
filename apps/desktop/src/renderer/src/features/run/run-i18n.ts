@@ -31,11 +31,15 @@ const zhCN = {
   attachExistingNode: '附加到已有 Node.js 调试目标',
   attachExistingNodeHelp:
     '使用随应用分发的 js-debug 连接已开启 Inspector 的远程或容器内进程；此配置只能调试，不能普通运行。',
+  attachExistingPython: '附加到已有 Python debugpy 目标',
+  attachExistingPythonHelp:
+    '直接连接已执行 debugpy.listen 的远程或容器内进程所提供的 DAP 端点；此配置只能调试，不能普通运行。',
   debugEnvironment: '目标环境',
   remoteTarget: '远程主机',
   containerTarget: '容器（已转发端口）',
   debugHost: '调试主机',
   debugPort: 'Inspector 端口',
+  debugpyPort: 'debugpy 端口',
   remoteRoot: '目标源码根目录（可选）',
   remoteRootPlaceholder: '例如 /workspace/app',
   debugAttachSecurityHelp:
@@ -175,11 +179,15 @@ const enUS: Record<RunTranslationKey, string> = {
   attachExistingNode: 'Attach to an existing Node.js debug target',
   attachExistingNodeHelp:
     'Use the bundled js-debug adapter with a remote or container process that already exposes Inspector. This configuration is debug-only.',
+  attachExistingPython: 'Attach to an existing Python debugpy target',
+  attachExistingPythonHelp:
+    'Connect directly to the DAP endpoint exposed by a remote or container process that already called debugpy.listen. This configuration is debug-only.',
   debugEnvironment: 'Target environment',
   remoteTarget: 'Remote host',
   containerTarget: 'Container (forwarded port)',
   debugHost: 'Debug host',
   debugPort: 'Inspector port',
+  debugpyPort: 'debugpy port',
   remoteRoot: 'Target source root (optional)',
   remoteRootPlaceholder: 'For example /workspace/app',
   debugAttachSecurityHelp:

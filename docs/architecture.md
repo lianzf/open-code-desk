@@ -246,6 +246,10 @@ NetCoreDbg 3.2.0-1092。React、Vue 和 Next.js 的端口型配置由
 应用不执行 SSH/Docker、不向目标转发本地环境值，断开时发送 `terminateDebuggee=false`，因此不会把
 目标进程错误地当成本机受管进程终止。
 
+Python attach 配置直接连接目标进程由 `debugpy.listen()` 暴露的 DAP 客户端端点，不再启动第二个
+本地 debugpy Adapter；标准 `attach` 请求携带可选 `pathMappings`。该会话不转发本地环境、不拥有远端
+进程，断开时仅关闭 DAP 连接并发送 `terminateDebuggee=false`。
+
 普通、条件、命中次数和日志断点通过 `setBreakpoints` 同步；函数与数据断点分别通过能力守卫的
 `setFunctionBreakpoints` 和 `setDataBreakpoints` 同步。Adapter 未声明能力时，核心层不会发送伪请求，
 而是将条目标记为 `unverified` 并保留可读原因。异常策略由基础 none/uncaught/all、指定暂停类型和
@@ -786,8 +790,8 @@ Renderer，并将尾部、退出码、风险和状态写入 `run_executions`。
 ### 10.2 IDE 调试子系统
 
 调试不复用普通运行输出模拟状态。`DebugSessionService` 在开始前创建审批提案并验证摘要，随后通过
-`DebugAdapterRegistry` 选择语言适配器。Node Adapter 启动独立 js-debug，Python Adapter 使用用户
-选择的 Python 解释器启动随应用分发的 debugpy；浏览器 Adapter 先启动已审批的前端开发服务器，
+`DebugAdapterRegistry` 选择语言适配器。Node Adapter 启动独立 js-debug，Python launch 使用用户
+选择的解释器启动随应用分发的 debugpy，Python attach 则直接连接已有 `debugpy.listen()` DAP 端点；浏览器 Adapter 先启动已审批的前端开发服务器，
 再由同一 js-debug 启动本机 Chrome/Edge；Electron Adapter 在同一 js-debug 服务中以 `pwa-node`
 启动主进程、以第二个 `pwa-chrome` 客户端附加渲染进程，并为多客户端线程、栈帧和变量引用分配
 无冲突的公开 ID；C/C++/Rust Adapter 启动 PATH 中的外部
@@ -815,8 +819,8 @@ none/uncaught/all 异常暂停策略；这些字段映射到真实 DAP 请求，
 同时命中主进程与渲染进程源码断点、读取两侧变量并验证退出清理。Windows Chrome 的真实断点、
 变量、单步及开发服务器/浏览器清理验收已通过。真实外部
 调试器版本验收仍待支持平台补充；Java 在 Windows 上的 Maven 项目导入、编译、断点、栈、变量、
-单步、异常及清理验收已通过。Node Inspector 跨环境附加已用真实独立 Node 进程验证断点、栈、变量
-与断开后目标存活；其他语言的跨环境附加和自动 SSH/容器编排仍在后续阶段。
+单步、异常及清理验收已通过。Node Inspector 与 Python debugpy 跨环境附加均已用真实独立目标进程
+验证断点、栈、变量、源码映射与断开后目标存活；应用不自动执行 SSH/容器编排，其他语言的跨环境附加仍在后续阶段。
 
 ## 11. 关键非功能需求
 
@@ -878,6 +882,7 @@ none/uncaught/all 异常暂停策略；这些字段映射到真实 DAP 请求，
 - [x] Electron `pwa-node` + `pwa-chrome` 双客户端会话，以及 Windows 主/渲染进程断点、变量与进程清理验收。
 - [x] Java JDT LS/Java Debug Server Adapter，以及 Windows Maven 项目的断点、栈、变量、单步、异常与进程清理验收。
 - [x] Node.js 通过现有 Inspector 端口完成远程/容器附加，真实命中断点并验证断开不终止目标进程。
+- [x] Python 通过现有 debugpy DAP 端点完成远程/容器附加，真实验证源码映射、断点、变量和目标进程所有权边界。
 - [ ] 其他语言跨环境附加与自动 SSH/容器编排；Java 的 macOS ARM64/Linux x64 验收已进入原生打包工作流，仍待当前工作树提交后的 runner 结果。
 
 ## 13. 主要架构风险

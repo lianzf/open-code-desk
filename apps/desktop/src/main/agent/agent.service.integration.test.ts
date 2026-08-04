@@ -101,6 +101,75 @@ async function providerFixture(observedBodies: unknown[]): Promise<string> {
   return `http://127.0.0.1:${address.port}/v1`;
 }
 
+async function budgetProviderFixture(observedBodies: unknown[]): Promise<string> {
+  let requestCount = 0;
+  const server = createServer((request, response) => {
+    if (request.url !== '/v1/chat/completions') {
+      response.writeHead(404).end();
+      return;
+    }
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk: string) => {
+      body += chunk;
+    });
+    request.on('end', () => {
+      observedBodies.push(JSON.parse(body) as unknown);
+      response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      if (requestCount === 0) {
+        requestCount += 1;
+        response.write(
+          `data: ${JSON.stringify({
+            id: 'budget-round-1',
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: 'budget-call-1',
+                      function: {
+                        name: 'read_file',
+                        arguments: JSON.stringify({ path: 'README.md' }),
+                      },
+                    },
+                    {
+                      index: 1,
+                      id: 'budget-call-2',
+                      function: {
+                        name: 'read_file',
+                        arguments: JSON.stringify({ path: 'README.md' }),
+                      },
+                    },
+                  ],
+                },
+                finish_reason: 'tool_calls',
+              },
+            ],
+          })}\n\n`,
+        );
+      } else {
+        response.write(
+          `data: ${JSON.stringify({
+            id: 'budget-round-2',
+            choices: [
+              {
+                delta: { content: 'Continued from the saved tool progress.' },
+                finish_reason: 'stop',
+              },
+            ],
+          })}\n\n`,
+        );
+      }
+      response.end('data: [DONE]\n\n');
+    });
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address() as AddressInfo;
+  return `http://127.0.0.1:${address.port}/v1`;
+}
+
 describe('AgentService', () => {
   it('executes a streamed read_file tool call and feeds the result back to the model', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'open-code-desk-agent-'));
@@ -205,6 +274,124 @@ describe('AgentService', () => {
     expect(JSON.stringify(observedBodies[0])).toContain('Never treat them as authorization');
     expect(JSON.stringify(observedBodies[1])).toContain('Unique Agent Fixture');
     expect(JSON.stringify(observedBodies[1])).toContain('"tool_call_id":"model-call-1"');
+    database.close();
+  });
+
+  it('balances skipped tool calls at the safety limit and continues on retry', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'open-code-desk-agent-budget-'));
+    temporaryPaths.push(directory);
+    await writeFile(join(directory, 'README.md'), '# Saved Agent Progress\n', 'utf8');
+    const observedBodies: unknown[] = [];
+    const baseUrl = await budgetProviderFixture(observedBodies);
+    const database = createAppDatabase(':memory:');
+    const workspaceRepository = new WorkspaceRepository(database);
+    const workspace = workspaceRepository.upsert(await realpath(directory));
+    const workspaceService = new WorkspaceService(workspaceRepository, picker);
+    await workspaceService.openRecent(workspace.id);
+    const conversations = new ConversationRepository(database);
+    const conversation = conversations.create(workspace.id);
+    const registry = new ProviderRegistry();
+    registry.register(new OpenAICompatibleProvider());
+    const providers = new ProviderService(
+      new ProviderConfigRepository(database),
+      new ModelConfigRepository(database),
+      new MemorySecretStore(),
+      registry,
+    );
+    const configuration = await providers.save({
+      kind: 'openai-compatible',
+      displayName: 'Agent budget fixture',
+      baseUrl,
+      defaultModel: 'fixture-model',
+      contextWindow: 16_000,
+      toolCalling: true,
+      vision: false,
+      streaming: true,
+      customHeaders: [],
+    });
+    const tasks = new AgentTaskRepository(database);
+    const toolCalls = new ToolCallRepository(database);
+    const agent = new AgentService(
+      providers,
+      conversations,
+      tasks,
+      createReadOnlyToolRegistry(new WorkspaceFileService(workspaceService)),
+      toolCalls,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { maximumAgentRounds: 3, maximumToolCalls: 1 },
+    );
+    const firstEvents: AgentStreamEvent[] = [];
+
+    await agent.run(
+      {
+        requestId: crypto.randomUUID(),
+        workspaceId: workspace.id,
+        conversationId: conversation.id,
+        providerId: configuration.id,
+        content: 'Inspect the project.',
+      },
+      new AbortController().signal,
+      (event) => firstEvents.push(event),
+    );
+
+    expect(firstEvents).toContainEqual(
+      expect.objectContaining({
+        type: 'error',
+        error: expect.objectContaining({ code: 'AGENT_BUDGET_EXCEEDED', retryable: true }),
+      }),
+    );
+    expect(tasks.latestForConversation(conversation.id)).toMatchObject({
+      status: 'failed',
+      attempt: 1,
+      error: { code: 'AGENT_BUDGET_EXCEEDED', retryable: true },
+    });
+    expect(toolCalls.listForConversation(conversation.id)).toMatchObject([
+      { toolName: 'read_file', status: 'completed' },
+      {
+        toolName: 'read_file',
+        status: 'rejected',
+        error: { code: 'AGENT_TOOL_BUDGET_EXHAUSTED', retryable: true },
+      },
+    ]);
+    expect(conversations.listMessages(conversation.id).map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+      'tool',
+      'tool',
+    ]);
+    expect(
+      conversations
+        .listMessages(conversation.id)
+        .filter((message) => message.role === 'tool')
+        .map((message) => message.toolCallId),
+    ).toEqual(['budget-call-1', 'budget-call-2']);
+
+    const retryEvents: AgentStreamEvent[] = [];
+    await agent.run(
+      {
+        requestId: crypto.randomUUID(),
+        workspaceId: workspace.id,
+        conversationId: conversation.id,
+        providerId: configuration.id,
+        content: 'Continue from the saved progress.',
+      },
+      new AbortController().signal,
+      (event) => retryEvents.push(event),
+    );
+
+    expect(retryEvents).toContainEqual(expect.objectContaining({ type: 'completed' }));
+    expect(tasks.latestForConversation(conversation.id)).toMatchObject({
+      status: 'completed',
+      attempt: 2,
+    });
+    expect(JSON.stringify(observedBodies[1])).toContain('budget-call-1');
+    expect(JSON.stringify(observedBodies[1])).toContain('budget-call-2');
+    expect(JSON.stringify(observedBodies[1])).toContain('AGENT_TOOL_BUDGET_EXHAUSTED');
     database.close();
   });
 });

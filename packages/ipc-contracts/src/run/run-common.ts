@@ -51,7 +51,7 @@ const remoteRootSchema = z
 
 export const debugAttachConfigurationSchema = z
   .object({
-    adapter: z.literal('pwa-node'),
+    adapter: z.enum(['pwa-node', 'debugpy']),
     environment: z.enum(['remote', 'container']),
     host: debugHostSchema,
     port: z.number().int().min(1).max(65_535),

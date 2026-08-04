@@ -43,6 +43,18 @@ describe('main-process domain error localization', () => {
     ['Java debugging is not supported on aix.', 'Java 调试不支持 aix 平台。'],
     ['The bundled JDT LS win32 configuration is missing.', '随应用分发的 JDT LS win32 配置缺失。'],
     ['Tool "read_file" is not registered.', '工具“read_file”未注册。'],
+    [
+      'The Agent reached the 64-tool-call safety limit. Completed progress was saved. Retry to continue from the conversation history.',
+      '智能体已达到 64 次工具调用安全上限。已保存完成进度；点击“重试”可从当前会话继续。',
+    ],
+    [
+      'The Agent reached the 24-model-round safety limit. Completed progress was saved. Retry to continue from the conversation history.',
+      '智能体已达到 24 轮模型调用安全上限。已保存完成进度；点击“重试”可从当前会话继续。',
+    ],
+    [
+      'Tool execution was skipped because the Agent reached its 64-tool-call safety limit. Retry the task to continue.',
+      '智能体已达到 64 次工具调用安全上限，因此跳过了该工具；重试任务即可继续。',
+    ],
   ])('translates an application-owned dynamic diagnostic: %s', (message, expected) => {
     expect(translate(message)).toBe(expected);
   });

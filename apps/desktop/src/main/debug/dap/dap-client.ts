@@ -86,6 +86,14 @@ export class DapClient {
     };
   }
 
+  public onClose(listener: (error: Error) => void): () => void {
+    this.#closeListeners.add(listener);
+    if (this.#closed) {
+      listener(this.#closeReason ?? new Error('调试适配器连接已关闭。'));
+    }
+    return () => this.#closeListeners.delete(listener);
+  }
+
   public request<TBody>(
     command: string,
     argumentsValue?: unknown,

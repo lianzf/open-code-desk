@@ -24,12 +24,13 @@ import { RunPortEditor } from './run-port-editor';
 import { useRunStore } from './run.store';
 
 const noRuntimeCandidates: ReadonlyArray<RuntimeCandidate> = [];
-const nodeAttachProjectTypes: ReadonlyArray<ProjectType> = [
+const attachProjectTypes: ReadonlyArray<ProjectType> = [
   'node',
   'typescript',
   'react',
   'vue',
   'nextjs',
+  'python',
 ];
 
 export function RunConfigurationDialog() {
@@ -151,7 +152,13 @@ function RunConfigurationDialogForm({
                       ...value,
                       type,
                       debugAttachEnabled:
-                        value.debugAttachEnabled && nodeAttachProjectTypes.includes(type),
+                        value.debugAttachEnabled && attachProjectTypes.includes(type),
+                      debugAttachPort:
+                        value.type === type
+                          ? value.debugAttachPort
+                          : type === 'python'
+                            ? '5678'
+                            : '9229',
                     };
                   })
                 }
@@ -226,7 +233,7 @@ function RunConfigurationDialogForm({
             onPortChange={(port) => setDraft((value) => ({ ...value, port }))}
           />
 
-          {!nodeAttachProjectTypes.includes(draft.type) ? null : (
+          {!attachProjectTypes.includes(draft.type) ? null : (
             <RunDebugAttachEditor draft={draft} onChange={setDraft} />
           )}
 

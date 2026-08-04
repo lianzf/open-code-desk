@@ -21,25 +21,35 @@ export interface PythonDebugAdapterProcessOptions {
   readonly startupTimeoutMs?: number;
 }
 
+export interface PythonDebugAdapterConnectionOptions {
+  readonly host: string;
+  readonly port: number;
+  readonly startupTimeoutMs?: number;
+}
+
 export class PythonDebugAdapterProcess {
   readonly #logListeners = new Set<(stream: 'stdout' | 'stderr', chunk: string) => void>();
   readonly #exitListeners = new Set<
     (exitCode: number | null, signal: NodeJS.Signals | null) => void
   >();
+  readonly #unsubscribeClientClose: () => void;
   #disposed = false;
 
   private constructor(
-    private readonly child: ChildProcess,
+    private readonly child: ChildProcess | undefined,
     public readonly client: DapClient,
-    private readonly temporaryDirectory: string,
+    private readonly temporaryDirectory: string | undefined,
   ) {
-    child.stdout?.setEncoding('utf8');
-    child.stderr?.setEncoding('utf8');
-    child.stdout?.on('data', (chunk: string) => this.emitLog('stdout', chunk));
-    child.stderr?.on('data', (chunk: string) => this.emitLog('stderr', chunk));
-    child.once('close', (exitCode, signal) => {
-      for (const listener of this.#exitListeners) listener(exitCode, signal);
-    });
+    if (child === undefined) {
+      this.#unsubscribeClientClose = client.onClose(() => this.emitExit(null, null));
+    } else {
+      this.#unsubscribeClientClose = () => undefined;
+      child.stdout?.setEncoding('utf8');
+      child.stderr?.setEncoding('utf8');
+      child.stdout?.on('data', (chunk: string) => this.emitLog('stdout', chunk));
+      child.stderr?.on('data', (chunk: string) => this.emitLog('stderr', chunk));
+      child.once('close', (exitCode, signal) => this.emitExit(exitCode, signal));
+    }
   }
 
   public static async start(
@@ -90,8 +100,26 @@ export class PythonDebugAdapterProcess {
     }
   }
 
+  public static async connect(
+    options: PythonDebugAdapterConnectionOptions,
+  ): Promise<PythonDebugAdapterProcess> {
+    try {
+      const client = await DapClient.connect(
+        options.host,
+        options.port,
+        options.startupTimeoutMs ?? 10_000,
+      );
+      return new PythonDebugAdapterProcess(undefined, client, undefined);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`无法连接 Python 附加调试目标：${message}`);
+    }
+  }
+
   public get processId(): number {
-    if (this.child.pid === undefined) throw new Error('Python 调试适配器没有有效进程 ID。');
+    if (this.child?.pid === undefined) {
+      throw new Error('Python 附加调试目标没有提供有效进程 ID。');
+    }
     return this.child.pid;
   }
 
@@ -110,20 +138,33 @@ export class PythonDebugAdapterProcess {
   public async dispose(): Promise<void> {
     if (this.#disposed) return;
     this.#disposed = true;
+    this.#unsubscribeClientClose();
     this.client.dispose();
-    gracefullyStopProcessTree(this.child);
+    const child = this.child;
+    if (child === undefined) {
+      this.#logListeners.clear();
+      this.#exitListeners.clear();
+      return;
+    }
+    gracefullyStopProcessTree(child);
     await Promise.race([
-      new Promise<void>((resolve) => this.child.once('close', () => resolve())),
+      new Promise<void>((resolve) => child.once('close', () => resolve())),
       new Promise<void>((resolve) => setTimeout(resolve, 1_000)),
     ]);
-    await forceKillProcessTree(this.child);
-    await rm(this.temporaryDirectory, { recursive: true, force: true });
+    await forceKillProcessTree(child);
+    if (this.temporaryDirectory !== undefined) {
+      await rm(this.temporaryDirectory, { recursive: true, force: true });
+    }
     this.#logListeners.clear();
     this.#exitListeners.clear();
   }
 
   private emitLog(stream: 'stdout' | 'stderr', chunk: string): void {
     for (const listener of this.#logListeners) listener(stream, chunk);
+  }
+
+  private emitExit(exitCode: number | null, signal: NodeJS.Signals | null): void {
+    for (const listener of this.#exitListeners) listener(exitCode, signal);
   }
 }
 

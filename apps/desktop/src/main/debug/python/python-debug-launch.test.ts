@@ -4,7 +4,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { RunCommandSnapshot } from '@open-code-desk/domain';
 
-import { createPythonLaunchArguments, parsePythonLaunchTarget } from './python-debug-launch';
+import {
+  createPythonAttachArguments,
+  createPythonLaunchArguments,
+  parsePythonLaunchTarget,
+} from './python-debug-launch';
 
 describe('Python debug launch mapping', () => {
   it('maps a script configuration without invoking a shell', () => {
@@ -33,6 +37,41 @@ describe('Python debug launch mapping', () => {
     });
   });
 
+  it('maps a remote debugpy target without starting the target process', () => {
+    const workspaceRoot = resolve('workspace');
+    expect(
+      createPythonAttachArguments(
+        fixture({
+          debugAttach: {
+            adapter: 'debugpy',
+            environment: 'container',
+            host: '127.0.0.1',
+            port: 5678,
+            remoteRoot: '/workspace/app',
+          },
+        }),
+        workspaceRoot,
+      ),
+    ).toMatchObject({
+      request: 'attach',
+      pathMappings: [{ localRoot: workspaceRoot, remoteRoot: '/workspace/app' }],
+    });
+    expect(
+      createPythonAttachArguments(
+        fixture({
+          debugAttach: {
+            adapter: 'debugpy',
+            environment: 'container',
+            host: '127.0.0.1',
+            port: 5678,
+            remoteRoot: '/workspace/app',
+          },
+        }),
+        workspaceRoot,
+      ),
+    ).not.toHaveProperty('connect');
+  });
+
   it('rejects inline code and missing entry points with actionable messages', () => {
     expect(() =>
       parsePythonLaunchTarget(fixture({ runtimeArgs: ['-c'], args: ['print(1)'] })),
@@ -42,7 +81,7 @@ describe('Python debug launch mapping', () => {
 });
 
 function fixture(
-  overrides: Partial<Pick<RunCommandSnapshot, 'runtimeArgs' | 'args'>>,
+  overrides: Partial<Pick<RunCommandSnapshot, 'runtimeArgs' | 'args' | 'debugAttach'>>,
 ): RunCommandSnapshot {
   return {
     configurationId: '00000000-0000-4000-8000-000000000001',
@@ -54,6 +93,7 @@ function fixture(
     args: overrides.args ?? ['main.py'],
     workingDirectory: '',
     environmentVariables: [],
+    ...(overrides.debugAttach === undefined ? {} : { debugAttach: overrides.debugAttach }),
     console: 'runOutput',
   };
 }

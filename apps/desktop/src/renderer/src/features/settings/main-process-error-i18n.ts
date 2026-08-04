@@ -103,6 +103,22 @@ const exactEnglish = new Map<string, string>([
     'Python 调试适配器没有有效进程 ID。',
     'The Python debug adapter did not provide a valid process ID.',
   ],
+  [
+    'Python 附加调试目标没有提供有效进程 ID。',
+    'The Python attach target did not provide a valid process ID.',
+  ],
+  [
+    'Python 附加调试缺少远程或容器 debugpy 目标。',
+    'Python attach debugging requires a remote or container debugpy target.',
+  ],
+  [
+    'Node.js 附加调试仅支持 Node.js 兼容项目类型。',
+    'Node.js attach debugging supports only Node.js-compatible project types.',
+  ],
+  [
+    'Python 附加调试仅支持 Python 项目类型。',
+    'Python attach debugging supports only Python project types.',
+  ],
   ['等待 debugpy 端点超时。', 'Timed out while waiting for the debugpy endpoint.'],
   ['Node.js 调试适配器启动超时。', 'The Node.js debug adapter timed out during startup.'],
   ['调试器请求了无效的子会话类型。', 'The debugger requested an invalid child-session type.'],
@@ -215,6 +231,10 @@ const englishRules: ReadonlyArray<readonly [RegExp, MatchTranslator]> = [
     /^Python 调试器启动失败：(.+) 请确认运行配置选择的是 Python 3\.8 或更高版本。$/,
     (match) =>
       `The Python debugger failed to start: ${match[1]} Select Python 3.8 or newer in the run configuration.`,
+  ],
+  [
+    /^无法连接 Python 附加调试目标：(.+)$/,
+    (match) => `Unable to connect to the Python attach target: ${capture(match, 1)}`,
   ],
   [
     /^适配器提前退出（退出码 (.+)）。\s*(.*)$/,

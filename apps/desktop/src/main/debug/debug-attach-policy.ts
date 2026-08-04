@@ -9,13 +9,14 @@ export interface DebugAttachRisk {
 
 export function assessDebugAttachRisk(target: DebugAttachConfiguration): DebugAttachRisk {
   const endpoint = `${target.host}:${target.port}`;
+  const runtime = target.adapter === 'debugpy' ? 'Python' : 'Node.js';
   if (isLoopbackHost(target.host)) {
     return {
       level: 'medium',
       reasons: [
         target.environment === 'container'
           ? `The debugger will connect to the container target through local port forwarding at ${endpoint}.`
-          : `The debugger will connect to an existing local Node.js target at ${endpoint}.`,
+          : `The debugger will connect to an existing local ${runtime} target at ${endpoint}.`,
         'Attach debugging does not start or automatically terminate the target process.',
       ],
     };
@@ -23,7 +24,7 @@ export function assessDebugAttachRisk(target: DebugAttachConfiguration): DebugAt
   return {
     level: 'high',
     reasons: [
-      `The debugger will connect to a remote Node.js target over the network at ${endpoint}.`,
+      `The debugger will connect to a remote ${runtime} target over the network at ${endpoint}.`,
       'Remote debug ports can grant control of the program; connect only to a trusted target and network.',
       'Attach debugging does not start or automatically terminate the target process.',
     ],

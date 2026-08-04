@@ -49,6 +49,12 @@ describe('localizeRiskReason', () => {
     expect(
       localizeRiskReason(
         'zh-CN',
+        'The debugger will connect to a remote Python target over the network at python.example:5678.',
+      ),
+    ).toBe('调试器将通过网络连接远程 Python 目标 python.example:5678。');
+    expect(
+      localizeRiskReason(
+        'zh-CN',
         'Remote debug ports can grant control of the program; connect only to a trusted target and network.',
       ),
     ).toBe('远程调试端口可能授予程序控制能力；请仅连接可信目标和网络。');

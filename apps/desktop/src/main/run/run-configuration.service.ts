@@ -273,8 +273,11 @@ export class RunConfigurationService {
   }
 
   private validateDebugAttach(input: SaveRunConfigurationRequest): void {
-    if (input.debugAttach !== undefined && !nodeAttachProjectTypes.has(input.type)) {
-      throw new RunConfigurationServiceError('远程或容器附加调试当前仅支持 Node.js 兼容项目类型。');
+    if (input.debugAttach?.adapter === 'pwa-node' && !nodeAttachProjectTypes.has(input.type)) {
+      throw new RunConfigurationServiceError('Node.js 附加调试仅支持 Node.js 兼容项目类型。');
+    }
+    if (input.debugAttach?.adapter === 'debugpy' && input.type !== 'python') {
+      throw new RunConfigurationServiceError('Python 附加调试仅支持 Python 项目类型。');
     }
     if (input.type === 'electron' && input.port === undefined) {
       throw new RunConfigurationServiceError('Electron 配置必须指定渲染进程调试端口。');

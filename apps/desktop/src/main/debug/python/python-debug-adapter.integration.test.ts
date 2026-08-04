@@ -1,10 +1,13 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { DebugAdapterEvent, DebugAdapterSession } from '../debug-adapter';
+import { forceKillProcessTree } from '../../run/run-process-runtime';
 import { PythonDebugAdapterProvider } from './python-debug-adapter.provider';
 
 const temporaryPaths: string[] = [];
@@ -198,6 +201,92 @@ describe('PythonDebugAdapterProvider integration', () => {
       await session?.disconnect();
     }
   }, 30_000);
+
+  it('attaches to a real debugpy target with remote source mapping', async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'open-code-desk-python-attach-local-'));
+    const remoteRoot = await mkdtemp(join(tmpdir(), 'open-code-desk-python-attach-remote-'));
+    temporaryPaths.push(workspaceRoot, remoteRoot);
+    const readyPath = join(remoteRoot, 'ready.txt');
+    const port = await reservePort();
+    const source = [
+      'import debugpy',
+      'from pathlib import Path',
+      `debugpy.listen(("127.0.0.1", ${port}))`,
+      `Path(${JSON.stringify(readyPath)}).write_text("ready", encoding="utf-8")`,
+      'debugpy.wait_for_client()',
+      'def calculate(value):',
+      '    doubled = value * 2',
+      '    return doubled + 1',
+      'print(calculate(21))',
+    ].join('\n');
+    await Promise.all([
+      writeFile(join(workspaceRoot, 'main.py'), source, 'utf8'),
+      writeFile(join(remoteRoot, 'main.py'), source, 'utf8'),
+    ]);
+    const vendorRoot = join(process.cwd(), 'apps', 'desktop', 'vendor', 'debugpy-1.8.21');
+    const target = spawn(pythonExecutable, [join(remoteRoot, 'main.py')], {
+      cwd: remoteRoot,
+      env: {
+        ...process.env,
+        PYTHONPATH: [vendorRoot, process.env.PYTHONPATH].filter(Boolean).join(delimiter),
+      },
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    let session: DebugAdapterSession | undefined;
+    try {
+      await waitForTarget(readyPath, target);
+      session = await createProvider().createSession({
+        sessionId: '00000000-0000-4000-8000-000000000131',
+        workspaceRoot,
+        command: {
+          ...command('00000000-0000-4000-8000-000000000132', 'main.py'),
+          debugAttach: {
+            adapter: 'debugpy',
+            environment: 'remote',
+            host: '127.0.0.1',
+            port,
+            remoteRoot,
+          },
+        },
+        environment: {},
+        sensitiveValues: [],
+        breakpoints: [breakpoint('00000000-0000-4000-8000-000000000133', 7)],
+        exceptionPolicy: {
+          exceptionPauseMode: 'uncaught',
+          exceptionBreakTypes: [],
+          exceptionIgnoreTypes: [],
+        },
+      });
+
+      const stopped = await collectEvent(
+        session,
+        'remote Python breakpoint',
+        (event) => event.type === 'stopped',
+      );
+      if (stopped.type !== 'stopped') throw new Error('Expected a stopped event.');
+      const frames = await session.stackTrace(stopped.threadId);
+      expect(frames[0]).toMatchObject({ relativePath: 'main.py', line: 7 });
+      const scopes = await session.scopes(frames[0]?.id ?? 0);
+      const variables = (
+        await Promise.all(scopes.map((scope) => session?.variables(scope.variablesReference) ?? []))
+      ).flat();
+      expect(variables).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: 'value', value: '21' })]),
+      );
+      const terminated = collectEvent(
+        session,
+        'remote Python termination',
+        (event) => event.type === 'terminated',
+      );
+      await session.continue(stopped.threadId);
+      await terminated;
+    } finally {
+      await session?.disconnect();
+      await forceKillProcessTree(target);
+    }
+  }, 45_000);
 });
 
 function createProvider(): PythonDebugAdapterProvider {
@@ -286,4 +375,35 @@ async function collectEventsUntil(
     return predicate(candidate);
   });
   return { event, events };
+}
+
+async function reservePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve());
+  });
+  const address = server.address();
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
+  if (address === null || typeof address === 'string') throw new Error('Failed to reserve a port.');
+  return address.port;
+}
+
+async function waitForTarget(path: string, child: ChildProcess): Promise<void> {
+  let stderr = '';
+  child.stderr?.setEncoding('utf8');
+  child.stderr?.on('data', (chunk: string) => {
+    stderr = `${stderr}${chunk}`.slice(-4_096);
+  });
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    if ((await stat(path).catch(() => null))?.isFile() === true) return;
+    if (child.exitCode !== null) {
+      throw new Error(`debugpy target exited early (${child.exitCode}): ${stderr}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for debugpy target: ${stderr}`);
 }

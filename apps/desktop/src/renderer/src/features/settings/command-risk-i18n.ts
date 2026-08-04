@@ -74,7 +74,7 @@ function localizeChineseTaskReason(reason: string): string {
 }
 
 function debugAttachReason(reason: string): string | undefined {
-  const patterns: ReadonlyArray<readonly [RegExp, (endpoint: string) => string]> = [
+  const patterns: ReadonlyArray<readonly [RegExp, (first: string, second?: string) => string]> = [
     [
       /^Electron renderer debugging opens a loopback Chromium DevTools endpoint at (.+) while the approved session is running\.$/u,
       (endpoint) =>
@@ -85,17 +85,17 @@ function debugAttachReason(reason: string): string | undefined {
       (endpoint) => `调试器将通过本机端口转发连接容器目标 ${endpoint}。`,
     ],
     [
-      /^The debugger will connect to an existing local Node\.js target at (.+)\.$/u,
-      (endpoint) => `调试器将连接已有本机 Node.js 目标 ${endpoint}。`,
+      /^The debugger will connect to an existing local (Node\.js|Python) target at (.+)\.$/u,
+      (runtime, endpoint = '') => `调试器将连接已有本机 ${runtime} 目标 ${endpoint}。`,
     ],
     [
-      /^The debugger will connect to a remote Node\.js target over the network at (.+)\.$/u,
-      (endpoint) => `调试器将通过网络连接远程 Node.js 目标 ${endpoint}。`,
+      /^The debugger will connect to a remote (Node\.js|Python) target over the network at (.+)\.$/u,
+      (runtime, endpoint = '') => `调试器将通过网络连接远程 ${runtime} 目标 ${endpoint}。`,
     ],
   ];
   for (const [pattern, translate] of patterns) {
     const match = pattern.exec(reason);
-    if (match?.[1] !== undefined) return translate(match[1]);
+    if (match?.[1] !== undefined) return translate(match[1], match[2]);
   }
   return undefined;
 }
