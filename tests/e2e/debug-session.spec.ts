@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { expect, test, type ElectronApplication } from '@playwright/test';
 
-import { launchDesktop, removeTestDirectory } from './desktop-fixture';
+import { expectDebugSessionStatus, launchDesktop, removeTestDirectory } from './desktop-fixture';
 
 test('sets a real breakpoint, inspects locals, steps, evaluates and restores debug state', async () => {
   const projectDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-debug-project-'));
@@ -68,32 +68,7 @@ test('sets a real breakpoint, inspects locals, steps, evaluates and restores deb
       'verified',
       { timeout: 20_000 },
     );
-    try {
-      await expect
-        .poll(
-          async () => {
-            const status = await window.getByTestId('debug-status').textContent();
-            if (status === '失败') {
-              throw new Error(
-                `Debug launch failed: ${await window.getByTestId('debug-error').textContent()}`,
-              );
-            }
-            return status;
-          },
-          { timeout: 20_000 },
-        )
-        .toBe('已暂停');
-    } catch (error) {
-      const diagnostics = await window.evaluate(async () => {
-        const workspace = await window.openCodeDesk.workspace.getCurrent();
-        return workspace === null
-          ? []
-          : window.openCodeDesk.debug.listHistory({ workspaceId: workspace.id, limit: 5 });
-      });
-      throw new Error(
-        `${error instanceof Error ? error.message : String(error)}\nDebug history: ${JSON.stringify(diagnostics)}`,
-      );
-    }
+    await expectDebugSessionStatus(window, 'paused');
     await expect(window.getByTestId('debug-panel')).toContainText('program.js:3');
     await expect(window.locator('.debug-current-line')).toBeVisible();
     await expect(window.locator('.debug-breakpoint-verified')).toBeVisible();
@@ -109,7 +84,7 @@ test('sets a real breakpoint, inspects locals, steps, evaluates and restores deb
     await expect(window.getByTestId('debug-panel')).toContainText('> left + right');
 
     await window.getByTestId('debug-next').click();
-    await expect(window.getByTestId('debug-status')).toHaveText('已暂停', { timeout: 10_000 });
+    await expectDebugSessionStatus(window, 'paused', 10_000);
     await expect(window.getByTestId('debug-panel')).toContainText('program.js:6');
     await window.getByTestId('debug-toggle-pause').click();
     await expect(window.getByTestId('debug-panel')).toContainText('DEBUG_E2E_READY:5');

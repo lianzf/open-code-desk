@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { expect, test, type ElectronApplication } from '@playwright/test';
 
-import { launchDesktop, removeTestDirectory } from './desktop-fixture';
+import { expectRunOutput, launchDesktop, removeTestDirectory } from './desktop-fixture';
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -67,7 +67,7 @@ test('detects, approves, runs, stops, restarts, and safely restores a project ru
     await expect(outputPanel.getByText('等待批准', { exact: true }).first()).toBeVisible();
     expect(await exists(startedPath)).toBe(false);
     await window.getByTestId('approve-run').click();
-    await expect(window.getByTestId('run-output')).toContainText('RUN_E2E_READY');
+    await expectRunOutput(window, 'RUN_E2E_READY');
     await expect.poll(async () => exists(startedPath)).toBe(true);
 
     await window.getByTestId('stop-run').click();
@@ -75,7 +75,7 @@ test('detects, approves, runs, stops, restarts, and safely restores a project ru
     await window.getByTestId('restart-run').click();
     await expect(outputPanel.getByText('等待批准', { exact: true }).first()).toBeVisible();
     await window.getByTestId('approve-run').click();
-    await expect(window.getByTestId('run-output')).toContainText('RUN_E2E_READY');
+    await expectRunOutput(window, 'RUN_E2E_READY');
     await expect(window.getByTestId('stop-run')).toBeEnabled();
     await expect.poll(async () => exists(heartbeatPath)).toBe(true);
 

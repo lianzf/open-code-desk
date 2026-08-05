@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { expect, test, type ElectronApplication } from '@playwright/test';
 
-import { launchDesktop, removeTestDirectory } from './desktop-fixture';
+import { expectDebugSessionStatus, launchDesktop, removeTestDirectory } from './desktop-fixture';
 
 test('discovers a Python interpreter and completes a real breakpoint debug flow', async () => {
   const projectDirectory = await mkdtemp(join(tmpdir(), 'open-code-desk-python-e2e-'));
@@ -56,13 +56,13 @@ test('discovers a Python interpreter and completes a real breakpoint debug flow'
     await window.getByTestId('propose-debug').click();
     await expect(window.getByTestId('debug-status')).toHaveText('等待批准');
     await window.getByTestId('approve-debug').click();
-    await expect(window.getByTestId('debug-status')).toHaveText('已暂停', { timeout: 20_000 });
+    await expectDebugSessionStatus(window, 'paused');
     await expect(window.getByTestId('debug-panel')).toContainText('main.py:4');
     await expect(window.getByTestId('debug-panel')).toContainText(/total\s*=\s*42/u);
     await expect(window.locator('.debug-current-line')).toBeVisible();
 
     await window.getByTestId('debug-next').click();
-    await expect(window.getByTestId('debug-status')).toHaveText('已暂停', { timeout: 10_000 });
+    await expectDebugSessionStatus(window, 'paused', 10_000);
     await expect(window.getByTestId('debug-panel')).toContainText('main.py:5');
     const togglePause = window.getByTestId('debug-toggle-pause');
     await expect(togglePause).toBeEnabled();

@@ -88,7 +88,11 @@ export function RunOutputPanel({ onClose }: RunOutputPanelProps) {
         </select>
         {execution === undefined ? null : (
           <>
-            <span className="ml-auto text-[10px] text-zinc-500">
+            <span
+              className="ml-auto text-[10px] text-zinc-500"
+              data-testid="run-status"
+              data-status={execution.status}
+            >
               {t(statusLabels[execution.status])}
             </span>
             <span
@@ -237,7 +241,10 @@ export function RunOutputPanel({ onClose }: RunOutputPanelProps) {
               </Button>
             ) : null}
             {execution.error === undefined ? null : (
-              <p className="rounded border border-red-900/60 bg-red-950/40 px-2 py-1.5 text-[10px] text-red-300">
+              <p
+                className="rounded border border-red-900/60 bg-red-950/40 px-2 py-1.5 text-[10px] text-red-300"
+                data-testid="run-execution-error"
+              >
                 {rendererErrorDetail(
                   execution.error.message,
                   execution.error.code,
@@ -271,6 +278,7 @@ export function RunOutputPanel({ onClose }: RunOutputPanelProps) {
         <p
           className="border-t border-red-900/60 bg-red-950/30 px-3 py-2 text-[11px] text-red-300"
           role="alert"
+          data-testid="run-error"
         >
           {errorMessage}
         </p>

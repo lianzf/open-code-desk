@@ -59,6 +59,7 @@ export function DebugPanel({
         <span
           className="rounded bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-500"
           data-testid="debug-status"
+          data-status={session?.status ?? 'not_started'}
         >
           {session === undefined ? t('notStarted') : t(statusLabels[session.status])}
         </span>
