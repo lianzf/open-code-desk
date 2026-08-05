@@ -108,6 +108,10 @@ jobs:
 
       - name: Upload security metadata
         if: always()
+        # Preserve platform build and packaged-app validation when artifact storage is
+        # temporarily unavailable. Installer uploads remain mandatory in package jobs,
+        # so the workflow still fails when release artifacts cannot be published.
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: quality-security-metadata
