@@ -175,12 +175,38 @@ function killPosixGroup(child: ChildProcess, signal: NodeJS.Signals): void {
   }
 }
 
+const forceKillExitTimeoutMs = 5_000;
+
+async function waitForChildExit(child: ChildProcess, timeoutMs: number): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  const pid = child.pid;
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      new Promise<void>((resolve) => child.once('exit', () => resolve())),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`Process ${pid ?? 'unknown'} did not exit after force kill.`)),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
 export async function forceKillProcessTree(child: ChildProcess): Promise<void> {
   if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) {
     return;
   }
   if (process.platform !== 'win32') {
     killPosixGroup(child, 'SIGKILL');
+    await waitForChildExit(child, forceKillExitTimeoutMs);
     return;
   }
   await new Promise<void>((resolve) => {
@@ -199,6 +225,7 @@ export async function forceKillProcessTree(child: ChildProcess): Promise<void> {
       resolve();
     });
   });
+  await waitForChildExit(child, forceKillExitTimeoutMs);
 }
 
 export function gracefullyStopProcessTree(child: ChildProcess): void {
