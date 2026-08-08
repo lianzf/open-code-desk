@@ -133,9 +133,11 @@ Linux 587。Windows 安装包版本元数据为 `0.7.0-alpha.1`，Authenticode �
 
 重跑前先按精确 ID 删除 96 个已被后续结果取代的旧 artifact；2026-08-08 又经用户明确授权删除 run `30933901524` 的 `8902424531`、`8902565841`、`8902573519`、`8902708321`，本地完整备份仍位于 `D:\release-evidence\open-code-desk-ci-30933901524`。删除后 API 复核只剩 run `30944352985` 的 5 个 artifact、共 803,368,696 字节。旧 artifact 在 GitHub 上不可直接恢复，但可由对应提交重新运行生成。
 
+剩余 5 个 artifact 的删除前证据已补齐：四个发布 artifact 位于 `D:\release-evidence\open-code-desk-ci-30944352985`，Windows 6 项、macOS 8 项、Linux 5 项清单共 19/19 逐项重算一致，质量元数据 4/4 与 Linux 构建副本相同；诊断 artifact 已按远端名称重新下载到 `D:\release-evidence\open-code-desk-ci-30944352985-diagnostics-artifact`，其 4 个原始文件与已有故障证据逐项一致。仓库为 private；[GitHub 当前官方配额](https://docs.github.com/en/billing/reference/product-usage-included)按账户计划提供 500 MB（Free）或 1 GB（Pro）Actions 存储，且[存储使用量更新需要 6–12 小时](https://docs.github.com/en/billing/concepts/product-billing/github-actions)。当前令牌没有读取账户计划/账单所需的 `user` scope，因此无法证明现有 803,368,696 字节在重算后会低于配额。可靠的下一步是取得用户对这 5 个已备份 artifact 的明确删除授权，或确认账户已具备覆盖新三平台制品的付费存储与预算；仅等待不再视为充分证据。
+
 删除后立即完整重跑 `31244154662` attempt 2，Quality gates 成功，macOS/Linux 产品步骤通过但上传失败；Windows 8/9 已安装 E2E 通过，`debug-ai-repair` 暴露 DAP `exited` 后末尾输出可能晚于会话完成的低概率竞态。官方 DAP 生命周期要求以 `terminated` 结束会话；提交 `07ac06281374f6284c42f5c50b2d44141014e9a7` 因此不再把可选 `exited` 通知当作终止，并增加 `exited → output → terminated` 确定性回归测试。本机原场景修复前后各连续 10/10 通过；完整测试为 113 文件 / 394 项，独立集成为 29 文件 / 94 项。
 
-当前提交 `07ac062` 的 CI run `31247288230` 中，Quality gates job `93077871336` 成功；Windows job `93078366593` 的安装器构建、安装烟测和已安装应用 E2E，macOS job `93078366590` 的原生 Java 调试、DMG/ZIP 构建与已打包应用 E2E，Linux job `93078366585` 的原生 Java 调试、AppImage 构建与已打包应用 E2E 均成功。三个平台唯一失败步骤均为 `Upload installer`，run artifact 数仍为 0，证明 GitHub 删除后的计量重算尚未生效；官方错误提示需等待 6–12 小时。该 run 证明当前代码的产品步骤通过，但不能声称 CI 全绿或制品齐备。
+当前提交 `07ac062` 的 CI run `31247288230` 中，Quality gates job `93077871336` 成功；Windows job `93078366593` 的安装器构建、安装烟测和已安装应用 E2E，macOS job `93078366590` 的原生 Java 调试、DMG/ZIP 构建与已打包应用 E2E，Linux job `93078366585` 的原生 Java 调试、AppImage 构建与已打包应用 E2E 均成功。三个平台唯一失败步骤均为 `Upload installer`，run artifact 数仍为 0；这与删除计量尚未重算或保留量本身仍超出账户配额均一致，现有证据无法只归因为后台延迟。该 run 证明当前代码的产品步骤通过，但不能声称 CI 全绿或制品齐备。
 
 同日从精确提交 `07ac062` 的独立工作树全新构建 Windows NSIS，并在复制到独立证据目录后重新校验 `SHA256SUMS.txt` 6/6。对该安装包执行 CI 同款隔离安装烟测、已安装核心 E2E 9/9 和桌面壳/持久化 E2E 6/6 均通过；安装、关闭、卸载后目录与产品进程均为 0。随包依赖审计为 High 0 / Critical 0 / Moderate 1，许可证待复核 0，Secret 扫描 560 个源码文件且发现 0，SBOM 为 588 个组件。该本地证据补齐当前 Windows 产品树的精确二进制核验，但不替代公共 artifact、正式签名或独立人工验收。
 

@@ -15,7 +15,7 @@
 1. Windows Authenticode、macOS 签名与 notarization 未完成；本机代码签名证书为 0，Apple/CSC 签名输入均未配置；GitHub Environments 与仓库 Secret 名称只读查询均为空，`release-signing` 环境尚不存在。
 2. 尚无干净 Windows/macOS/Linux 设备和独立验收人员的完整人工闭环记录；公共原生 runner 自动化不能替代目标要求的独立人工操作记录。
 3. 全部计划 Provider 的真实公网凭据连接未逐一验收；当前环境没有任何对应验收环境变量。现有 10 个 Provider 门禁具备显式选择、60 秒超时、最小流式请求和失败脱敏，但默认跳过不能替代真实凭据运行证据。
-4. 用户已授权删除 run `30933901524` 的 4 个旧 artifact；远端当前保留 run `30944352985` 的 5 个历史关键 artifact、共 803,368,696 字节，本地仍保留被删 run 的完整备份。run `31247288230` 的质量元数据和三平台安装包因 GitHub 计量尚未重算而未上传，官方错误提示需等待删除后 6–12 小时。
+4. 用户已授权删除 run `30933901524` 的 4 个旧 artifact；远端当前仍保留 run `30944352985` 的 5 个历史 artifact、共 803,368,696 字节。四个发布 artifact 已在 `D:\release-evidence\open-code-desk-ci-30944352985` 逐项复核 19/19 清单，诊断 artifact 也已重新下载到独立目录且 4/4 原始文件与旧副本一致。仓库为 private；[GitHub 当前官方配额](https://docs.github.com/en/billing/reference/product-usage-included)按账户计划提供 500 MB（Free）或 1 GB（Pro）Actions 存储，但现有令牌不能读取账户计划。因此不能再把等待 6–12 小时视为充分条件：还需用户明确授权删除这 5 个已备份 artifact，或确认账户有足够的付费存储与预算，才能可靠重跑并上传 run `31247288230` 的质量元数据和三平台安装包。
 
 Renderer 错误展示点已统一经过本地化边界；应用自有的主进程/DAP 英文与中文诊断均受双向源码覆盖测试约束，项目检测、命令风险和工具批准原因也有双语测试。第三方原始诊断按原文保留，因此产品自有动态诊断的完整双语要求已满足。
 
