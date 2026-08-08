@@ -1,6 +1,6 @@
 # 项目目标完成度审计
 
-日期：2026-08-03（当前候选完成审计复核：2026-08-08）
+日期：2026-08-03（当前候选完成审计复核：2026-08-09）
 目标来源：`goal-objective.md`，1,664 行，SHA-256
 `0BA834EC5E45CD7F86693D5E2B36F3CCAF6E36249D33B992F00A8B7D4E5AF038`
 
@@ -8,20 +8,18 @@
 
 产品提交 `07ac06281374f6284c42f5c50b2d44141014e9a7` 已形成可安装、可运行、可配置、具备真实 AI 编程闭环和 Node.js/Python/浏览器/Electron 主渲染双进程 DAP 调试闭环的 0.7 alpha 候选。Windows 已完成 Java、C/C++/Rust、Go、.NET 的真实 DAP 验收；公共 CI run `31247288230` 在 Windows x64、macOS ARM64 和 Linux x64 原生 runner 完成冻结依赖安装、真实 Java 调试验收、NSIS/DMG/ZIP/AppImage 构建、目标运行时完整性校验及已打包应用 E2E。核心自动化、性能、安全静态门禁、4 小时稳定性、安装后验收和 400 行结构约束均已通过。
 
-该 CI 的 Quality gates 成功，三个平台 job 也只在最终 `Upload installer` 因 GitHub Actions artifact 存储配额失败，因此不能声称当前候选 CI 全绿或三平台制品已齐备。当前产品提交 `07ac062` 的 Windows NSIS 已在本机全新构建并完成清单、签名状态、安装、冷启动、卸载、已安装核心 E2E 与桌面壳/持久化 E2E 验证；当前提交的公共 Windows/macOS/Linux 精确制品仍需释放配额后重新上传并下载核验。
+该 CI 的 attempt 1 因 GitHub Actions artifact 存储配额在最终上传失败；清理已备份旧制品并等待计量刷新后，2026-08-09 的完整 attempt 2 四个 job 全部成功，质量元数据和 Windows/macOS/Linux artifacts 均已上传并下载核验。当前产品提交 `07ac062` 的 Windows NSIS 另有本机全新构建及清单、签名状态、安装、冷启动、卸载、已安装核心 E2E 与桌面壳/持久化 E2E 证据。
 
 项目仍不能标记为正式完成。以下硬证据尚缺失：
 
 1. Windows Authenticode、macOS 签名与 notarization 未完成；本机代码签名证书为 0，Apple/CSC 签名输入均未配置；GitHub Environments 与仓库 Secret 名称只读查询均为空，`release-signing` 环境尚不存在。
 2. 尚无干净 Windows/macOS/Linux 设备和独立验收人员的完整人工闭环记录；公共原生 runner 自动化不能替代目标要求的独立人工操作记录。
 3. 全部计划 Provider 的真实公网凭据连接未逐一验收；当前环境没有任何对应验收环境变量。现有 10 个 Provider 门禁具备显式选择、60 秒超时、最小流式请求和失败脱敏，但默认跳过不能替代真实凭据运行证据。
-4. 用户已授权删除 run `30933901524` 的 4 个旧 artifact；远端当前仍保留 run `30944352985` 的 5 个历史 artifact、共 803,368,696 字节。四个发布 artifact 已在 `D:\release-evidence\open-code-desk-ci-30944352985` 逐项复核 19/19 清单，诊断 artifact 也已重新下载到独立目录且 4/4 原始文件与旧副本一致。仓库为 private；[GitHub 当前官方配额](https://docs.github.com/en/billing/reference/product-usage-included)按账户计划提供 500 MB（Free）或 1 GB（Pro）Actions 存储，但现有令牌不能读取账户计划。因此不能再把等待 6–12 小时视为充分条件：还需用户明确授权删除这 5 个已备份 artifact，或确认账户有足够的付费存储与预算，才能可靠重跑并上传 run `31247288230` 的质量元数据和三平台安装包。
-
-Renderer 错误展示点已统一经过本地化边界；应用自有的主进程/DAP 英文与中文诊断均受双向源码覆盖测试约束，项目检测、命令风险和工具批准原因也有双语测试。第三方原始诊断按原文保留，因此产品自有动态诊断的完整双语要求已满足。
+   Renderer 错误展示点已统一经过本地化边界；应用自有的主进程/DAP 英文与中文诊断均受双向源码覆盖测试约束，项目检测、命令风险和工具批准原因也有双语测试。第三方原始诊断按原文保留，因此产品自有动态诊断的完整双语要求已满足。
 
 2026-08-04 使用当前 GitHub 身份重新执行只读核验：产品代码提交 `319a25d277de1d610aae877b92c30452dd647518` 已推送到远端 `release/0.7.0-alpha.1`；CI run `30914375533` 的 Quality gates、Windows x64、macOS ARM64、Linux x64 四个 job 全部成功，并上传约 182.6 MB、409.1 MB、212.6 MB 的三平台 artifact。最新发布仍为 `v0.6.0-alpha.1`，仓库 Environment 和 Secret 名称总数均为 0。
 
-2026-08-08 复核：远端 `release/0.7.0-alpha.1` 当前产品提交为 `07ac06281374f6284c42f5c50b2d44141014e9a7`。CI run `31247288230` 的 Quality gates job `93077871336` 成功；Windows `93078366593`、macOS `93078366590`、Linux `93078366585` 的产品步骤全部通过，仅 artifact 上传失败。Windows 已安装应用 E2E 也验证了 DAP `exited`/`terminated` 输出顺序修复。最新 Release 仍为 `v0.6.0-alpha.1`，`v0.7.0-alpha.1` tag 不存在，仓库 Environment 与 Actions Secret 名称仍为空。
+2026-08-09 复核：远端 `release/0.7.0-alpha.1` 当前产品提交仍为 `07ac06281374f6284c42f5c50b2d44141014e9a7`。CI run `31247288230` attempt 2 的 Quality gates job `93169003177`、Windows `93169391300`、macOS `93169391317`、Linux `93169391314` 全部成功；四个必需 artifacts 已上传、下载并完成 19/19 清单核验。Windows 已安装应用 E2E 也验证了 DAP `exited`/`terminated` 输出顺序修复。最新 Release 仍为 `v0.6.0-alpha.1`，`v0.7.0-alpha.1` tag 不存在，仓库 Environment 与 Actions Secret 名称仍为空。
 
 ## 当前权威基线
 
@@ -46,9 +44,9 @@ Renderer 错误展示点已统一经过本地化边界；应用自有的主进�
 | 安装后核心 E2E                     | 9 / 9 通过                                                |
 | 安装后桌面壳与持久化 E2E           | 6 / 6 通过                                                |
 | Windows 打包运行时完整性           | 通过                                                      |
-| 公共 Windows x64 打包/安装态 E2E   | CI run `31247288230` 产品步骤通过；artifact 上传失败      |
-| 公共 macOS ARM64 打包/应用 E2E     | CI run `31247288230` 产品步骤通过；artifact 上传失败      |
-| 公共 Linux x64 打包/应用 E2E       | CI run `31247288230` 产品步骤通过；artifact 上传失败      |
+| 公共 Windows x64 打包/安装态 E2E   | CI run `31247288230` attempt 2 成功；artifact 6/6 一致    |
+| 公共 macOS ARM64 打包/应用 E2E     | CI run `31247288230` attempt 2 成功；artifact 8/8 一致    |
+| 公共 Linux x64 打包/应用 E2E       | CI run `31247288230` attempt 2 成功；artifact 5/5 一致    |
 | Linux x64 AppImage 打包/自解包     | 通过                                                      |
 | Linux 打包运行时完整性             | 通过                                                      |
 | Linux 已打包应用核心 E2E           | 9 / 9 通过                                                |
@@ -56,7 +54,7 @@ Renderer 错误展示点已统一经过本地化边界；应用自有的主进�
 | `pnpm security:dependency-audit`   | 710 项 / High 0 / Critical 0 / Moderate 1                 |
 | `pnpm security:secrets`            | 560 文件 / 0 未允许发现                                   |
 | `pnpm security:licenses`           | 149 组件 / 0 待复核                                       |
-| CycloneDX 1.6 SBOM                 | Windows 588 / Linux 587 组件，Schema 通过                 |
+| CycloneDX 1.6 SBOM                 | Windows 588 / macOS 589 / Linux 587 组件，Schema 通过     |
 | `git diff --check`                 | 通过                                                      |
 | TypeScript/TSX 生产文件大于 400 行 | 0                                                         |
 | Windows NSIS 冷启动                | 3.99 秒                                                   |
@@ -70,8 +68,7 @@ Renderer 错误展示点已统一经过本地化边界；应用自有的主进�
 `SHA256SUMS.txt` 6/6 一致；Authenticode 为 `NotSigned`；证据目录为
 `D:\release-evidence\open-code-desk-local-07ac06281374f6284c42f5c50b2d44141014e9a7-windows-x64`）。
 
-当前产品候选的 Linux x64 AppImage 已在 run `31247288230` 构建并完成已打包应用 E2E，但上传失败，
-因此尚无可下载文件可供独立重算 SHA-256；旧候选的 Linux artifact 仅作为历史证据保留。
+当前产品候选公共 CI 文件已下载到 `D:\release-evidence\open-code-desk-ci-31247288230-attempt-2`。Windows 安装包为 182,383,604 字节、SHA-256 `96FB70C58853376C31C4C266407FBCDBC2D0043F979BD857ED0E5CFD91633BF1`，Authenticode 为 `NotSigned`；macOS DMG/ZIP 分别为 204,601,360 / 204,948,500 字节，SHA-256 `AF5C51A6AC76A95B558606508F55676050DFD91A9F79E6E7986E532A42C30C62` / `17D4E5BD9C8297750B4E78A25AE3B867B6F141D25A4ABF4F9E10B21F3F3A511A`；Linux AppImage 为 213,150,102 字节，SHA-256 `9C48B1A8C17D9F979C78C9EF43FC9C370A39D94A25DC525A83DD104DA2541C50`。三平台清单共 19/19 一致，缺失、额外、重复和摘要不一致均为 0。
 
 当前产品候选同一安装包的核心 E2E 完整重跑为 9/9，桌面壳与持久化扩展 E2E 为 6/6。早期候选最终运行前，一次连续套件中的
 项目运行用例曾在 5 秒内未观察到进程输出；该用例单独完整重跑通过，随后同一安装包的 9 项核心套件
@@ -87,23 +84,23 @@ Playwright 的 Docker 建议改用共享 IPC 后原失败场景 2/2 通过。完
 
 ## 原始功能验收域
 
-| 目标域          | 判定                                                         | 当前证据或缺口                                                                                                                                                                                                 |
-| --------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 桌面端基础能力  | 三平台产品自动化已证明；当前 artifact、正式签名/人工验收仍缺 | Windows NSIS、macOS ARM64 DMG/ZIP、Linux x64 AppImage 已由当前产品提交的公共原生 CI 构建并完成运行时与已打包应用 E2E；上传因配额失败。Windows 另有当前产品树的本地安装、启动、关闭、卸载证据                   |
-| 本地项目管理    | 已证明                                                       | `desktop-launch.spec.ts` 覆盖打开、恢复、文件操作、路径授权和可取消搜索                                                                                                                                        |
-| 代码编辑器      | 已证明核心闭环                                               | Monaco、多标签、保存、只读/Diff、断点和布局均进入 Electron E2E                                                                                                                                                 |
-| 模型配置系统    | 已证明本地协议闭环                                           | 10 个 Provider 注册；连接、模型列表、流式响应和工具调用有单元/集成/E2E；新增 10 个默认禁用的真实服务门禁，仍需提供凭据后形成公网验收证据                                                                       |
-| API Key 安全    | 已证明三平台自动化闭环                                       | `safeStorage`、密钥仓库、脱敏和安装版 Provider E2E；静态检查没有硬编码 `sk-…` 密钥；Linux Secret Service 与 macOS Keychain 路径均在对应原生 runner 的已打包应用 E2E 中通过                                     |
-| AI 对话系统     | 已证明                                                       | 真实本地 HTTP 流式 Provider、工具循环、停止与重启恢复由 `provider-chat.spec.ts` 覆盖                                                                                                                           |
-| 项目上下文      | 已证明核心闭环                                               | 文件、选择区、终端、Git、诊断上下文与有界构建测试齐全；10,000 文件验收确认不会预载整个项目                                                                                                                     |
-| Agent 任务      | 已证明核心闭环                                               | Agent 状态、工具循环、命令审批、文件提案和恢复有集成/E2E                                                                                                                                                       |
-| 内置工具        | 已证明核心集合                                               | Tool Registry、Zod 输入、文件/Git/命令工具及审计有自动化覆盖                                                                                                                                                   |
-| 权限控制        | 已证明核心边界                                               | 工作区路径策略、外部目录授权、命令风险与批准/拒绝/取消有测试与 E2E                                                                                                                                             |
-| 文件修改与 Diff | 已证明                                                       | 未批准不落盘、逐项审核、事务应用、回滚和历史由单元/集成/E2E 覆盖                                                                                                                                               |
-| 终端            | 已证明                                                       | 真实 PTY、实时输出、隔离、退出码、终止和进程树清理由集成/E2E 覆盖                                                                                                                                              |
-| Git             | 已证明                                                       | 真实仓库 status、staged/untracked 和有界 diff 集成测试及 E2E 通过                                                                                                                                              |
-| 数据持久化      | 已证明核心闭环                                               | SQLite migrations、设置、对话、运行、任务、断点和调试记录恢复均有测试                                                                                                                                          |
-| 错误处理        | 已证明                                                       | Provider/文件/命令/运行/调试返回结构化错误；Renderer 已无直接展示 `error.message` 的通路，应用自有的主进程/DAP 中英文诊断受双向源码覆盖门禁约束，规范化命令风险/批准原因支持双向显示；第三方技术诊断按原文保留 |
+| 目标域          | 判定                                                       | 当前证据或缺口                                                                                                                                                                                                 |
+| --------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 桌面端基础能力  | 三平台产品自动化与 artifacts 已证明；正式签名/人工验收仍缺 | Windows NSIS、macOS ARM64 DMG/ZIP、Linux x64 AppImage 已由当前产品提交的公共原生 CI 构建并完成运行时、已打包应用 E2E、上传和下载哈希核验；Windows 另有当前产品树的本地安装、启动、关闭、卸载证据               |
+| 本地项目管理    | 已证明                                                     | `desktop-launch.spec.ts` 覆盖打开、恢复、文件操作、路径授权和可取消搜索                                                                                                                                        |
+| 代码编辑器      | 已证明核心闭环                                             | Monaco、多标签、保存、只读/Diff、断点和布局均进入 Electron E2E                                                                                                                                                 |
+| 模型配置系统    | 已证明本地协议闭环                                         | 10 个 Provider 注册；连接、模型列表、流式响应和工具调用有单元/集成/E2E；新增 10 个默认禁用的真实服务门禁，仍需提供凭据后形成公网验收证据                                                                       |
+| API Key 安全    | 已证明三平台自动化闭环                                     | `safeStorage`、密钥仓库、脱敏和安装版 Provider E2E；静态检查没有硬编码 `sk-…` 密钥；Linux Secret Service 与 macOS Keychain 路径均在对应原生 runner 的已打包应用 E2E 中通过                                     |
+| AI 对话系统     | 已证明                                                     | 真实本地 HTTP 流式 Provider、工具循环、停止与重启恢复由 `provider-chat.spec.ts` 覆盖                                                                                                                           |
+| 项目上下文      | 已证明核心闭环                                             | 文件、选择区、终端、Git、诊断上下文与有界构建测试齐全；10,000 文件验收确认不会预载整个项目                                                                                                                     |
+| Agent 任务      | 已证明核心闭环                                             | Agent 状态、工具循环、命令审批、文件提案和恢复有集成/E2E                                                                                                                                                       |
+| 内置工具        | 已证明核心集合                                             | Tool Registry、Zod 输入、文件/Git/命令工具及审计有自动化覆盖                                                                                                                                                   |
+| 权限控制        | 已证明核心边界                                             | 工作区路径策略、外部目录授权、命令风险与批准/拒绝/取消有测试与 E2E                                                                                                                                             |
+| 文件修改与 Diff | 已证明                                                     | 未批准不落盘、逐项审核、事务应用、回滚和历史由单元/集成/E2E 覆盖                                                                                                                                               |
+| 终端            | 已证明                                                     | 真实 PTY、实时输出、隔离、退出码、终止和进程树清理由集成/E2E 覆盖                                                                                                                                              |
+| Git             | 已证明                                                     | 真实仓库 status、staged/untracked 和有界 diff 集成测试及 E2E 通过                                                                                                                                              |
+| 数据持久化      | 已证明核心闭环                                             | SQLite migrations、设置、对话、运行、任务、断点和调试记录恢复均有测试                                                                                                                                          |
+| 错误处理        | 已证明                                                     | Provider/文件/命令/运行/调试返回结构化错误；Renderer 已无直接展示 `error.message` 的通路，应用自有的主进程/DAP 中英文诊断受双向源码覆盖门禁约束，规范化命令风险/批准原因支持双向显示；第三方技术诊断按原文保留 |
 
 ## 非功能验收域
 
@@ -133,32 +130,32 @@ Playwright 的 Docker 建议改用共享 IPC 后原失败场景 2/2 通过。完
 
 ## 交付物审计
 
-| 交付物                         | 判定                         | 位置或缺口                                                                                                                                             |
-| ------------------------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 完整源代码                     | 已提交并推送                 | 产品提交 `07ac062` 已进入 `release/0.7.0-alpha.1`，并取得 run `31247288230` 的公共三平台产品步骤证据                                                   |
-| Windows 安装包                 | 已证明当前本地候选           | 产品提交 `07ac062` 的独立证据目录及 SHA-256；当前 CI artifact 上传失败                                                                                 |
-| Linux x64 AppImage             | 当前提交已构建，制品缺失     | run `31247288230` 的原生构建与已打包 E2E 通过，但 artifact 上传失败；历史候选 artifact 不等同当前二进制                                                |
-| macOS/Linux 构建配置           | 当前提交原生 CI 产品步骤通过 | `apps/desktop/electron-builder.yml`、目标运行时校验器、原生 CI 与签名发布 matrix；当前 DMG/ZIP/AppImage 仍需释放 artifact 配额后重新上传并下载核验     |
-| README/安装/使用/排障/隐私说明 | 存在                         | `README.md`、`docs/installation.md`、`docs/user-guide.md`、`docs/troubleshooting.md`、`docs/privacy.md`                                                |
-| 干净设备独立验收清单           | 存在；执行证据仍缺           | `docs/clean-device-acceptance.md` 覆盖三平台生命周期、22 步 AI 编程、IDE 调试修复、10 个 Provider、安全检查、证据记录与双人签字要求                    |
-| 模型/Provider/Tool 开发说明    | 存在                         | `docs/model-configuration.md`、`docs/provider-development.md`、`docs/tool-development.md`                                                              |
-| 架构/数据库/安全设计           | 存在                         | `docs/architecture.md` 包含数据库设计，`docs/security.md` 包含安全设计                                                                                 |
-| 测试与供应链报告               | 存在                         | 本报告、[发布就绪报告](./release-readiness-2026-08-02.md)、[性能报告](./performance-2026-08-02.md)、CycloneDX SBOM、依赖/许可证审计与 Secret 扫描 JSON |
-| 已知问题与路线图               | 存在                         | README 当前限制、发布就绪缺口表、`docs/roadmap.md`                                                                                                     |
+| 交付物                         | 判定                       | 位置或缺口                                                                                                                                             |
+| ------------------------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 完整源代码                     | 已提交并推送               | 产品提交 `07ac062` 已进入 `release/0.7.0-alpha.1`，并取得 run `31247288230` attempt 2 的公共三平台成功证据                                             |
+| Windows 安装包                 | 已证明当前公共与本地候选   | 公共 CI NSIS 已下载并完成 6/6 摘要与 Authenticode 状态核验；同一产品提交另有本地安装、启动、E2E、关闭与卸载证据                                        |
+| Linux x64 AppImage             | 当前提交制品已核验         | run `31247288230` attempt 2 的原生构建、已打包 E2E、上传和 AppImage SHA-256 核验通过                                                                   |
+| macOS/Linux 构建配置           | 当前提交原生 CI 与制品通过 | `apps/desktop/electron-builder.yml`、目标运行时校验器、原生 CI 与签名发布 matrix；当前 DMG/ZIP/AppImage 均已下载并与随包摘要一致                       |
+| README/安装/使用/排障/隐私说明 | 存在                       | `README.md`、`docs/installation.md`、`docs/user-guide.md`、`docs/troubleshooting.md`、`docs/privacy.md`                                                |
+| 干净设备独立验收清单           | 存在；执行证据仍缺         | `docs/clean-device-acceptance.md` 覆盖三平台生命周期、22 步 AI 编程、IDE 调试修复、10 个 Provider、安全检查、证据记录与双人签字要求                    |
+| 模型/Provider/Tool 开发说明    | 存在                       | `docs/model-configuration.md`、`docs/provider-development.md`、`docs/tool-development.md`                                                              |
+| 架构/数据库/安全设计           | 存在                       | `docs/architecture.md` 包含数据库设计，`docs/security.md` 包含安全设计                                                                                 |
+| 测试与供应链报告               | 存在                       | 本报告、[发布就绪报告](./release-readiness-2026-08-02.md)、[性能报告](./performance-2026-08-02.md)、CycloneDX SBOM、依赖/许可证审计与 Secret 扫描 JSON |
+| 已知问题与路线图               | 存在                       | README 当前限制、发布就绪缺口表、`docs/roadmap.md`                                                                                                     |
 
 ## 最终 DoD 逐项判定
 
-| DoD                                    | 判定                                                                   |
-| -------------------------------------- | ---------------------------------------------------------------------- |
-| 核心业务闭环全部可运行、功能为真实实现 | 当前产品提交三平台自动化产品步骤支持；独立人工验收尚缺                 |
-| 用户可配置/切换模型，API Key 安全保存  | 三平台本地/原生 runner 自动化闭环已证明                                |
-| 文件受权限控制且修改可审核/回滚        | 已证明                                                                 |
-| 命令可授权、终止和持久化               | 已证明                                                                 |
-| 会话与任务可持久化                     | 已证明                                                                 |
-| 核心自动化、类型、Lint、构建通过       | 已证明当前产品提交；公共三平台产品步骤通过，但 artifact 上传失败       |
-| Windows 安装包正常安装运行             | 已证明未签名候选                                                       |
-| 项目文档完整                           | 主要交付文档齐全                                                       |
-| 无阻塞严重缺陷/已知高危安全问题        | High/Critical 依赖审计为 0；正式签名、当前制品与人工验收前不能最终确认 |
-| 验收人员独立完成完整 AI 编程与调试任务 | 自动化 E2E 已覆盖；独立人工验收记录缺失                                |
+| DoD                                    | 判定                                                            |
+| -------------------------------------- | --------------------------------------------------------------- |
+| 核心业务闭环全部可运行、功能为真实实现 | 当前产品提交三平台自动化产品步骤支持；独立人工验收尚缺          |
+| 用户可配置/切换模型，API Key 安全保存  | 三平台本地/原生 runner 自动化闭环已证明                         |
+| 文件受权限控制且修改可审核/回滚        | 已证明                                                          |
+| 命令可授权、终止和持久化               | 已证明                                                          |
+| 会话与任务可持久化                     | 已证明                                                          |
+| 核心自动化、类型、Lint、构建通过       | 已证明当前产品提交；公共三平台 attempt 2 与 artifact 上传均成功 |
+| Windows 安装包正常安装运行             | 已证明未签名候选                                                |
+| 项目文档完整                           | 主要交付文档齐全                                                |
+| 无阻塞严重缺陷/已知高危安全问题        | High/Critical 依赖审计为 0；正式签名与人工验收前不能最终确认    |
+| 验收人员独立完成完整 AI 编程与调试任务 | 自动化 E2E 已覆盖；独立人工验收记录缺失                         |
 
-因此，本审计保持目标为“进行中”。必须先完成当前三平台 artifact 上传与下载核验、Windows/macOS 正式签名及 notarization、10 个 Provider 真实公网验收和独立人员干净设备完整闭环，才能重新执行完成审计。
+因此，本审计保持目标为“进行中”。必须先完成 Windows/macOS 正式签名及 notarization、10 个 Provider 真实公网验收和独立人员干净设备完整闭环，才能重新执行完成审计。
