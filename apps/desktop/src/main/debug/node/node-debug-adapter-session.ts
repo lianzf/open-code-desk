@@ -445,7 +445,7 @@ export class NodeDebugAdapterSession implements DebugAdapterSession {
         type: 'continued',
         ...(publicThreadId === undefined ? {} : { threadId: publicThreadId }),
       });
-    } else if (event.event === 'terminated' || event.event === 'exited') {
+    } else if (event.event === 'terminated') {
       this.flushOutput();
       if (this.#clientRoles.get(client) !== 'auxiliary') {
         this.emit({ type: 'terminated', restart: booleanValue(body, 'restart') ?? false });
