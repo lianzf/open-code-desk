@@ -34,10 +34,10 @@
 | `pnpm test:stability`            | v12：1 passed (4.0h)                                  |
 | `pnpm build`                     | 通过                                                  |
 | `pnpm exec playwright test`      | 16 / 16 通过                                          |
-| 下载候选 Windows 隔离安装烟测    | 安装/卸载退出码 0；冷启动 3.06 秒；残留进程 0         |
-| 下载候选 Windows 已安装核心 E2E  | 9 / 9 通过；安装目录、用户数据和进程均无残留          |
-| `pnpm security:dependency-audit` | 710 项 / 全部严重级别 0                               |
-| `pnpm security:secrets`          | 559 文件 / 0 未允许发现                               |
+| 当前本机 Windows 隔离安装烟测    | 安装/卸载退出码 0；冷启动 3.99 秒；残留进程 0         |
+| 当前本机 Windows 已安装核心 E2E  | 9 / 9 通过；安装目录、用户数据和进程均无残留          |
+| `pnpm security:dependency-audit` | 710 项 / High 0 / Critical 0 / Moderate 1             |
+| `pnpm security:secrets`          | 560 文件 / 0 未允许发现                               |
 | `pnpm security:licenses`         | 149 组件 / 0 待复核                                   |
 | CycloneDX 1.6 SBOM               | 588 组件 / Schema 通过                                |
 | 桌面打包生产依赖                 | 15 / 15 可解析                                        |
@@ -94,18 +94,20 @@ Linux 587。Windows 安装包版本元数据为 `0.7.0-alpha.1`，Authenticode �
 
 三平台清单共 19 项，逐项重算后的缺失、额外、重复与摘要不一致均为 0；依赖漏洞严重级别均为 0，149 个随包组件均无需许可证复核，Secret 扫描覆盖 559 个源码文件且发现为 0，SBOM 组件数为 Windows 588、macOS 589、Linux 587。Windows Authenticode 仍为 `NotSigned`。该 run 与 `30933901524` 的分发文件大小接近但哈希均不同，不能声称二进制等价；`7c14459` 到当前产品代码 `0a2d35f` 还增加了 E2E 状态观测属性，而 `4689a2a` 只修改 CI 行为，因此该组证据仍不替代当前提交的精确 artifact。
 
-### 当前候选的本机精确 Windows 证据（提交 03b5ac3）
+### 当前候选的本机精确 Windows 证据（提交 07ac062）
 
-2026-08-08 对提交 `03b5ac3bfdfebf9edbc7c0b20015cc023ba2b0a7` 的产品树执行完整本地门禁和全新 Windows x64 打包。该提交固定 `js-yaml` 4.3.1 与 `nanoid` 3.3.17，使当日新增的两个 High advisory 清零；同时让强制进程树终止等待被终止子进程实际退出。调试会话清理集成测试连续 10 轮通过，随后完整门禁的 112 个单测文件 / 393 项测试、29 个集成文件 / 94 项测试和桌面端 E2E 16/16 均通过。
+2026-08-08 对产品提交 `07ac06281374f6284c42f5c50b2d44141014e9a7` 的独立 detached 工作树执行冻结依赖安装和全新 Windows x64 打包。该提交在前一依赖修复基础上不再把可选 DAP `exited` 事件当作会话终止，并以确定性测试覆盖 `exited → output → terminated`；完整门禁为 113 个单测文件 / 394 项测试、29 个集成文件 / 94 项测试和桌面端 E2E 16/16。
 
-全新 `release` 目录只生成一个 0.7 NSIS。安装包及其六项清单文件已复制到 `D:\release-evidence\open-code-desk-local-03b5ac3bfdfebf9edbc7c0b20015cc023ba2b0a7-windows-x64`；`SHA256SUMS.txt` 6/6 逐项重算一致。安装包为 183,398,515 字节，SHA-256 为 `CBA1282143A8C2309D073BD63A07C8A962DED1ADE2C2FC142357BC7C41327FC6`，Authenticode 为 `NotSigned`。隔离静默安装与卸载退出码均为 0，冷启动 3.06 秒，窗口标题正确，无需强杀，残留产品进程为 0；随后已安装应用核心 E2E 9/9 与桌面壳/持久化 E2E 6/6 均通过，清理后安装 E2E 目录、烟测目录和产品进程均为 0。该证据精确覆盖基线提交 `03b5ac3` 的 Windows 产品树；当前提交 `07ac062` 另由公共 Windows runner 通过安装烟测和已安装应用 E2E，但因 artifact 配额尚无可下载安装包，二者不能声称二进制等价。
+全新 `release` 目录只生成一个 0.7 NSIS。安装包及其六项清单文件已复制到 `D:\release-evidence\open-code-desk-local-07ac06281374f6284c42f5c50b2d44141014e9a7-windows-x64`；`SHA256SUMS.txt` 6/6 逐项重算一致，缺失、额外、重复与摘要不一致均为 0。安装包为 182,383,713 字节，SHA-256 为 `3F351D2B9B895A516DFE5587BD6304FD3B13F69F90DF0DF2D7F33D9617732223`，Authenticode 为 `NotSigned`。隔离静默安装与卸载退出码均为 0，冷启动 3.99 秒，窗口标题正确，无需强杀，残留产品进程为 0；随后已安装应用核心 E2E 9/9 与桌面壳/持久化 E2E 6/6 均通过，清理后安装 E2E 目录、烟测目录和产品进程均为 0。该证据精确覆盖当前产品提交 `07ac062` 的 Windows 产品树；同一提交的公共 Windows runner 也通过安装烟测和已安装应用 E2E，但因 artifact 配额尚无可下载的公共安装包。
+
+此前提交 `03b5ac3bfdfebf9edbc7c0b20015cc023ba2b0a7` 的本机证据仍保留在 `D:\release-evidence\open-code-desk-local-03b5ac3bfdfebf9edbc7c0b20015cc023ba2b0a7-windows-x64`，仅作为历史候选，不与当前二进制混用。
 
 ## 正式发布门槛判定
 
 | 门槛                              | 当前证据                                                                                                                                                                                                                                                                                                                                                                                                                                            | 判定                                                                                   |
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | 连续运行 4 小时无明显内存泄漏     | 隔离、自报告的 v12 于 2026-08-03 09:41:39–13:42:09 完成：240 分钟、20 个会话、13,643 次 soak 迭代、242 个内存样本；Heap 35.84→24.44 MiB（增长 -11.40 MiB，门槛 +256 MiB），RSS 228.87→57.17 MiB（增长 -171.70 MiB，门槛 +512 MiB）；24 个验收心跳、480 个原生心跳；页面错误、Renderer 崩溃、窗口无响应、`render-process-gone`、失败标记和 stderr 均为 0；自报告退出码 0，`1 passed (4.0h)`，相关残留进程 0；证据为 `.runtime/stability-final-v12.*` | 满足（Windows 4 小时基线）                                                             |
-| 当前源码对应的 Windows 安装包     | 基线提交 `03b5ac3` 的本机全新 NSIS 为 183,398,515 字节，SHA-256 `CBA1282143A8C2309D073BD63A07C8A962DED1ADE2C2FC142357BC7C41327FC6`，清单 6/6 一致，Authenticode 为 `NotSigned`；安装/卸载、3.06 秒冷启动、零残留、已安装核心 E2E 9/9 与桌面壳/持久化 E2E 6/6 均通过。当前提交 `07ac062` 的 CI run `31247288230`、Windows job `93078366593` 也完成构建、安装烟测和已安装 E2E，仅最终 artifact 上传因配额失败。                                       | 基线未签名候选与当前公共 Windows 自动化通过；缺少可下载的当前 CI artifact              |
+| 当前源码对应的 Windows 安装包     | 当前提交 `07ac062` 的本机全新 NSIS 为 182,383,713 字节，SHA-256 `3F351D2B9B895A516DFE5587BD6304FD3B13F69F90DF0DF2D7F33D9617732223`，清单 6/6 一致，Authenticode 为 `NotSigned`；安装/卸载、3.99 秒冷启动、零残留、已安装核心 E2E 9/9 与桌面壳/持久化 E2E 6/6 均通过。CI run `31247288230`、Windows job `93078366593` 也完成构建、安装烟测和已安装 E2E，仅最终 artifact 上传因配额失败。                                                             | 当前未签名本地候选与公共 Windows 自动化通过；缺少可下载的当前 CI artifact              |
 | Windows 正式签名                  | 现有 0.7 NSIS 的 Authenticode 状态为 `NotSigned`；`Cert:\CurrentUser\My -CodeSigningCert` 计数为 0，`CSC_LINK`/`CSC_KEY_PASSWORD` 均未配置；GitHub Environments 查询总数为 0，工作流引用的 `release-signing` 环境尚不存在                                                                                                                                                                                                                           | 未满足                                                                                 |
 | macOS 正式签名与 notarization     | 配置包含 hardened runtime 和 DMG/ZIP 目标，但本机没有 macOS 原生环境；`MAC_CSC_LINK`、`MAC_CSC_KEY_PASSWORD`、`APPLE_API_KEY`、`APPLE_API_KEY_ID`、`APPLE_API_ISSUER`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID` 均未配置；仓库也没有 `release-signing` Environment，因而没有本轮签名/notarization 与干净设备证据                                                                                                                  | 未满足                                                                                 |
 | 当前源码对应的 Linux x64 AppImage | CI run `31247288230` 的 Linux job `93078366585` 在原生 runner 完成 JDK 21 Java 调试、AppImage 构建、运行时完整性和已打包应用 E2E；仅最终 artifact 上传因配额失败。                                                                                                                                                                                                                                                                                  | 满足“Linux 至少可构建”及当前产品树的公共原生自动化证据；缺少可下载的当前 artifact      |
@@ -134,6 +136,8 @@ Linux 587。Windows 安装包版本元数据为 `0.7.0-alpha.1`，Authenticode �
 删除后立即完整重跑 `31244154662` attempt 2，Quality gates 成功，macOS/Linux 产品步骤通过但上传失败；Windows 8/9 已安装 E2E 通过，`debug-ai-repair` 暴露 DAP `exited` 后末尾输出可能晚于会话完成的低概率竞态。官方 DAP 生命周期要求以 `terminated` 结束会话；提交 `07ac06281374f6284c42f5c50b2d44141014e9a7` 因此不再把可选 `exited` 通知当作终止，并增加 `exited → output → terminated` 确定性回归测试。本机原场景修复前后各连续 10/10 通过；完整测试为 113 文件 / 394 项，独立集成为 29 文件 / 94 项。
 
 当前提交 `07ac062` 的 CI run `31247288230` 中，Quality gates job `93077871336` 成功；Windows job `93078366593` 的安装器构建、安装烟测和已安装应用 E2E，macOS job `93078366590` 的原生 Java 调试、DMG/ZIP 构建与已打包应用 E2E，Linux job `93078366585` 的原生 Java 调试、AppImage 构建与已打包应用 E2E 均成功。三个平台唯一失败步骤均为 `Upload installer`，run artifact 数仍为 0，证明 GitHub 删除后的计量重算尚未生效；官方错误提示需等待 6–12 小时。该 run 证明当前代码的产品步骤通过，但不能声称 CI 全绿或制品齐备。
+
+同日从精确提交 `07ac062` 的独立工作树全新构建 Windows NSIS，并在复制到独立证据目录后重新校验 `SHA256SUMS.txt` 6/6。对该安装包执行 CI 同款隔离安装烟测、已安装核心 E2E 9/9 和桌面壳/持久化 E2E 6/6 均通过；安装、关闭、卸载后目录与产品进程均为 0。随包依赖审计为 High 0 / Critical 0 / Moderate 1，许可证待复核 0，Secret 扫描 560 个源码文件且发现 0，SBOM 为 588 个组件。该本地证据补齐当前 Windows 产品树的精确二进制核验，但不替代公共 artifact、正式签名或独立人工验收。
 
 ## 发布判定
 

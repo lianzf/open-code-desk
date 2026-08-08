@@ -8,7 +8,7 @@
 
 产品提交 `07ac06281374f6284c42f5c50b2d44141014e9a7` 已形成可安装、可运行、可配置、具备真实 AI 编程闭环和 Node.js/Python/浏览器/Electron 主渲染双进程 DAP 调试闭环的 0.7 alpha 候选。Windows 已完成 Java、C/C++/Rust、Go、.NET 的真实 DAP 验收；公共 CI run `31247288230` 在 Windows x64、macOS ARM64 和 Linux x64 原生 runner 完成冻结依赖安装、真实 Java 调试验收、NSIS/DMG/ZIP/AppImage 构建、目标运行时完整性校验及已打包应用 E2E。核心自动化、性能、安全静态门禁、4 小时稳定性、安装后验收和 400 行结构约束均已通过。
 
-该 CI 的 Quality gates 成功，三个平台 job 也只在最终 `Upload installer` 因 GitHub Actions artifact 存储配额失败，因此不能声称当前候选 CI 全绿或三平台制品已齐备。基线提交 `03b5ac3` 的 Windows NSIS 已在本机全新构建并完成清单、安装、冷启动、卸载和已安装核心 E2E 验证；当前提交的 Windows/macOS/Linux 精确制品仍需释放配额后重新上传并下载核验。
+该 CI 的 Quality gates 成功，三个平台 job 也只在最终 `Upload installer` 因 GitHub Actions artifact 存储配额失败，因此不能声称当前候选 CI 全绿或三平台制品已齐备。当前产品提交 `07ac062` 的 Windows NSIS 已在本机全新构建并完成清单、签名状态、安装、冷启动、卸载、已安装核心 E2E 与桌面壳/持久化 E2E 验证；当前提交的公共 Windows/macOS/Linux 精确制品仍需释放配额后重新上传并下载核验。
 
 项目仍不能标记为正式完成。以下硬证据尚缺失：
 
@@ -53,24 +53,24 @@ Renderer 错误展示点已统一经过本地化边界；应用自有的主进�
 | Linux 打包运行时完整性             | 通过                                                      |
 | Linux 已打包应用核心 E2E           | 9 / 9 通过                                                |
 | Linux GNOME Secret Service         | 写入、读取、清除通过                                      |
-| `pnpm security:dependency-audit`   | 710 项 / 全部严重级别 0                                   |
-| `pnpm security:secrets`            | 559 文件 / 0 未允许发现                                   |
+| `pnpm security:dependency-audit`   | 710 项 / High 0 / Critical 0 / Moderate 1                 |
+| `pnpm security:secrets`            | 560 文件 / 0 未允许发现                                   |
 | `pnpm security:licenses`           | 149 组件 / 0 待复核                                       |
 | CycloneDX 1.6 SBOM                 | Windows 588 / Linux 587 组件，Schema 通过                 |
 | `git diff --check`                 | 通过                                                      |
 | TypeScript/TSX 生产文件大于 400 行 | 0                                                         |
-| Windows NSIS 冷启动                | 3.06 秒                                                   |
+| Windows NSIS 冷启动                | 3.99 秒                                                   |
 | Windows 正常退出残留进程           | 0                                                         |
 | Windows 静默卸载                   | 退出码 0                                                  |
 | Windows 安装包签名                 | `NotSigned`                                               |
 
 当前产品候选 Windows 安装包 SHA-256：
-`CBA1282143A8C2309D073BD63A07C8A962DED1ADE2C2FC142357BC7C41327FC6`（提交 `03b5ac3`，
-183,398,515 字节；本机全新构建后重算与随包 `SHA256SUMS.txt` 6/6 一致；Authenticode 为
-`NotSigned`；证据目录为
-`D:\release-evidence\open-code-desk-local-03b5ac3bfdfebf9edbc7c0b20015cc023ba2b0a7-windows-x64`）。
+`3F351D2B9B895A516DFE5587BD6304FD3B13F69F90DF0DF2D7F33D9617732223`（提交
+`07ac06281374f6284c42f5c50b2d44141014e9a7`，182,383,713 字节；本机全新构建后重算与随包
+`SHA256SUMS.txt` 6/6 一致；Authenticode 为 `NotSigned`；证据目录为
+`D:\release-evidence\open-code-desk-local-07ac06281374f6284c42f5c50b2d44141014e9a7-windows-x64`）。
 
-当前产品候选的 Linux x64 AppImage 已在 run `31244154662` 构建并完成已打包应用 E2E，但上传失败，
+当前产品候选的 Linux x64 AppImage 已在 run `31247288230` 构建并完成已打包应用 E2E，但上传失败，
 因此尚无可下载文件可供独立重算 SHA-256；旧候选的 Linux artifact 仅作为历史证据保留。
 
 当前产品候选同一安装包的核心 E2E 完整重跑为 9/9，桌面壳与持久化扩展 E2E 为 6/6。早期候选最终运行前，一次连续套件中的
@@ -136,7 +136,7 @@ Playwright 的 Docker 建议改用共享 IPC 后原失败场景 2/2 通过。完
 | 交付物                         | 判定                         | 位置或缺口                                                                                                                                             |
 | ------------------------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 完整源代码                     | 已提交并推送                 | 产品提交 `07ac062` 已进入 `release/0.7.0-alpha.1`，并取得 run `31247288230` 的公共三平台产品步骤证据                                                   |
-| Windows 安装包                 | 已证明当前本地候选           | `release/OpenCode Desk Setup 0.7.0-alpha.1.exe` 及独立证据目录；当前 CI artifact 上传失败                                                              |
+| Windows 安装包                 | 已证明当前本地候选           | 产品提交 `07ac062` 的独立证据目录及 SHA-256；当前 CI artifact 上传失败                                                                                 |
 | Linux x64 AppImage             | 当前提交已构建，制品缺失     | run `31247288230` 的原生构建与已打包 E2E 通过，但 artifact 上传失败；历史候选 artifact 不等同当前二进制                                                |
 | macOS/Linux 构建配置           | 当前提交原生 CI 产品步骤通过 | `apps/desktop/electron-builder.yml`、目标运行时校验器、原生 CI 与签名发布 matrix；当前 DMG/ZIP/AppImage 仍需释放 artifact 配额后重新上传并下载核验     |
 | README/安装/使用/排障/隐私说明 | 存在                         | `README.md`、`docs/installation.md`、`docs/user-guide.md`、`docs/troubleshooting.md`、`docs/privacy.md`                                                |
