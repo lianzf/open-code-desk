@@ -6,22 +6,22 @@
 
 ## 审计结论
 
-产品提交 `03b5ac3bfdfebf9edbc7c0b20015cc023ba2b0a7` 已形成可安装、可运行、可配置、具备真实 AI 编程闭环和 Node.js/Python/浏览器/Electron 主渲染双进程 DAP 调试闭环的 0.7 alpha 候选。Windows 已完成 Java、C/C++/Rust、Go、.NET 的真实 DAP 验收；公共 CI run `31244154662` 在 Windows x64、macOS ARM64 和 Linux x64 原生 runner 完成冻结依赖安装、真实 Java 调试验收、NSIS/DMG/ZIP/AppImage 构建、目标运行时完整性校验及已打包应用 E2E。核心自动化、性能、安全静态门禁、4 小时稳定性、安装后验收和 400 行结构约束均已通过。
+产品提交 `07ac06281374f6284c42f5c50b2d44141014e9a7` 已形成可安装、可运行、可配置、具备真实 AI 编程闭环和 Node.js/Python/浏览器/Electron 主渲染双进程 DAP 调试闭环的 0.7 alpha 候选。Windows 已完成 Java、C/C++/Rust、Go、.NET 的真实 DAP 验收；公共 CI run `31247288230` 在 Windows x64、macOS ARM64 和 Linux x64 原生 runner 完成冻结依赖安装、真实 Java 调试验收、NSIS/DMG/ZIP/AppImage 构建、目标运行时完整性校验及已打包应用 E2E。核心自动化、性能、安全静态门禁、4 小时稳定性、安装后验收和 400 行结构约束均已通过。
 
-该 CI 的 Quality gates 成功，三个平台 job 也只在最终 `Upload installer` 因 GitHub Actions artifact 存储配额失败，因此不能声称当前候选 CI 全绿或三平台制品已齐备。当前产品树的 Windows NSIS 已在本机全新构建并完成清单、安装、冷启动、卸载和已安装核心 E2E 验证；macOS/Linux 当前精确制品仍需释放配额后重新上传并下载核验。
+该 CI 的 Quality gates 成功，三个平台 job 也只在最终 `Upload installer` 因 GitHub Actions artifact 存储配额失败，因此不能声称当前候选 CI 全绿或三平台制品已齐备。基线提交 `03b5ac3` 的 Windows NSIS 已在本机全新构建并完成清单、安装、冷启动、卸载和已安装核心 E2E 验证；当前提交的 Windows/macOS/Linux 精确制品仍需释放配额后重新上传并下载核验。
 
 项目仍不能标记为正式完成。以下硬证据尚缺失：
 
 1. Windows Authenticode、macOS 签名与 notarization 未完成；本机代码签名证书为 0，Apple/CSC 签名输入均未配置；GitHub Environments 与仓库 Secret 名称只读查询均为空，`release-signing` 环境尚不存在。
 2. 尚无干净 Windows/macOS/Linux 设备和独立验收人员的完整人工闭环记录；公共原生 runner 自动化不能替代目标要求的独立人工操作记录。
 3. 全部计划 Provider 的真实公网凭据连接未逐一验收；当前环境没有任何对应验收环境变量。现有 10 个 Provider 门禁具备显式选择、60 秒超时、最小流式请求和失败脱敏，但默认跳过不能替代真实凭据运行证据。
-4. 当前远端保留 9 个历史关键 artifact、共 1,606,718,604 字节；run `31244154662` 的质量元数据和三平台安装包均因配额未上传。删除额外保留 artifact 需要用户明确授权，删除后还需等待 GitHub 计量重算并重跑。
+4. 用户已授权删除 run `30933901524` 的 4 个旧 artifact；远端当前保留 run `30944352985` 的 5 个历史关键 artifact、共 803,368,696 字节，本地仍保留被删 run 的完整备份。run `31247288230` 的质量元数据和三平台安装包因 GitHub 计量尚未重算而未上传，官方错误提示需等待删除后 6–12 小时。
 
 Renderer 错误展示点已统一经过本地化边界；应用自有的主进程/DAP 英文与中文诊断均受双向源码覆盖测试约束，项目检测、命令风险和工具批准原因也有双语测试。第三方原始诊断按原文保留，因此产品自有动态诊断的完整双语要求已满足。
 
 2026-08-04 使用当前 GitHub 身份重新执行只读核验：产品代码提交 `319a25d277de1d610aae877b92c30452dd647518` 已推送到远端 `release/0.7.0-alpha.1`；CI run `30914375533` 的 Quality gates、Windows x64、macOS ARM64、Linux x64 四个 job 全部成功，并上传约 182.6 MB、409.1 MB、212.6 MB 的三平台 artifact。最新发布仍为 `v0.6.0-alpha.1`，仓库 Environment 和 Secret 名称总数均为 0。
 
-2026-08-08 复核：远端 `release/0.7.0-alpha.1` 当前为审计提交 `b91e0e462a45d36e8af6e0e3c454813ace026636`，其父提交 `03b5ac3` 为本轮产品候选。CI run `31244154662` 的 Quality gates job `93069870961` 成功；Windows `93070391329`、macOS `93070391327`、Linux `93070391332` 的产品步骤全部通过，仅 artifact 上传失败。最新 Release 仍为 `v0.6.0-alpha.1`，`v0.7.0-alpha.1` tag 不存在，仓库 Environment 与 Actions Secret 名称仍为空。
+2026-08-08 复核：远端 `release/0.7.0-alpha.1` 当前产品提交为 `07ac06281374f6284c42f5c50b2d44141014e9a7`。CI run `31247288230` 的 Quality gates job `93077871336` 成功；Windows `93078366593`、macOS `93078366590`、Linux `93078366585` 的产品步骤全部通过，仅 artifact 上传失败。Windows 已安装应用 E2E 也验证了 DAP `exited`/`terminated` 输出顺序修复。最新 Release 仍为 `v0.6.0-alpha.1`，`v0.7.0-alpha.1` tag 不存在，仓库 Environment 与 Actions Secret 名称仍为空。
 
 ## 当前权威基线
 
@@ -32,7 +32,7 @@ Renderer 错误展示点已统一经过本地化边界；应用自有的主进�
 | `pnpm lint`                        | 通过，0 error / 0 warning                                 |
 | `pnpm typecheck`                   | 7 个工作区项目通过                                        |
 | `pnpm build`                       | 通过                                                      |
-| `pnpm test`                        | 112 个文件 / 393 项测试通过；7 个门禁文件 / 18 项默认跳过 |
+| `pnpm test`                        | 113 个文件 / 394 项测试通过；7 个门禁文件 / 18 项默认跳过 |
 | `pnpm test:integration`            | 29 个文件 / 94 项测试通过                                 |
 | 真实 Chrome 调试门禁               | 显式启用后 1 / 1 通过                                     |
 | 真实 Electron 双进程调试门禁       | 显式启用后 1 / 1 通过                                     |
@@ -46,9 +46,9 @@ Renderer 错误展示点已统一经过本地化边界；应用自有的主进�
 | 安装后核心 E2E                     | 9 / 9 通过                                                |
 | 安装后桌面壳与持久化 E2E           | 6 / 6 通过                                                |
 | Windows 打包运行时完整性           | 通过                                                      |
-| 公共 Windows x64 打包/安装态 E2E   | CI run `31244154662` 产品步骤通过；artifact 上传失败      |
-| 公共 macOS ARM64 打包/应用 E2E     | CI run `31244154662` 产品步骤通过；artifact 上传失败      |
-| 公共 Linux x64 打包/应用 E2E       | CI run `31244154662` 产品步骤通过；artifact 上传失败      |
+| 公共 Windows x64 打包/安装态 E2E   | CI run `31247288230` 产品步骤通过；artifact 上传失败      |
+| 公共 macOS ARM64 打包/应用 E2E     | CI run `31247288230` 产品步骤通过；artifact 上传失败      |
+| 公共 Linux x64 打包/应用 E2E       | CI run `31247288230` 产品步骤通过；artifact 上传失败      |
 | Linux x64 AppImage 打包/自解包     | 通过                                                      |
 | Linux 打包运行时完整性             | 通过                                                      |
 | Linux 已打包应用核心 E2E           | 9 / 9 通过                                                |
@@ -135,9 +135,9 @@ Playwright 的 Docker 建议改用共享 IPC 后原失败场景 2/2 通过。完
 
 | 交付物                         | 判定                         | 位置或缺口                                                                                                                                             |
 | ------------------------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 完整源代码                     | 已提交并推送                 | 产品提交 `03b5ac3` 与审计提交 `b91e0e4` 已进入 `release/0.7.0-alpha.1`；产品提交取得 run `31244154662` 的公共三平台产品步骤证据                        |
+| 完整源代码                     | 已提交并推送                 | 产品提交 `07ac062` 已进入 `release/0.7.0-alpha.1`，并取得 run `31247288230` 的公共三平台产品步骤证据                                                   |
 | Windows 安装包                 | 已证明当前本地候选           | `release/OpenCode Desk Setup 0.7.0-alpha.1.exe` 及独立证据目录；当前 CI artifact 上传失败                                                              |
-| Linux x64 AppImage             | 当前提交已构建，制品缺失     | run `31244154662` 的原生构建与已打包 E2E 通过，但 artifact 上传失败；历史候选 artifact 不等同当前二进制                                                |
+| Linux x64 AppImage             | 当前提交已构建，制品缺失     | run `31247288230` 的原生构建与已打包 E2E 通过，但 artifact 上传失败；历史候选 artifact 不等同当前二进制                                                |
 | macOS/Linux 构建配置           | 当前提交原生 CI 产品步骤通过 | `apps/desktop/electron-builder.yml`、目标运行时校验器、原生 CI 与签名发布 matrix；当前 DMG/ZIP/AppImage 仍需释放 artifact 配额后重新上传并下载核验     |
 | README/安装/使用/排障/隐私说明 | 存在                         | `README.md`、`docs/installation.md`、`docs/user-guide.md`、`docs/troubleshooting.md`、`docs/privacy.md`                                                |
 | 干净设备独立验收清单           | 存在；执行证据仍缺           | `docs/clean-device-acceptance.md` 覆盖三平台生命周期、22 步 AI 编程、IDE 调试修复、10 个 Provider、安全检查、证据记录与双人签字要求                    |
