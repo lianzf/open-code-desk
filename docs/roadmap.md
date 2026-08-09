@@ -1,8 +1,8 @@
 # OpenCode Desk 开发路线图
 
-> 状态：0.7 alpha 本地与三平台原生产品门禁、artifact 下载核验通过；待正式签名、公网 Provider 和独立人工验收
+> 状态：0.7.0-alpha.1 内部 Alpha 已完成；正式发布明确延期
 > 日期：2026-08-09
-> 目标：以可验证的纵向闭环交付 Windows/macOS MVP
+> 当前目标：以可验证的纵向闭环交付受控内部 Alpha，不创建正式 Tag 或 GitHub Release
 
 ## 1. 交付原则
 
@@ -12,7 +12,7 @@
 4. 不用 Mock 数据冒充已实现能力；测试替身仅用于自动化测试。
 5. 每阶段控制变更规模，业务文件超过 400 行前拆分。
 6. 原生依赖尽早在 Windows/macOS CI 验证，避免最后集中暴露 ABI/签名问题。
-7. 每个阶段性版本必须建立 GitHub Release，并提供 Windows、macOS 和 Linux 的可下载安装包或发行包及 SHA-256 摘要。
+7. 对外发布的阶段版本必须建立 GitHub Release，并提供 Windows、macOS 和 Linux 的可下载安装包或发行包及 SHA-256 摘要；内部 Alpha 可使用与产品提交精确绑定、已核验哈希的 CI artifacts，不创建正式 Tag 或 Release。
 
 ## 2. MVP 模块清单
 
@@ -42,8 +42,8 @@
 - [x] **阶段 C / 0.4.0-alpha.1**：Node.js/TypeScript DAP client、真实断点、线程、调用栈、变量、监视与单步控制。
 - [x] **阶段 D / 0.5.0-alpha.1**：异常定位、调试上下文脱敏预览、AI 分析、Diff 审批与重新调试闭环。
 - [x] **阶段 E / 0.6.0-alpha.1**：条件、命中次数、日志断点与工作区异常暂停策略。
-- [x] **阶段 F / 0.7.0-alpha.1 候选交付**：Python 调试、ProjectTask、组合运行、端口管理、高级断点与完整本地门禁已通过；产品提交 `07ac062` 的公共 CI run `31247288230` attempt 2 已在 Windows x64、macOS ARM64 和 Linux x64 完成构建、运行时与已打包应用 E2E，并成功上传四个 artifacts。下载后的 Windows 6 项、macOS 8 项、Linux 5 项清单共 19/19 一致；相同产品提交另有本机全新 Windows NSIS、安装烟测、已安装核心 E2E 9/9 与桌面壳/持久化 E2E 6/6 的精确证据。
-- [ ] **阶段 G / 正式版语言扩展（进行中）**：浏览器 js-debug、Electron 主/渲染双进程 js-debug、Java JDT LS/Java Debug Server、C/C++/Rust `lldb-dap`、Go Delve 和 .NET NetCoreDbg 均已完成 Windows 真实项目的断点、栈、变量与退出清理验收；浏览器、Java 和外部调试器还覆盖单步，LLDB 实测修复了 `launch`/`initialized` 握手顺序。Node.js 与 Python 已支持现有 DAP 端点的远程/容器附加，并用真实独立目标验证源码映射、断点、变量和断开清理/所有权；JDT LS 已按平台与 CPU 架构选择 Intel/ARM64 配置，macOS ARM64/Linux x64 公共 runner 也完成真实 Java 调试验收。正式发布仍需签名/notarization、10 个 Provider 公网验证、独立干净设备验收，以及按后续范围补齐其他语言跨环境附加和自动隧道编排。
+- [x] **阶段 F / 0.7.0-alpha.1 内部 Alpha 交付**：Python 调试、ProjectTask、组合运行、端口管理、高级断点与完整本地门禁已通过；产品提交 `07ac062` 的公共 CI run `31247288230` attempt 2 已在 Windows x64、macOS ARM64 和 Linux x64 完成构建、运行时与已打包应用 E2E，并成功上传四个 artifacts。下载后的 Windows 6 项、macOS 8 项、Linux 5 项清单共 19/19 一致；相同产品提交另有本机全新 Windows NSIS、安装烟测、已安装核心 E2E 9/9 与桌面壳/持久化 E2E 6/6 的精确证据。当前交付仅限受控内部测试。
+- [ ] **阶段 G / 正式发布（延期，不属于当前内部 Alpha 目标）**：浏览器 js-debug、Electron 主/渲染双进程 js-debug、Java JDT LS/Java Debug Server、C/C++/Rust `lldb-dap`、Go Delve 和 .NET NetCoreDbg 均已完成 Windows 真实项目的断点、栈、变量与退出清理验收；浏览器、Java 和外部调试器还覆盖单步，LLDB 实测修复了 `launch`/`initialized` 握手顺序。Node.js 与 Python 已支持现有 DAP 端点的远程/容器附加，并用真实独立目标验证源码映射、断点、变量和断开清理/所有权；JDT LS 已按平台与 CPU 架构选择 Intel/ARM64 配置，macOS ARM64/Linux x64 公共 runner 也完成真实 Java 调试验收。正式发布仍需签名/notarization、10 个 Provider 公网验证、独立干净设备验收，以及按后续范围补齐其他语言跨环境附加和自动隧道编排。
 
 阶段 B 的项目运行服务与 Agent 命令、用户交互终端相互独立；阶段 C 的调试状态来自真实 DAP 事件，
 不复用普通进程输出伪装断点、调用栈或变量；阶段 D 只在用户审核脱敏预览后把选中数据加入会话。
