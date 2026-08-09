@@ -227,7 +227,7 @@ notarization、真实 Provider 与独立干净机器验收。未签名构建仅�
 - Python 调试暂不支持 `-c` 内联代码，以及 Poetry/Conda 的工作区外环境管理器枚举
 - AI 辅助调试当前一次只收集一个暂停位置；Electron 双进程可在同一调试会话中切换，但跨服务自动关联诊断尚未实现
 - 正式 Windows/macOS 发布需要代码签名、notarization 和干净设备验收证据
-- 10,000 文件增量加载、名称搜索与取消验收已形成[性能报告](docs/reports/performance-2026-08-02.md)，Windows 4 小时稳定性基线已通过；产品提交 `07ac062` 的 Windows x64、macOS ARM64 和 Linux x64 公共原生构建、运行时校验与已打包应用 E2E 均已通过，CI run `31247288230` attempt 2 的四个 artifacts 已上传并下载复核，三平台清单 19/19 一致；该证据满足当前内部 Alpha 目标，正式发布所需的 Windows/macOS 正式签名与 notarization、全部计划 Provider 真实公网记录和独立人员干净设备验收明确延期
+- 10,000 文件增量加载、名称搜索与取消验收已形成[性能报告](docs/reports/performance-2026-08-02.md)，Windows 4 小时稳定性基线已通过；当前产品提交 `a3471ca` 的 Windows x64、macOS ARM64 和 Linux x64 公共原生构建、运行时校验与已打包应用 E2E 均已通过，CI run `31295938442` attempt 1 的四个 artifacts 已上传并下载复核，三平台清单 19/19 一致；该证据满足当前内部 Alpha 目标，正式发布所需的 Windows/macOS 正式签名与 notarization、全部计划 Provider 真实公网记录和独立人员干净设备验收明确延期
 - 核心工作台、设置、运行、调试、任务、Git、终端、审计和审批界面已支持简体中文/英文切换；Renderer 错误展示已统一经过本地化边界，应用自有的中英文动态诊断受双向源码覆盖门禁约束，第三方工具或运行时返回的未知技术文本按原文保留
 
 ## 许可证

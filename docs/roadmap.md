@@ -42,7 +42,7 @@
 - [x] **阶段 C / 0.4.0-alpha.1**：Node.js/TypeScript DAP client、真实断点、线程、调用栈、变量、监视与单步控制。
 - [x] **阶段 D / 0.5.0-alpha.1**：异常定位、调试上下文脱敏预览、AI 分析、Diff 审批与重新调试闭环。
 - [x] **阶段 E / 0.6.0-alpha.1**：条件、命中次数、日志断点与工作区异常暂停策略。
-- [x] **阶段 F / 0.7.0-alpha.1 内部 Alpha 交付**：Python 调试、ProjectTask、组合运行、端口管理、高级断点与完整本地门禁已通过；产品提交 `07ac062` 的公共 CI run `31247288230` attempt 2 已在 Windows x64、macOS ARM64 和 Linux x64 完成构建、运行时与已打包应用 E2E，并成功上传四个 artifacts。下载后的 Windows 6 项、macOS 8 项、Linux 5 项清单共 19/19 一致；相同产品提交另有本机全新 Windows NSIS、安装烟测、已安装核心 E2E 9/9 与桌面壳/持久化 E2E 6/6 的精确证据。当前交付仅限受控内部测试。
+- [x] **阶段 F / 0.7.0-alpha.1 内部 Alpha 交付**：Python 调试、ProjectTask、组合运行、端口管理、高级断点与完整本地门禁已通过；当前产品提交 `a3471ca` 的公共 CI run `31295938442` attempt 1 已在 Windows x64、macOS ARM64 和 Linux x64 完成构建、运行时与已打包应用 E2E，并成功上传四个 artifacts。下载后的 Windows 6 项、macOS 8 项、Linux 5 项清单共 19/19 一致；该提交还加入了覆盖 353 个生产 TypeScript/TSX 文件的 400 行 CI 门禁。前一产品提交 `07ac062` 的本机 Windows NSIS、安装烟测、已安装核心 E2E 9/9 与桌面壳/持久化 E2E 6/6 证据保留为历史基线，不替代当前二进制。当前交付仅限受控内部测试。
 - [ ] **阶段 G / 正式发布（延期，不属于当前内部 Alpha 目标）**：浏览器 js-debug、Electron 主/渲染双进程 js-debug、Java JDT LS/Java Debug Server、C/C++/Rust `lldb-dap`、Go Delve 和 .NET NetCoreDbg 均已完成 Windows 真实项目的断点、栈、变量与退出清理验收；浏览器、Java 和外部调试器还覆盖单步，LLDB 实测修复了 `launch`/`initialized` 握手顺序。Node.js 与 Python 已支持现有 DAP 端点的远程/容器附加，并用真实独立目标验证源码映射、断点、变量和断开清理/所有权；JDT LS 已按平台与 CPU 架构选择 Intel/ARM64 配置，macOS ARM64/Linux x64 公共 runner 也完成真实 Java 调试验收。正式发布仍需签名/notarization、10 个 Provider 公网验证、独立干净设备验收，以及按后续范围补齐其他语言跨环境附加和自动隧道编排。
 
 阶段 B 的项目运行服务与 Agent 命令、用户交互终端相互独立；阶段 C 的调试状态来自真实 DAP 事件，
@@ -59,10 +59,10 @@
 - [x] DAP 值投影与路径/Secret 防护下沉为共享基础设施，Node 与 Python Adapter 复用且业务流程无语言分支扩散。
 - [x] CI 对 `develop`、`release/**` 与 `main` 运行质量门禁，阶段分支先验证后才能并入基线。
 - [x] ProjectTask、组合运行、端口占用安全处理、函数/数据断点能力协商、指定/忽略异常规则和三向可调布局形成持久化闭环。
-- [x] 当前源码本地完整门禁通过：394 项 Vitest（113 个文件通过；7 个真实环境门禁文件 / 18 项默认跳过，其中 10 项为真实 Provider 公网门禁；独立集成门禁 29 文件 / 94 项），真实 Chrome、Electron、Java、Go、.NET 门禁分别 1/1 通过，C/C++/Rust LLDB 门禁 3/3 通过；16 项开发构建 Electron E2E、9 项已安装应用核心 E2E、6/6 已安装桌面壳/持久化 E2E、10,000 文件性能验收、依赖审计及类型/Lint/格式/构建全部通过；产品提交 `07ac062` 的 Windows NSIS 候选已通过运行时完整性与 6/6 摘要校验，独立安装后 3.99 秒创建产品窗口，正常退出零残留并可静默卸载。
-- [x] 当前产品提交在 Linux x64 公共原生 runner 完成冻结依赖安装、原生 `node-pty`、AppImage 打包、运行时完整性、GNOME Secret Service 与已打包应用核心 E2E 9/9；attempt 2 的 AppImage 为 213,150,102 字节，SHA-256 `9C48B1A8C17D9F979C78C9EF43FC9C370A39D94A25DC525A83DD104DA2541C50`，5/5 清单一致。
+- [x] 当前产品提交的本机完整门禁通过：394 项 Vitest（113 个文件通过；7 个真实环境门禁文件 / 18 项默认跳过，其中 10 项为真实 Provider 公网门禁）、独立集成门禁 29 文件 / 94 项、真实 Chrome 与 Electron 门禁各 1/1、开发构建 Electron E2E 16/16、10,000 文件性能验收、依赖审计及类型/Lint/格式/构建；同一提交还在 macOS ARM64/Linux x64 公共 runner 完成真实 Java 验收。前一提交完成的 Windows Java、Go、.NET、C/C++/Rust 和本机安装生命周期证据作为能力基线保留，不冒充当前二进制。
+- [x] 当前产品提交在 Linux x64 公共原生 runner 完成冻结依赖安装、JDK 21 Java 调试、原生 `node-pty`、AppImage 打包、运行时完整性、GNOME Secret Service 与已打包应用核心 E2E 9/9；run `31295938442` attempt 1 的 AppImage 为 213,150,176 字节，SHA-256 `5E858E4DDE29A38E753651B0F6FBDB8441F98A261FAADA3A7B516E008CF6A2D1`，5/5 清单一致。
 - [x] 发布元数据门禁生成确定性的 CycloneDX 1.6 SBOM（Windows 588、macOS 589、Linux 587 个组件）、710 个完整 workspace 依赖的审计、149 个随包第三方组件的许可证审计和 Secret 扫描报告；四份 JSON 均进入 SHA-256 清单，未知许可证、新增凭据或失效的测试夹具白名单会阻断 CI。
-- [x] 排除测试、产物与 vendor 后，TypeScript/TSX 生产源码超过 400 行的文件为 0。
+- [x] `pnpm source-size:check` 在本地与 CI 强制执行：排除测试、产物与 vendor 后检查 353 个 TypeScript/TSX 生产文件，最大 400 行、超过 400 行为 0。
 
 ### 阶段 E 实施结果（2026-08-02）
 
