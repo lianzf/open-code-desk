@@ -43,6 +43,9 @@ jobs:
       - name: Check documentation
         run: pnpm docs:check
 
+      - name: Check production source size
+        run: pnpm source-size:check
+
       - name: Lint
         run: pnpm lint
 

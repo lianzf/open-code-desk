@@ -12,10 +12,14 @@ import type {
 } from '@open-code-desk/domain';
 
 import { toPlatformPath } from '../../filesystem/path-policy';
-import { StreamingSecretRedactor } from '../../run/run-process-runtime';
 import type { DebugAdapterEvent, DebugAdapterSession } from '../debug-adapter';
 import { DapDataAccess } from '../dap/dap-data-access';
 import type { DapEventMessage } from '../dap/dap-message';
+import {
+  createDapOutputRedactors,
+  type DapOutputCategory,
+  dapOutputCategories,
+} from '../dap/dap-output-redaction';
 import { setDapSpecialBreakpoints } from '../dap/dap-special-breakpoints';
 import { asArray, asRecord, booleanValue, numberValue, stringValue } from '../dap/dap-values';
 import { PythonDebugAdapterProcess } from './python-debug-adapter-process';
@@ -26,9 +30,6 @@ import {
   pythonInitializeArguments,
   setPythonExceptionBreakpoints,
 } from './python-debug-launch';
-
-const outputCategories = ['console', 'stdout', 'stderr', 'telemetry', 'important'] as const;
-type OutputCategory = (typeof outputCategories)[number];
 
 export interface CreatePythonDebugAdapterSessionInput {
   readonly process: PythonDebugAdapterProcess;
@@ -46,7 +47,7 @@ export interface CreatePythonDebugAdapterSessionInput {
 export class PythonDebugAdapterSession implements DebugAdapterSession {
   readonly #listeners = new Set<(event: DebugAdapterEvent) => void>();
   readonly #bufferedEvents: DebugAdapterEvent[] = [];
-  readonly #redactors: Readonly<Record<OutputCategory, StreamingSecretRedactor>>;
+  readonly #redactors: ReturnType<typeof createDapOutputRedactors>;
   readonly #dataAccess: DapDataAccess;
   readonly #breakpointsByPath = new Map<string, ReadonlyArray<DebugBreakpoint>>();
   readonly #unsubscribeClient: ReadonlyArray<() => void>;
@@ -68,9 +69,7 @@ export class PythonDebugAdapterSession implements DebugAdapterSession {
       workspaceRoot,
       sensitiveValues,
     );
-    this.#redactors = Object.fromEntries(
-      outputCategories.map((category) => [category, new StreamingSecretRedactor(sensitiveValues)]),
-    ) as Readonly<Record<OutputCategory, StreamingSecretRedactor>>;
+    this.#redactors = createDapOutputRedactors(sensitiveValues);
     for (const path of new Set(
       breakpoints.filter((item) => item.kind === 'line').map((item) => item.relativePath),
     )) {
@@ -310,7 +309,7 @@ export class PythonDebugAdapterSession implements DebugAdapterSession {
       this.#debuggeeProcessId = numberValue(body, 'systemProcessId');
     } else if (event.event === 'output') {
       const rawCategory = stringValue(body, 'category');
-      const category = outputCategories.find((value) => value === rawCategory) ?? 'console';
+      const category = dapOutputCategories.find((value) => value === rawCategory) ?? 'console';
       this.pushOutput(category, stringValue(body, 'output') ?? '');
     } else if (event.event === 'stopped') {
       const threadId = numberValue(body, 'threadId');
@@ -378,13 +377,13 @@ export class PythonDebugAdapterSession implements DebugAdapterSession {
     });
   }
 
-  private pushOutput(category: OutputCategory, data: string): void {
+  private pushOutput(category: DapOutputCategory, data: string): void {
     const redacted = this.#redactors[category].push(data);
     if (redacted !== '') this.emit({ type: 'output', category, data: redacted });
   }
 
   private flushOutput(): void {
-    for (const category of outputCategories) {
+    for (const category of dapOutputCategories) {
       const data = this.#redactors[category].flush();
       if (data !== '') this.emit({ type: 'output', category, data });
     }

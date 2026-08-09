@@ -5,7 +5,6 @@ import type {
 } from '@open-code-desk/domain';
 
 import { toPlatformPath } from '../../filesystem/path-policy';
-import { StreamingSecretRedactor } from '../../run/run-process-runtime';
 import type { DebugAdapterEvent } from '../debug-adapter';
 import type { DapClient } from '../dap/dap-client';
 import { asArray, asRecord, booleanValue, numberValue, stringValue } from '../dap/dap-values';
@@ -45,17 +44,6 @@ export interface AdditionalJavaScriptDebugSessionInput {
     client: DapClient,
     policy: DebugExceptionPolicy,
   ) => Promise<void>;
-}
-
-export const outputCategories = ['console', 'stdout', 'stderr', 'telemetry', 'important'] as const;
-export type OutputCategory = (typeof outputCategories)[number];
-
-export function createOutputRedactors(
-  sensitiveValues: ReadonlyArray<string>,
-): Readonly<Record<OutputCategory, StreamingSecretRedactor>> {
-  return Object.fromEntries(
-    outputCategories.map((category) => [category, new StreamingSecretRedactor(sensitiveValues)]),
-  ) as Readonly<Record<OutputCategory, StreamingSecretRedactor>>;
 }
 
 export async function sendNodeBreakpoints(

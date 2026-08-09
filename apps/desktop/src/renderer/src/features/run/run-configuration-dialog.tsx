@@ -3,20 +3,18 @@ import type {
   RuntimeCandidate,
   RunConfiguration,
 } from '@open-code-desk/ipc-contracts';
-import { Copy, Trash2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useState } from 'react';
 
-import { Button } from '@/components/ui/button';
 import {
   blankRunConfigurationDraft,
   draftFromRunConfiguration,
-  isDebugAttachDraftValid,
-  isRunPortDraftValid,
   projectTypes,
   runConfigurationInputClassName,
   toSaveRunConfigurationRequest,
   type ConfigurationDraft,
 } from './run-configuration-draft';
+import { RunConfigurationDialogFooter } from './run-configuration-dialog-footer';
 import { RunEnvironmentEditor } from './run-environment-editor';
 import { RunDebugAttachEditor } from './run-debug-attach-editor';
 import { useRunTranslation } from './run-i18n';
@@ -69,15 +67,12 @@ function RunConfigurationDialogForm({
   defaultConfigurationId,
 }: RunConfigurationDialogFormProps) {
   const { t } = useRunTranslation();
-  const loading = useRunStore((state) => state.loading);
   const errorMessage = useRunStore((state) => state.errorMessage);
   const discoveredRuntimeCandidates = useRunStore((state) => state.detection?.runtimeCandidates);
   const projectTasks = useRunStore((state) => state.projectTasks);
   const runtimeCandidates = discoveredRuntimeCandidates ?? noRuntimeCandidates;
   const close = useRunStore((state) => state.closeConfigurationDialog);
   const saveConfiguration = useRunStore((state) => state.saveConfiguration);
-  const deleteConfiguration = useRunStore((state) => state.deleteConfiguration);
-  const duplicateConfiguration = useRunStore((state) => state.duplicateConfiguration);
   const setDefaultConfiguration = useRunStore((state) => state.setDefaultConfiguration);
   const [draft, setDraft] = useState<ConfigurationDraft>(() =>
     editing === undefined
@@ -369,54 +364,7 @@ function RunConfigurationDialogForm({
           )}
         </div>
 
-        <footer className="flex h-14 shrink-0 items-center gap-2 border-t border-zinc-800 px-5">
-          {editing === undefined ? null : (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                className="text-red-300 hover:text-red-200"
-                disabled={loading}
-                onClick={() => {
-                  if (window.confirm(t('deleteConfigurationConfirm', { name: editing.name }))) {
-                    void deleteConfiguration(editing.id);
-                  }
-                }}
-                data-testid="delete-run-configuration"
-              >
-                <Trash2 className="size-4" aria-hidden="true" />
-                {t('delete')}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={loading}
-                onClick={() => void duplicateConfiguration(editing.id)}
-                data-testid="duplicate-run-configuration"
-              >
-                <Copy className="size-4" aria-hidden="true" />
-                {t('copy')}
-              </Button>
-            </>
-          )}
-          <Button type="button" variant="outline" className="ml-auto" onClick={close}>
-            {t('cancel')}
-          </Button>
-          <Button
-            type="button"
-            disabled={
-              loading ||
-              draft.name.trim() === '' ||
-              draft.executable.trim() === '' ||
-              !isDebugAttachDraftValid(draft) ||
-              !isRunPortDraftValid(draft)
-            }
-            onClick={() => void save()}
-            data-testid="save-run-configuration"
-          >
-            {loading ? t('saving') : t('save')}
-          </Button>
-        </footer>
+        <RunConfigurationDialogFooter draft={draft} editing={editing} onSave={save} />
       </section>
     </div>
   );

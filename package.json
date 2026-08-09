@@ -33,6 +33,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "docs:check": "node apps/desktop/scripts/check-documentation.mjs",
+    "source-size:check": "node apps/desktop/scripts/check-source-size.mjs",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "vitest run --maxWorkers=4",
     "test:integration": "vitest run integration --maxWorkers=4",
